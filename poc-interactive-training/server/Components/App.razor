@@ -1,0 +1,26 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="@($"app.css?v={AssetVersion}")" />
+    <link rel="stylesheet" href="PocInteractiveTraining.Server.styles.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+</head>
+
+<body>
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <script src="@($"training.js?v={AssetVersion}")"></script>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+
+</html>
+
+@code {
+    // Rebuild stamp, so an edited stylesheet is never served from cache during a demo.
+    private static readonly string AssetVersion =
+        File.GetLastWriteTimeUtc(typeof(App).Assembly.Location).Ticks.ToString();
+}

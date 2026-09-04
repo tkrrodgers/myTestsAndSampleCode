@@ -1,0 +1,1267 @@
+﻿@page "/"
+@implements IAsyncDisposable
+@inject TrainingSessionStore Store
+@inject ClaraBenchmark Benchmark
+@inject IJSRuntime JS
+
+<PageTitle>OKF Context Navigator</PageTitle>
+
+<div class="app-shell @(_drawerOpen ? null : "drawer-closed")">
+	<aside class="rail" aria-label="Lesson navigation">
+		<div class="brand-mark" aria-hidden="true">OKF</div>
+		<div>
+			<p class="eyebrow">CES AI PRACTICE LAB</p>
+			<h1>Context<br />Navigator</h1>
+		</div>
+		<ol class="scene-list">
+			@for (var index = 0; index < Scenes.Length; index++)
+			{
+				var sceneIndex = index;
+				<li class="@(sceneIndex == _scene ? "active" : null)">
+					<button type="button" @onclick="() => GoTo(sceneIndex)">
+						<span>@(sceneIndex + 1)</span>@Scenes[sceneIndex].Title
+					</button>
+				</li>
+			}
+		</ol>
+		<div class="bridge-state" aria-live="polite">
+			<span class="status-dot @(_bridgeConnected ? "online" : null)"></span>
+			<div>
+				<strong>@(_bridgeConnected ? "VSIX connected" : "Waiting for VSIX")</strong>
+				<small>@(_session?.CoachStatus ?? "not started")</small>
+			</div>
+		</div>
+	</aside>
+
+	<section class="stage">
+		<header class="stage-header">
+			<div><p class="eyebrow">SCENE @(_scene + 1) / @Scenes.Length</p><strong>@Scenes[_scene].Title</strong></div>
+			<div class="header-actions">
+				<button class="icon-button" type="button" title="Play narration" aria-label="Play narration" @onclick="Speak">▶</button>
+				<button class="icon-button" type="button" title="Stop narration" aria-label="Stop narration" @onclick="StopSpeaking">■</button>
+			</div>
+		</header>
+
+		@if (_session is not null && _session.CoachFallbackUsed)
+		{
+			<div class="model-banner warning" role="status">Gemma was unavailable. Narration text was authored by <strong>@_session.CoachModel</strong>; browser speech remains the audio provider.</div>
+		}
+		else if (_session?.CoachStatus == "completed")
+		{
+			<div class="model-banner" role="status">Grounded coach ready: <strong>@_session.CoachModel</strong></div>
+		}
+		@if (!string.IsNullOrWhiteSpace(_session?.LastError))
+		{
+			<div class="model-banner error" role="alert">@_session.LastError</div>
+		}
+
+		<article class="scene" aria-labelledby="scene-title">
+			@switch (_scene)
+			{
+				case 0:
+					<section class="opening-scene">
+						<div class="opening-copy">
+							<p class="kicker">GROUND BEFORE YOU GENERATE</p>
+							<h2 id="scene-title">Find the right code.<br /><em>Know why it is right.</em></h2>
+							<p class="lede">A guided investigation from a JIRA story, through an OKF knowledge graph, to one defensible implementation path.</p>
+							@if (!_started)
+							{
+								<button class="primary-command" type="button" @onclick="StartLesson">Start the investigation <span>→</span></button>
+							}
+							else
+							{
+								<button class="primary-command" type="button" @onclick="Next">Continue <span>→</span></button>
+							}
+						</div>
+						<div class="path-visual" aria-label="JIRA story connects through OKF to code and tests">
+							<div class="path-node jira"><span>01</span><strong>JIRA</strong><small>FUL-1842</small></div>
+							<div class="path-line"><i></i></div>
+							<div class="path-node okf"><span>02</span><strong>OKF</strong><small>governed context</small></div>
+							<div class="path-line"><i></i></div>
+							<div class="path-node code"><span>03</span><strong>CODE</strong><small>one owned path</small></div>
+						</div>
+					</section>
+					break;
+				case 1:
+					<section>
+						<p class="kicker">SEARCH FINDS WORDS. CONTEXT FINDS MEANING.</p>
+						<h2 id="scene-title">Why OKF changes the investigation</h2>
+						<div class="comparison-grid">
+							<div class="comparison bad">
+								<div class="comparison-label">Ungrounded path</div>
+								<ol><li>Copy the ticket into chat</li><li>Search every “estimate” match</li><li>Choose the first plausible class</li><li>Ship an unsupported assumption</li></ol>
+								<p>No ownership boundary. No decision history. No evidence trail.</p>
+							</div>
+							<div class="comparison good">
+								<div class="comparison-label">OKF-grounded path</div>
+								<ol><li>Start from the governed index</li><li>Resolve the business concept</li><li>Follow boundaries and decisions</li><li>Verify the mapped code and tests</li></ol>
+								<p>Every material conclusion points back to a reviewable source.</p>
+							</div>
+						</div>
+					</section>
+					break;
+				case 2:
+					<section>
+						<p class="kicker">THE CONTEXT ARTIFACT</p>
+						<h2 id="scene-title">A map the human and model can inspect</h2>
+						<div class="artifact-layout">
+							<div class="artifact-tree" role="img" aria-label="Training fixture tree with OKF, JIRA, and source code folders">
+								<div class="tree-root">training-fixture/</div>
+								<ul>
+									<li class="file primer-file">README.md <span>LLM consumer guide</span></li>
+									<li class="folder open">okf/<ul><li class="file active">index.md</li><li class="folder">concepts/ <span>delivery-estimate.md</span></li><li class="folder">architecture/ <span>service-boundaries.md</span></li><li class="folder">decisions/ <span>adr-024-delay-source.md</span></li><li class="folder">code-map/ <span>fulfillment-components.md</span></li></ul></li>
+									<li class="folder">jira/ <span>FUL-1842.md</span></li>
+									<li class="folder">src/ <span>Fulfillment.Application/</span></li>
+								</ul>
+							</div>
+							<div class="artifact-note">
+								<span class="note-number">01</span>
+								<h3>What OKF means</h3>
+								<p><strong>Open Knowledge Format</strong> is a model-neutral directory of small Markdown concepts with YAML metadata and links that form a navigable knowledge graph.</p>
+								<ul class="okf-primer-list">
+									<li>Read the consumer guide, then start at <code>okf/index.md</code>.</li>
+									<li>Follow concept → boundary/decision → code map → current code/tests.</li>
+									<li>Check provenance, verification, lifecycle, and freshness.</li>
+									<li>Cite paths and surface missing knowledge instead of guessing.</li>
+								</ul>
+								<p class="trust-note">Structure improves inspectability; it does not guarantee truth or train model weights.</p>
+								<div class="source-chip">training-fixture/README.md → okf/index.md</div>
+							</div>
+						</div>
+					</section>
+					break;
+				case 3:
+					<section>
+						<div class="illustration-label">Illustration — example investigation flow</div>
+						<h2 id="scene-title">From FUL-1842 to the implementation seam</h2>
+						<p class="story"><strong>FUL-1842</strong> Show a revised delivery estimate after a confirmed carrier delay, preserve the original otherwise, and expose the estimate source.</p>
+						<div class="trace-grid">
+							@for (var index = 0; index < TraceSteps.Length; index++)
+							{
+								var stepIndex = index;
+								<button type="button" class="trace-step @(stepIndex == _traceStep ? "active" : null)" @onclick="() => _traceStep = stepIndex"><span>@(stepIndex + 1)</span><div><strong>@TraceSteps[stepIndex].Title</strong><small>@TraceSteps[stepIndex].Path</small></div></button>
+							}
+						</div>
+						<div class="trace-evidence" aria-live="polite"><p class="eyebrow">OBSERVABLE EVIDENCE</p><h3>@TraceSteps[_traceStep].Finding</h3><p>@TraceSteps[_traceStep].Result</p><code>@TraceSteps[_traceStep].Path</code></div>
+					</section>
+					break;
+				case 4:
+					<section>
+						<p class="kicker">MOTION WITH A PURPOSE</p>
+						<h2 id="scene-title">Watch context narrow the search</h2>
+						<p class="animation-intro">The moving signal represents an observable investigation step, not hidden reasoning. Replay it to see the search space contract as evidence accumulates.</p>
+						<div class="animation-demo" @key="_animationRun" role="img" aria-label="Animated context path from JIRA through OKF index, concept and decision to code">
+							<div class="motion-track" aria-hidden="true"><i></i></div>
+							<div class="motion-node jira"><span>1</span><strong>JIRA</strong><small>intent</small></div>
+							<div class="motion-node index"><span>2</span><strong>INDEX</strong><small>entry</small></div>
+							<div class="motion-node context"><span>3</span><strong>CONTEXT</strong><small>constraint</small></div>
+							<div class="motion-node target"><span>4</span><strong>CODE</strong><small>owned path</small></div>
+						</div>
+						<ol class="animation-transcript">
+							<li>Read the story intent.</li><li>Enter through the OKF index.</li><li>Apply concept, boundary, and ADR evidence.</li><li>Inspect the mapped code and tests.</li>
+						</ol>
+						<button class="secondary-command replay-command" type="button" @onclick="ReplayAnimation">↻ Replay animation</button>
+					</section>
+					break;
+				case 5:
+					<section>
+						<p class="kicker">REVIEWED VISUAL ASSET</p>
+						<h2 id="scene-title">The same flow as an image</h2>
+						<div class="image-demo-layout">
+							<figure class="image-demo">
+								<img src="okf-artifact-structure.png" alt="Context navigation from JIRA story FUL-1842 through the OKF index and contextual decisions to DeliveryEstimateService code." />
+								<figcaption>Bitmap demonstration: intent → governed index → decision context → owned code.</figcaption>
+							</figure>
+							<aside class="image-provenance">
+								<p class="eyebrow">ASSET RECORD</p>
+								<dl><dt>Source</dt><dd>Rendered POC context map</dd><dt>Format</dt><dd>PNG · 1080×608</dd><dt>Data</dt><dd>Synthetic Public fixture</dd><dt>Review</dt><dd>Human-inspected for crop and readability</dd></dl>
+								<p>The image supports the lesson, but structured HTML remains the accessible and localizable source of truth.</p>
+							</aside>
+						</div>
+					</section>
+					break;
+				case 6:
+					<section>
+						<p class="kicker">CHECK THE MENTAL MODEL</p>
+						<h2 id="scene-title">Three decisions before code</h2>
+						<div class="quiz-list">
+							@for (var questionIndex = 0; questionIndex < Questions.Length; questionIndex++)
+							{
+								var currentQuestion = questionIndex;
+								var question = Questions[questionIndex];
+								<fieldset class="question-block">
+									<legend><span>@(questionIndex + 1)</span>@question.Prompt</legend>
+									@for (var optionIndex = 0; optionIndex < question.Options.Count; optionIndex++)
+									{
+										var currentOption = optionIndex;
+										<label class="answer-option @AnswerClass(currentQuestion, currentOption)"><input type="radio" name="question-@questionIndex" checked="@(_answers.GetValueOrDefault(currentQuestion, -1) == currentOption)" @onchange="() => Answer(currentQuestion, currentOption)" /><span>@((char)('A' + optionIndex))</span>@question.Options[optionIndex]</label>
+									}
+									@if (_answers.ContainsKey(currentQuestion)) { <p class="answer-feedback">@question.Feedback</p> }
+								</fieldset>
+							}
+						</div>
+					</section>
+					break;
+				case 7:
+					<section>
+						<p class="kicker">YOU DRIVE THE INVESTIGATION</p>
+						<h2 id="scene-title">Write the prompt Claude will review</h2>
+						<div class="challenge-grid">
+							<div>
+								<p class="challenge-intro">Direct an AI to investigate FUL-1842. Require evidence, restraint, and a verification path — not an immediate code dump.</p>
+								<div class="rubric-list"><span>Index first</span><span>Source paths</span><span>Concept + boundary</span><span>ADR constraint</span><span>Code + tests</span><span>Open questions</span></div>
+								<label for="learner-prompt">Your investigation prompt</label>
+								<textarea id="learner-prompt" maxlength="6000" @bind="_learnerPrompt" @bind:event="oninput" placeholder="Investigate FUL-1842 by starting with..."></textarea>
+								<div class="prompt-actions"><small>@_learnerPrompt.Length / 6000</small><button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _learnerPrompt.Trim().Length < 40 || _session?.ReviewStatus is "queued" or "running")" @onclick="SubmitReview">@ReviewButtonText</button></div>
+								@if (!_bridgeConnected)
+								{
+									<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before requesting Claude.</p>
+								}
+							</div>
+							<aside class="review-panel" id="review-feedback" tabindex="-1" aria-live="polite">
+								<p class="eyebrow">INDEPENDENT REVIEW</p>
+								@if (_session?.Review is null)
+								{
+									@if (_session?.ReviewStatus == "failed")
+									{
+										<div class="review-empty failed"><span>!</span><h3>Claude review didn't finish</h3><p>@(_session?.LastError ?? "The review task failed. Confirm a language model is signed in and available in VS Code, then request feedback again.")</p></div>
+									}
+									else
+									{
+										<div class="review-empty"><span>CL</span><h3>Feedback appears here</h3><p>Claude reviews the prompt against the visible rubric. It does not assign a validated grade.</p></div>
+									}
+								}
+								else
+								{
+									<div class="coach-label">AI coaching commentary — not a validated grade.</div>
+									<h3>@_session.Review.Summary</h3>
+									<h4>Strengths</h4><ul>@foreach (var item in _session.Review.Strengths) { <li>@item</li> }</ul>
+									<h4>Improve next</h4><ul>@foreach (var item in _session.Review.Improvements) { <li>@item</li> }</ul>
+									@if (_session.Review.UnsupportedAssumptions.Count > 0) { <h4>Unsupported assumptions</h4><ul>@foreach (var item in _session.Review.UnsupportedAssumptions) { <li>@item</li> }</ul> }
+									<details><summary>Suggested revision</summary><p>@_session.Review.SuggestedPrompt</p></details>
+									<small>Reviewed by @_session.ReviewModel</small>
+								}
+								<section class="review-trace-window" aria-label="Claude decision trace">
+									<div class="trace-window-heading">
+										<div><p class="eyebrow">CLAUDE DECISION TRACE</p><h4>Evidence and review decisions</h4></div>
+										<span class="live-indicator @(_session?.ReviewStatus == "running" ? "active" : _session?.ReviewStatus == "failed" ? "failed" : null)">@ReviewTraceState</span>
+									</div>
+									<p class="trace-disclosure">Observable rubric checks streamed by Claude. This is not private chain-of-thought and is not proof that the final feedback is correct.</p>
+									@if (_session?.ReviewTrace.Count > 0)
+									{
+										<ol class="review-trace-list">
+											@foreach (var traceEvent in _session.ReviewTrace)
+											{
+												<li>
+													<span>@traceEvent.Sequence.ToString("00")</span>
+													<div><strong>@traceEvent.Stage</strong><blockquote>@traceEvent.Evidence</blockquote><p>@traceEvent.Decision</p></div>
+												</li>
+											}
+										</ol>
+									}
+									else
+									{
+										<div class="trace-awaiting"><span></span><p>@ReviewTraceMessage</p></div>
+									}
+								</section>
+							</aside>
+						</div>
+					</section>
+					break;
+				case 8:
+					<section>
+						<p class="kicker">CAPABILITY COMPARISON</p>
+						<h2 id="scene-title">Ask three models the same question</h2>
+						<p class="compare-intro">Pick a Google Cloud topic. Each model answers independently in its own column, then an impartial judge model blind-scores the anonymized answers (A / B / C) against a reference checklist. Programmatic keyword coverage is shown next to the judge's rubric scores. This is an illustrative harness — not a validated benchmark.</p>
+						<div class="compare-controls">
+							<select class="compare-select" @bind="_comparisonTopicId" disabled="@ComparisonBusy">
+								<option value="">Choose a topic…</option>
+								@foreach (var topic in ComparisonCatalog.Topics)
+								{
+									<option value="@topic.Id">@topic.Title</option>
+								}
+							</select>
+							<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || string.IsNullOrEmpty(_comparisonTopicId) || ComparisonBusy)" @onclick="RunComparison">@CompareButtonText</button>
+						</div>
+						@if (!_bridgeConnected)
+						{
+							<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running a comparison.</p>
+						}
+						@if (SelectedTopic is not null)
+						{
+							<div class="compare-question">
+								<p class="eyebrow">QUESTION</p>
+								<p>@SelectedTopic.Question</p>
+								<div class="compare-refs">@foreach (var url in SelectedTopic.ReferenceUrls) { <span>@url</span> }</div>
+							</div>
+						}
+
+						@if (_session?.Comparison.Answers.Count > 0)
+						{
+							<div class="compare-columns">
+								@foreach (var answer in _session.Comparison.Answers)
+								{
+									<article class="compare-col @(WinningSlot == answer.Slot ? "winner" : null)">
+										<header class="compare-col-head">
+											<span class="slot-badge">Answer @answer.Slot</span>
+											<strong>@(answer.ModelUsed ?? answer.RequestedModel)</strong>
+											<small>requested: @answer.RequestedModel@(answer.FallbackUsed ? " · substitute" : string.Empty)</small>
+										</header>
+										@switch (answer.Status)
+										{
+											case "completed":
+												<div class="answer-body">@answer.Content</div>
+												<div class="answer-metrics">
+													<span class="coverage">Keyword coverage @answer.KeywordCoverage%</span>
+													@if (ScoreFor(answer.Slot) is { } score)
+													{
+														<div class="dim-row"><span>Factuality</span><b>@score.Factuality/5</b></div>
+														<div class="dim-row"><span>Completeness</span><b>@score.Completeness/5</b></div>
+														<div class="dim-row"><span>Conciseness</span><b>@score.Conciseness/5</b></div>
+														@if (!string.IsNullOrWhiteSpace(score.Notes)) { <p class="dim-notes">@score.Notes</p> }
+													}
+												</div>
+												break;
+											case "failed":
+												<div class="answer-failed">No answer returned by @(answer.ModelUsed ?? answer.RequestedModel).</div>
+												break;
+											default:
+												<div class="answer-pending"><span></span>Waiting for @answer.RequestedModel…</div>
+												break;
+										}
+									</article>
+								}
+							</div>
+						}
+
+						@if (_session?.Comparison.Status == "judging")
+						{
+							<div class="compare-status" role="status">Answers collected. The judge model is blind-scoring A / B / C against the reference checklist…</div>
+						}
+						else if (_session?.Comparison.Status == "failed")
+						{
+							<div class="compare-status failed" role="alert">@(_session?.Comparison.Error ?? "The comparison did not complete.")</div>
+						}
+
+						@if (_session?.Comparison.Verdict is { } verdict)
+						{
+							<aside class="compare-verdict">
+								<p class="eyebrow">INDEPENDENT JUDGE VERDICT</p>
+								<div class="coach-label">LLM-as-judge evaluation — blinded and rubric-based, not a validated grade.</div>
+								@if (verdict.Ranking.Count > 0)
+								{
+									<ol class="verdict-ranking">
+										@foreach (var slot in verdict.Ranking)
+										{
+											<li><span class="slot-badge">@slot</span> @ModelForSlot(slot)</li>
+										}
+									</ol>
+								}
+								<p class="verdict-rationale">@verdict.Rationale</p>
+								<dl class="verdict-meta"><dt>Judge</dt><dd>@verdict.JudgeModel</dd></dl>
+								@if (JudgeSharesCandidateModel)
+								{
+									<p class="verdict-caveat">Caveat: the judge resolved to the same underlying model as a candidate in this environment. Independence is reduced — treat the ranking with extra caution.</p>
+								}
+								@if (DuplicateModels)
+								{
+									<p class="verdict-caveat">Note: two or more columns resolved to the same underlying model. Sign in to additional model families in VS Code for a meaningful comparison.</p>
+								}
+							</aside>
+						}
+					</section>
+					break;
+				case 9:
+					<section>
+						<p class="kicker">GROUNDING ROUND TRIP</p>
+						<h2 id="scene-title">Class → JIRA story → class</h2>
+						<p class="rt-intro">Gemma 4 reads a class and writes the JIRA story it satisfies, then rebuilds the class from <em>only that story</em>. Claude Opus 5.0 then reviews how much of the original behavior survived the round trip. This measures how well a generated artifact grounds a faithful reconstruction — it is coaching commentary, not a validated grade.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Original class</strong><small>input to Gemma 4</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="12000" @bind="_roundTripClass" @bind:event="oninput" disabled="@RoundTripBusy" aria-label="Original class"></textarea>
+							<div class="rt-actions">
+								<small>@_roundTripClass.Length / 12000</small>
+								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _roundTripClass.Trim().Length < 20 || RoundTripBusy)" @onclick="RunRoundTrip">@RoundTripButtonText</button>
+							</div>
+							@if (!_bridgeConnected)
+							{
+								<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running the round trip.</p>
+							}
+						</section>
+
+						<div class="rt-flow">
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>JIRA story</strong><small>@(_session?.RoundTrip.StoryModel ?? "Gemma 4")@(_session?.RoundTrip.StoryFallbackUsed == true ? " · substitute" : string.Empty)</small></div></header>
+								@if (!string.IsNullOrEmpty(_session?.RoundTrip.Story))
+								{
+									<div class="rt-story">@_session.RoundTrip.Story</div>
+								}
+								else if (_session?.RoundTrip.Status is "queued" or "story")
+								{
+									<div class="rt-pending"><span></span>Gemma is drafting the JIRA story…</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">The generated JIRA story will appear here.</div>
+								}
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>Re-created class</strong><small>@(_session?.RoundTrip.RecreatedModel ?? "Gemma 4")@(_session?.RoundTrip.RecreatedFallbackUsed == true ? " · substitute" : string.Empty) · from story only</small></div></header>
+								@if (!string.IsNullOrEmpty(_session?.RoundTrip.RecreatedClass))
+								{
+									<pre class="rt-code">@_session.RoundTrip.RecreatedClass</pre>
+								}
+								else if (_session?.RoundTrip.Status == "recreating")
+								{
+									<div class="rt-pending"><span></span>Gemma is rebuilding the class from the story…</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">The reconstructed class will appear here.</div>
+								}
+							</section>
+						</div>
+
+						@if (_session?.RoundTrip.Status == "failed")
+						{
+							<div class="compare-status failed" role="alert">@(_session?.RoundTrip.Error ?? "The round trip did not complete.")</div>
+						}
+
+						<section class="rt-qa">
+							<p class="eyebrow">QA — ORIGINAL vs RE-CREATED</p>
+							@if (_session?.RoundTrip.Qa is { } qa)
+							{
+								<div class="coach-label">Claude QA — behavioral fidelity review, not a validated grade.</div>
+								<div class="rt-fidelity"><span class="rt-score">@qa.Fidelity<small>/5</small></span><div><strong>Behavioral fidelity</strong><p>@qa.Summary</p></div></div>
+								@if (qa.Preserved.Count > 0)
+								{
+									<h4>Preserved behavior</h4><ul class="rt-list good">@foreach (var item in qa.Preserved) { <li>@item</li> }</ul>
+								}
+								@if (qa.Gaps.Count > 0)
+								{
+									<h4>Lost or changed</h4><ul class="rt-list warn">@foreach (var item in qa.Gaps) { <li>@item</li> }</ul>
+								}
+								@if (qa.Risks.Count > 0)
+								{
+									<h4>Risks</h4><ul class="rt-list warn">@foreach (var item in qa.Risks) { <li>@item</li> }</ul>
+								}
+								@if (!string.IsNullOrWhiteSpace(qa.Recommendation))
+								{
+									<h4>Recommendation</h4><p class="rt-reco">@qa.Recommendation</p>
+								}
+								<small>Reviewed by @_session.RoundTrip.QaModel</small>
+							}
+							else if (_session?.RoundTrip.Status == "qa")
+							{
+								<div class="rt-pending"><span></span>Claude is comparing the original and re-created classes…</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">Claude's fidelity review of the original versus the re-created class will appear here.</div>
+							}
+						</section>
+					</section>
+					break;
+				case 10:
+					<section>
+						<p class="kicker">MODERNIZE FOR AI-FRIENDLINESS</p>
+						<h2 id="scene-title">Spend comprehension tokens once</h2>
+						<p class="rt-intro">Old procedural code is a recurring token tax — every fix and every agent run re-derives its intent. Modernize it once: Claude Opus 5.0 refactors the code behavior-preservingly, then explains it and exposes the business rules so it can be tested and split into microservices. Teaching illustration, not a validated migration.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Legacy code</strong><small>procedural · hard to read</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="12000" @bind="_legacyCode" @bind:event="oninput" disabled="@ModernizeBusy" aria-label="Legacy code"></textarea>
+							<div class="rt-actions">
+								<small>@_legacyCode.Length / 12000</small>
+								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _legacyCode.Trim().Length < 20 || ModernizeBusy)" @onclick="RunModernize">@ModernizeButtonText</button>
+							</div>
+							@if (!_bridgeConnected)
+							{
+								<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before modernizing.</p>
+							}
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>Modernized code</strong><small>@(_session?.Modernize.Model ?? "Claude Opus 5.0") · behavior-preserving</small></div></header>
+							@if (!string.IsNullOrEmpty(_session?.Modernize.Result?.ModernizedCode))
+							{
+								<pre class="rt-code">@_session.Modernize.Result.ModernizedCode</pre>
+							}
+							else if (ModernizeBusy)
+							{
+								<div class="rt-pending"><span></span>Claude is modernizing the code…</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">The refactored, modernized code will appear here.</div>
+							}
+						</section>
+
+						@if (_session?.Modernize.Status == "failed")
+						{
+							<div class="compare-status failed" role="alert">@(_session?.Modernize.Error ?? "The modernization did not complete.")</div>
+						}
+
+						<section class="rt-qa">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Explanation &amp; exposed business logic</strong><small>where a service boundary could be drawn</small></div></header>
+							@if (_session?.Modernize.Result is { } modern)
+							{
+								<div class="coach-label">AI explanation — verify against characterization tests and the SME before any migration.</div>
+								<p class="rt-reco">@modern.Explanation</p>
+								@if (modern.BusinessRules.Count > 0)
+								{
+									<h4>Business rules exposed</h4><ul class="rt-list good">@foreach (var rule in modern.BusinessRules) { <li>@rule</li> }</ul>
+								}
+								@if (modern.MicroserviceCandidates.Count > 0)
+								{
+									<h4>Microservice candidates</h4><ul class="mod-service-list">@foreach (var candidate in modern.MicroserviceCandidates) { <li>@candidate</li> }</ul>
+								}
+								<small>Modernized by @_session.Modernize.Model</small>
+							}
+							else if (ModernizeBusy)
+							{
+								<div class="rt-pending"><span></span>Waiting for the modernization to finish…</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">A plain-language explanation, the exposed business rules, and candidate microservice boundaries will appear here.</div>
+							}
+						</section>
+					</section>
+					break;
+				case 11:
+					<section>
+						<p class="kicker">AGENTIC-READINESS AUDIT · CODE</p>
+						<h2 id="scene-title">Rate the code deterministically, then let Gemma advise</h2>
+						<p class="rt-intro">Auditing hundreds of repos needs a reproducible signal first. Roslyn parses the C# into a syntax graph and computes a deterministic agentic-readiness rating; Gemma 4 then grounds its recommendations on that rating. The numbers come from static analysis and never change — the model only supplies judgment. (Java repos use Spoon / JavaParser through the same metric schema.)</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Sample C# project</strong><small>static analysis only · code is never executed</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="16000" @bind="_auditCode" @bind:event="oninput" disabled="@AuditBusy" aria-label="C# project to audit"></textarea>
+							<div class="rt-actions">
+								<small>@_auditCode.Length / 16000</small>
+								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _auditCode.Trim().Length < 20 || AuditBusy)" @onclick="RunAudit">@AuditButtonText</button>
+							</div>
+							@if (!_bridgeConnected)
+							{
+								<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before auditing.</p>
+							}
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>Roslyn analysis</strong><small>deterministic · reproducible</small></div></header>
+							@if (_session?.Audit.Report is { ParseError: false } report)
+							{
+								<div class="audit-body">
+									<div class="audit-scoreline">
+										<span class="audit-grade grade-@report.Grade.ToLowerInvariant()">@report.Grade</span>
+										<div><strong>@report.OverallScore/100</strong><small>agentic-readiness</small></div>
+										<p>@report.Summary</p>
+									</div>
+									<div class="audit-dims">
+										@foreach (var dim in report.Dimensions)
+										{
+											<div class="audit-dim">
+												<div class="audit-dim-head"><span>@dim.Dimension</span><b>@dim.Value</b></div>
+												<div class="audit-bar"><i style="width:@dim.Value%"></i></div>
+												<small>@dim.Detail</small>
+											</div>
+										}
+									</div>
+									<h4>Findings</h4>
+									<ul class="audit-findings">
+										@foreach (var finding in report.Findings)
+										{
+											<li><span class="sev @SeverityClass(finding.Severity)">@finding.Severity</span>@finding.Message</li>
+										}
+									</ul>
+									<h4>Types</h4>
+									<table class="audit-table">
+										<thead><tr><th>Type</th><th>Methods</th><th>Public</th><th>Lines</th><th>Depends on</th></tr></thead>
+										<tbody>
+											@foreach (var type in report.Types)
+											{
+												<tr><td>@type.Kind @type.Name</td><td>@type.Methods</td><td>@type.PublicMembers</td><td>@type.Lines</td><td>@(type.DependsOn.Count > 0 ? string.Join(", ", type.DependsOn) : "—")</td></tr>
+											}
+										</tbody>
+									</table>
+									<h4>Type dependency graph</h4>
+									<div class="audit-graph">@(report.GraphEdges.Count > 0 ? string.Join("  ·  ", report.GraphEdges) : "No internal type dependencies.")</div>
+								</div>
+							}
+							else if (_session?.Audit.Status == "failed" && _session?.Audit.Report is { ParseError: true })
+							{
+								<div class="compare-status failed" role="alert">@(_session?.Audit.Error ?? "The code could not be analyzed.")</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">The deterministic Roslyn rating, metrics, findings, and dependency graph will appear here.</div>
+							}
+						</section>
+
+						<section class="rt-qa">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Gemma 4 audit feedback</strong><small>grounded on the Roslyn rating</small></div></header>
+							@if (_session?.Audit.Recommendation is { } advice)
+							{
+								<div class="coach-label">AI recommendations grounded on the deterministic rating — the scores above are authoritative.</div>
+								<p class="rt-reco">@advice.Summary</p>
+								@if (advice.Strengths.Count > 0)
+								{
+									<h4>Strengths</h4><ul class="rt-list good">@foreach (var item in advice.Strengths) { <li>@item</li> }</ul>
+								}
+								@if (advice.Priorities.Count > 0)
+								{
+									<h4>Priority fixes</h4><ol class="rt-list warn">@foreach (var item in advice.Priorities) { <li>@item</li> }</ol>
+								}
+								@if (advice.AgenticReadiness.Count > 0)
+								{
+									<h4>To become agentic-ready</h4><ul class="rt-list good">@foreach (var item in advice.AgenticReadiness) { <li>@item</li> }</ul>
+								}
+								<small>Reviewed by @_session.Audit.Model</small>
+							}
+							else if (_session?.Audit.Status is "analyzed" or "queued" or "running")
+							{
+								<div class="rt-pending"><span></span>Gemma is drafting recommendations from the deterministic rating…</div>
+							}
+							else if (_session?.Audit.Status == "failed" && _session?.Audit.Report is { ParseError: false })
+							{
+								<div class="compare-status failed" role="alert">@(_session?.Audit.Error ?? "The audit review did not complete.")</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">Gemma's grounded recommendations will appear here after analysis.</div>
+							}
+						</section>
+					</section>
+					break;
+				case 12:
+					<section>
+						<p class="kicker">AGENTIC-READINESS AUDIT · CONTEXT</p>
+						<h2 id="scene-title">Does the context actually help an agent?</h2>
+						<p class="rt-intro">A three-tier funnel for thousands of repos: a deterministic scan finds context structures (OKF, memory-bank, wiki, ADRs), an ML.NET classifier (embeddinggemma-300m embeddings in production) predicts readiness cheaply, and only if that passes does Gemma 4 run the deep audit. Its context is then tested against 5 planted traps, and Claude Opus 5.0 grades how many Gemma caught.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Code with context</strong><small>documented rules + implementation</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="16000" @bind="_contextCode" @bind:event="oninput" disabled="@ContextBusy" aria-label="Code with context"></textarea>
+							<div class="rt-actions">
+								<small>@_contextCode.Length / 16000</small>
+								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _contextCode.Trim().Length < 20 || ContextBusy)" @onclick="RunContextAudit">@ContextButtonText</button>
+							</div>
+							@if (!_bridgeConnected)
+							{
+								<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before auditing.</p>
+							}
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>Initial audit — embeddinggemma-300m + ML.NET</strong><small>deterministic scan + learned gate</small></div></header>
+							@if (_session?.ContextAudit.Initial is { } initial)
+							{
+								<div class="audit-body">
+									<div class="audit-scoreline">
+										<span class="ctx-label ctx-@initial.PredictedLabel.ToLowerInvariant()">@initial.PredictedLabel</span>
+										<div><strong>@initial.Score/100</strong><small>context readiness · @initial.Confidence% confidence</small></div>
+										<p>@(initial.Positive ? "Gate positive — deep audit proceeds." : "Gate negative — deep audit skipped to save tokens.")</p>
+									</div>
+									<table class="audit-table">
+										<thead><tr><th>Context signal</th><th>Detected</th><th>Detail</th></tr></thead>
+										<tbody>
+											@foreach (var signal in initial.Signals)
+											{
+												<tr><td>@signal.Name</td><td>@(signal.Present ? "yes" : "no")</td><td>@signal.Detail</td></tr>
+											}
+										</tbody>
+									</table>
+									<p class="ctx-method">@initial.Method</p>
+								</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">The deterministic scan and ML.NET readiness classification will appear here.</div>
+							}
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Gemma 4 audit — overview &amp; gaps</strong><small>uses the context to find inconsistencies</small></div></header>
+							@if (!string.IsNullOrEmpty(_session?.ContextAudit.GemmaOverview))
+							{
+								<div class="audit-body">
+									<p class="rt-reco">@_session.ContextAudit.GemmaOverview</p>
+									@if (_session.ContextAudit.GemmaGaps.Count > 0)
+									{
+										<h4>Gaps identified</h4><ul class="rt-list warn">@foreach (var gap in _session.ContextAudit.GemmaGaps) { <li>@gap</li> }</ul>
+									}
+									<small>Audited by @_session.ContextAudit.GemmaModel</small>
+								</div>
+							}
+							else if (_session?.ContextAudit.Status == "skipped")
+							{
+								<div class="compare-status" role="status">Initial ML gate was negative, so the deep Gemma audit was skipped. This is the cost-saving funnel working as designed.</div>
+							}
+							else if (_session?.ContextAudit.Status is "analyzed" or "queued" or "gemma")
+							{
+								<div class="rt-pending"><span></span>Gemma is auditing the code against its context…</div>
+							}
+							else if (_session?.ContextAudit.Status == "failed")
+							{
+								<div class="compare-status failed" role="alert">@(_session?.ContextAudit.Error ?? "The context audit did not complete.")</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">Gemma's overview and identified gaps will appear here.</div>
+							}
+						</section>
+
+						<section class="rt-qa">
+							<header class="rt-head"><span class="rt-step">4</span><div><strong>Claude Opus 5.0 — trap-test grading</strong><small>how many planted traps did the context catch?</small></div></header>
+							@if (_session?.ContextAudit.Judge is { } judge)
+							{
+								<div class="coach-label">Objective trap test — Gemma never saw the planted traps; Claude grades recall.</div>
+								<div class="rt-fidelity"><span class="rt-score">@judge.TrapsFound<small>/@judge.TrapsTotal</small></span><div><strong>Traps found via context</strong><p>@judge.Verdict</p></div></div>
+								@if (judge.Matched.Count > 0)
+								{
+									<h4>Correctly found</h4><ul class="rt-list good">@foreach (var item in judge.Matched) { <li>@item</li> }</ul>
+								}
+								@if (judge.Missed.Count > 0)
+								{
+									<h4>Missed</h4><ul class="rt-list warn">@foreach (var item in judge.Missed) { <li>@item</li> }</ul>
+								}
+								@if (judge.FalsePositives.Count > 0)
+								{
+									<h4>False positives</h4><ul class="rt-list warn">@foreach (var item in judge.FalsePositives) { <li>@item</li> }</ul>
+								}
+								<details><summary>Reveal the 5 planted traps (ground truth)</summary><ol class="rt-list">@foreach (var trap in _session.ContextAudit.PlantedTraps) { <li>@trap</li> }</ol></details>
+								<small>Graded by @_session.ContextAudit.JudgeModel</small>
+							}
+							else if (_session?.ContextAudit.Status == "judging")
+							{
+								<div class="rt-pending"><span></span>Claude is grading Gemma against the 5 planted traps…</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">Claude's trap-test grade of Gemma's audit will appear here.</div>
+							}
+						</section>
+					</section>
+					break;
+				case 13:
+					<section>
+						<p class="kicker">A LANGUAGE FOR THE LOGIC LAYER</p>
+						<h2 id="scene-title">Business rules in a language built for models</h2>
+						<p class="rt-intro">Keep C#/Java for UI and interfaces, but express the core business logic in <strong>CLARA</strong> — a deterministic, auditable rule language a model and a human read the same way. Claude Opus 4.8 authors CLARA from a requirement, the server compiles and runs it, and Claude Opus 5.0 reviews it. Less code to re-derive, fewer misunderstandings, fewer hallucinations.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>JIRA requirement</strong><small>business rules in plain language</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_claraJira" @bind:event="oninput" disabled="@ClaraBusy" aria-label="JIRA requirement"></textarea>
+							<div class="rt-actions">
+								<small>@_claraJira.Length / 8000</small>
+								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _claraJira.Trim().Length < 20 || ClaraBusy)" @onclick="RunClaraPoc">@ClaraButtonText</button>
+							</div>
+							@if (!_bridgeConnected)
+							{
+								<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before generating.</p>
+							}
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>CLARA policy</strong><small>@(_session?.Clara.AuthorModel ?? "Claude Opus 4.8") · the LLM-native language</small></div></header>
+							@if (!string.IsNullOrEmpty(_session?.Clara.Source))
+							{
+								<pre class="rt-code">@_session.Clara.Source</pre>
+							}
+							else if (_session?.Clara.Status == "authoring")
+							{
+								<div class="rt-pending"><span></span>Claude is authoring the CLARA policy…</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">The generated CLARA policy will appear here.</div>
+							}
+						</section>
+
+						<section class="rt-qa">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Compiled output &amp; review</strong><small>deterministic execution + Claude Opus 5.0</small></div></header>
+							@if (_session?.Clara.Result is { } clara)
+							{
+								@if (!clara.Compiled)
+								{
+									<div class="compare-status failed" role="alert">The policy did not compile — @clara.Errors.Count error(s).</div>
+								}
+								else
+								{
+									<div class="clara-signature">policy <strong>@clara.PolicyName</strong> · inputs (@string.Join(", ", clara.Inputs)) · output (@string.Join(", ", clara.Outputs)) · @clara.RuleCount rules · compiled in @clara.CompileMilliseconds.ToString("N2") ms</div>
+									<table class="audit-table">
+										<thead><tr><th>Example</th><th>Inputs</th><th>Output</th><th>Rule fired</th><th>Result</th></tr></thead>
+										<tbody>
+											@foreach (var example in clara.Examples)
+											{
+												<tr>
+													<td>@example.Description</td>
+													<td>@string.Join(", ", example.Inputs)</td>
+													<td>@string.Join(", ", example.Outputs)</td>
+													<td>@(example.MatchedRule ?? "—")</td>
+													<td>@(example.Passed switch { true => "PASS", false => "FAIL", _ => "—" })@(string.IsNullOrEmpty(example.Note) ? "" : $" · {example.Note}")</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+								}
+
+								@if (clara.Diagnostics.Count > 0)
+								{
+									<h4>Compiler diagnostics</h4>
+									<table class="audit-table">
+										<thead><tr><th>Severity</th><th>Code</th><th>Line</th><th>Scope</th><th>Message</th></tr></thead>
+										<tbody>
+											@foreach (var diagnostic in clara.Diagnostics)
+											{
+												<tr>
+													<td>@(diagnostic.Severity == ClaraSeverity.Error ? "error" : "warning")</td>
+													<td>@diagnostic.Code</td>
+													<td>@diagnostic.Line:@diagnostic.Column</td>
+													<td>@diagnostic.Scope</td>
+													<td>@diagnostic.Message</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+								}
+							}
+							else if (_session?.Clara.Status is "authoring" or "reviewing")
+							{
+								<div class="rt-pending"><span></span>Compiling and running the CLARA policy…</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">The compiled execution table and Claude's review will appear here.</div>
+							}
+
+							@if (_session?.Clara.Review is { } review)
+							{
+								<div class="coach-label">Independent review by @_session.Clara.ReviewModel — fidelity @review.Fidelity/5.</div>
+								<p class="rt-reco">@review.Verdict</p>
+								@if (review.Strengths.Count > 0)
+								{
+									<h4>Strengths</h4><ul class="rt-list good">@foreach (var item in review.Strengths) { <li>@item</li> }</ul>
+								}
+								@if (review.Issues.Count > 0)
+								{
+									<h4>Issues</h4><ul class="rt-list warn">@foreach (var item in review.Issues) { <li>@item</li> }</ul>
+								}
+								@if (review.LanguageNotes.Count > 0)
+								{
+									<h4>On CLARA as a language</h4><ul class="rt-list good">@foreach (var item in review.LanguageNotes) { <li>@item</li> }</ul>
+								}
+							}
+							else if (_session?.Clara.Status == "reviewing")
+							{
+								<div class="rt-pending"><span></span>Claude Opus 5.0 is reviewing the policy and the language…</div>
+							}
+							@if (_session?.Clara.Status == "failed")
+							{
+								<div class="compare-status failed" role="alert">@(_session?.Clara.Error ?? "The CLARA POC did not complete.")</div>
+							}
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">4</span><div><strong>Is it practical?</strong><small>compiler conformance + measured cost against hand-written C#</small></div></header>
+							<p class="rt-intro">CLARA compiles to a .NET expression tree that is JIT-compiled to machine code, so a policy is a normal compiled function — not an interpreter walking a tree. This runs the language's conformance suite and then times the reference late-fee policy against the identical rules written by hand in C#, on this machine, right now.</p>
+							<div class="rt-actions">
+								<small>@(_benchmark is null ? "not measured yet" : _benchmark.Runtime)</small>
+								<button class="primary-command compact" type="button" disabled="@_benchmarkRunning" @onclick="RunBenchmark">@(_benchmarkRunning ? "Measuring…" : "Run conformance + benchmark")</button>
+							</div>
+
+							@if (_conformance is { } conformance)
+							{
+								<div class="@(conformance.Passed == conformance.Total ? "compare-status" : "compare-status failed")" role="status">
+									Compiler conformance: @conformance.Passed / @conformance.Total guarantees held (@conformance.DurationMilliseconds.ToString("N0") ms).
+								</div>
+								@if (conformance.Passed != conformance.Total)
+								{
+									<ul class="rt-list warn">@foreach (var item in conformance.Cases.Where(c => !c.Passed)) { <li>@item.Name — @item.Detail</li> }</ul>
+								}
+							}
+
+							@if (_benchmark is { } measurement)
+							{
+								<table class="audit-table">
+									<thead><tr><th>Engine</th><th>ns / decision</th><th>Million decisions / sec</th><th>vs C#</th><th>Notes</th></tr></thead>
+									<tbody>
+										@foreach (var row in measurement.Rows)
+										{
+											<tr>
+												<td>@row.Engine</td>
+												<td>@row.NanosecondsPerCall.ToString("N1")</td>
+												<td>@row.MillionCallsPerSecond.ToString("N1")</td>
+												<td>@row.RelativeToCSharp.ToString("N2")x</td>
+												<td>@row.Detail</td>
+											</tr>
+										}
+									</tbody>
+								</table>
+								<p class="rt-reco">@measurement.Summary</p>
+								<small>Policy @measurement.PolicyName compiled once in @measurement.CompileMilliseconds.ToString("N2") ms, then executed @measurement.Iterations.ToString("N0") times per round, best of @measurement.Rounds rounds after warm-up. Output parity verified on @measurement.ParityChecks.ToString("N0") inputs with @measurement.ParityMismatches mismatches.</small>
+							}
+							else if (!_benchmarkRunning)
+							{
+								<div class="rt-placeholder">Run the benchmark to see whether the language is fast enough to sit on a hot path.</div>
+							}
+						</section>
+					</section>
+					break;
+				case 14:
+					<section>
+						<p class="kicker">DOES THE REPRESENTATION CHANGE THE OUTCOME?</p>
+						<h2 id="scene-title">The same ticket, the same model, no context either way</h2>
+						<p class="rt-intro">An agent starts with no knowledge of your business. Here Gemma 4 is given one JIRA ticket twice, with <strong>no context artifacts in either arm</strong>. One arm sees an ordinary C# class where the local policy knowledge lives only in people's heads; the other sees a CLARA policy carrying that knowledge inline as descriptions, <code>because</code> citations, preconditions and invariants. Claude Opus 5.0 then grades both against sealed criteria neither arm ever saw.</p>
+
+						@if (_session?.LanguageTest is { } test)
+						{
+							<div class="clara-signature">
+								Context cost for the same logic · C# class alone <strong>@test.CSharpTokens.ToString("N0")</strong> tokens ·
+								C# plus the policy documents it would need <strong>@((test.CSharpTokens + test.ContextPackTokens).ToString("N0"))</strong> ·
+								CLARA policy, knowledge and 8 executable examples included <strong>@test.ClaraTokens.ToString("N0")</strong> ·
+								<small>@test.TokenMethod</small>
+							</div>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>The C# class</strong><small>the rules are all here; the reasons are not</small></div></header>
+								<pre class="rt-code">@test.CSharpSource</pre>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>The same logic in CLARA</strong><small>the rules and the local knowledge that governs them</small></div></header>
+								<pre class="rt-code">@test.ClaraSource</pre>
+							</section>
+
+							<section class="rt-box rt-input-box">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>The JIRA</strong><small>given identically to both arms</small></div></header>
+								<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_languageJira" @bind:event="oninput" disabled="@LanguageBusy" aria-label="JIRA ticket"></textarea>
+								<div class="rt-actions">
+									<small>@_languageJira.Length / 8000</small>
+									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _languageJira.Trim().Length < 20 || LanguageBusy)" @onclick="RunLanguageTest">@LanguageButtonText</button>
+								</div>
+								@if (!_bridgeConnected)
+								{
+									<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running the test.</p>
+								}
+							</section>
+
+							@foreach (var pair in new[] { ("csharp", "4", "Gemma 4 working from the C# class", "no context beyond the class"), ("clara", "5", "Gemma 4 working from the CLARA policy", "no context beyond the policy") })
+							{
+								var arm = ArmFor(pair.Item1);
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">@pair.Item2</span><div><strong>@pair.Item3</strong><small>@(arm?.ModelUsed ?? "Gemma 4") · @pair.Item4 · @(arm is null ? "—" : $"{arm.PromptTokens:N0} prompt tokens")</small></div></header>
+									@if (arm?.Answer is { Length: > 0 } answer)
+									{
+										<pre class="rt-code">@answer</pre>
+										@if (arm.Verification is { } verification)
+										{
+											<div class="@(verification.Compiled && verification.Examples.All(example => example.Passed != false) ? "compare-status" : "compare-status failed")" role="status">
+												@if (!verification.Compiled)
+												{
+													<text>The edited policy did not compile — @verification.Errors.Count error(s). The agent's mistake was caught before review.</text>
+												}
+												else
+												{
+													<text>Compiled. @verification.Examples.Count(example => example.Passed == true) of @verification.Examples.Count declared examples pass; @verification.Warnings.Count lint warning(s).</text>
+												}
+											</div>
+											@if (verification.Diagnostics.Count > 0)
+											{
+												<ul class="rt-list warn">@foreach (var diagnostic in verification.Diagnostics.Take(8)) { <li>@diagnostic.Format()</li> }</ul>
+											}
+											@if (verification.Examples.Any(example => example.Passed == false))
+											{
+												<ul class="rt-list warn">@foreach (var example in verification.Examples.Where(example => example.Passed == false)) { <li>@example.Description — @example.Note</li> }</ul>
+											}
+										}
+										else
+										{
+											<p class="rt-reco">There is no compiler for this arm's answer: correctness can only be judged by reading it.</p>
+										}
+									}
+									else if (arm?.Status == "failed")
+									{
+										<div class="compare-status failed" role="alert">@(arm.Error ?? "This arm did not answer.")</div>
+									}
+									else if (LanguageBusy)
+									{
+										<div class="rt-pending"><span></span>Gemma 4 is implementing the ticket…</div>
+									}
+									else
+									{
+										<div class="rt-placeholder">This arm's answer will appear here.</div>
+									}
+								</section>
+							}
+
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">6</span><div><strong>Independent review</strong><small>@(test.Verdict?.JudgeModel ?? "Claude Opus 5.0") · sealed criteria, graded per arm</small></div></header>
+								@if (test.Verdict is { } grade)
+								{
+									<div class="clara-signature">
+										C# arm <strong>@grade.CSharpMet / @grade.CriteriaTotal</strong> criteria met ·
+										CLARA arm <strong>@grade.ClaraMet / @grade.CriteriaTotal</strong> ·
+										winner <strong>@(grade.Winner switch { "clara" => "CLARA", "csharp" => "C#", _ => "tie" })</strong>
+									</div>
+									<p class="rt-reco">@grade.Rationale</p>
+									<table class="audit-table">
+										<thead><tr><th>Criterion</th><th>Arm</th><th>Met</th><th>Evidence</th></tr></thead>
+										<tbody>
+											@foreach (var score in grade.Scores)
+											{
+												<tr>
+													<td>@score.Criterion</td>
+													<td>@(score.Arm == "clara" ? "CLARA" : "C#")</td>
+													<td>@(score.Met ? "yes" : "no")</td>
+													<td>@score.Evidence</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									@if (grade.LocalKnowledgeMissed.Count > 0)
+									{
+										<h4>Local knowledge an arm could not have known</h4>
+										<ul class="rt-list warn">@foreach (var item in grade.LocalKnowledgeMissed) { <li>@item</li> }</ul>
+									}
+									@if (test.SealedCriteria.Count > 0)
+									{
+										<h4>The sealed criteria (revealed after grading)</h4>
+										<ol class="rt-list">@foreach (var item in test.SealedCriteria) { <li>@item</li> }</ol>
+									}
+									<h4>Read this carefully</h4>
+									<ul class="rt-list warn">
+										<li>This is a single ticket on a single policy: n=1. It is a demonstration of the method, not evidence for the language.</li>
+										<li>The judge can see which arm is CLARA, so it is not blind to language identity. Only the criteria are sealed.</li>
+										<li>The CLARA arm's prompt includes a language primer the C# arm does not need, and that cost is counted in its prompt tokens.</li>
+										@foreach (var caveat in grade.Caveats) { <li>@caveat</li> }
+									</ul>
+								}
+								else if (test.Status == "judging")
+								{
+									<div class="rt-pending"><span></span>Claude Opus 5.0 is grading both answers against the sealed criteria…</div>
+								}
+								else if (test.Status == "failed")
+								{
+									<div class="compare-status failed" role="alert">@(test.Error ?? "The comparison did not complete.")</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">The graded comparison will appear here once both arms have answered.</div>
+								}
+							</section>
+						}
+					</section>
+					break;
+			}
+		</article>
+
+		<footer class="stage-footer">
+			<button class="secondary-command" type="button" disabled="@(_scene == 0)" @onclick="Previous">← Previous</button>
+			<div class="narration-text"><span>Narration transcript</span><p>@CurrentNarration</p></div>
+			<button class="secondary-command" type="button" disabled="@(_scene == Scenes.Length - 1)" @onclick="Next">Next →</button>
+		</footer>
+	</section>
+
+	<aside class="connection-drawer" aria-hidden="@(!_drawerOpen)">
+		<button class="drawer-toggle" type="button" title="Hide the local bridge panel" aria-label="Hide the local bridge panel" aria-expanded="true" aria-controls="bridge-drawer" @onclick="ToggleDrawer">Hide &rsaquo;</button>
+		<p class="eyebrow">LOCAL BRIDGE</p><h2>Connect VS Code</h2><p>Run <strong>POC Training: Connect</strong> in VS Code and paste this session token.</p>
+		<code>@_session?.BridgeToken</code><button type="button" @onclick="CopyToken">Copy token</button>
+		<dl><dt>Server</dt><dd>127.0.0.1:5000</dd><dt>Coach</dt><dd>Gemma 4</dd><dt>Review</dt><dd>Claude Opus 5</dd></dl>
+	</aside>
+
+	@if (!_drawerOpen)
+	{
+		<button class="drawer-reopen" type="button" title="Show the local bridge panel" aria-label="Show the local bridge panel" aria-expanded="false" aria-controls="bridge-drawer" @onclick="ToggleDrawer">
+			<span class="status-dot @(_bridgeConnected ? "online" : null)"></span>&lsaquo; Local bridge
+		</button>
+	}
+</div>
+
+@code {
+	private static readonly (string Id, string Title)[] Scenes = [("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test")];
+	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
+	[
+		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
+		("Resolve the concept", "okf/concepts/delivery-estimate.md", "Delivery estimate is distinct from order-status formatting.", "Exclude superficial UI matches."),
+		("Check the boundary", "okf/architecture/service-boundaries.md", "Fulfillment owns customer-facing estimates; Shipping supplies events.", "Identify the owning service before code."),
+		("Read the decision", "okf/decisions/adr-024-delay-source.md", "Only confirmed carrier-delay events may revise an estimate.", "Translate policy into a code constraint."),
+		("Follow the code map", "okf/code-map/fulfillment-components.md", "DeliveryEstimateService.cs is primary; the handler is a caller.", "Locate implementation and contract impact."),
+		("Inspect verification", "src/Fulfillment.Application/DeliveryEstimateServiceTests.cs", "Tests expose delayed and unchanged paths.", "Plan proof before proposing a change.")
+	];
+	private static readonly QuizQuestion[] Questions =
+	[
+		new("Why begin with the OKF index?", ["It contains all source code", "It routes to governed concepts and authoritative artifacts", "It approves the change", "It replaces code inspection"], 1, "The index routes the investigation. Current code still verifies the artifact."),
+		new("What most strongly excludes a similarly named UI component?", ["The project name", "A keyword count", "The documented service boundary", "The JIRA label"], 2, "A verified ownership boundary is stronger evidence than naming proximity."),
+		new("OKF identifies the owner but not the new API field name. What next?", ["Invent a conventional name", "Ignore the criterion", "Ask the authoritative owner and mark it unresolved", "Edit every response model"], 2, "Good grounding reveals missing knowledge instead of hiding it behind a plausible guess.")
+	];
+	private static readonly string[] BuiltInNarration =
+	[
+		"A JIRA story names the desired outcome, but not always the system boundary or implementation path. This lesson follows governed evidence before code.",
+		"Search can find matching words. OKF adds concepts, ownership, decisions, and links that make those matches meaningful and reviewable.",
+		"The index is the entry point. Small linked artifacts disclose only the context needed for this task, while retaining provenance and freshness.",
+		"This is an illustration, not hidden model reasoning. Each step shows an observable source and the conclusion it supports.",
+		"Motion can make sequence and causality easier to inspect. Here it shows the investigation narrowing from a broad story to one evidence-backed code path.",
+		"This reviewed bitmap summarizes the same flow. The semantic lesson content remains authoritative because images alone are not searchable, localizable, or sufficient for accessibility.",
+		"Choose the evidence that should control the investigation. These checks practice the mental model; they are not a workplace competency grade.",
+		"Write a prompt that controls the investigation and requires evidence. Claude will return coaching commentary against the rubric, not a grade.",
+		"Ask three models the same Google Cloud question, then let an impartial judge model blind-score the anonymized answers against a reference checklist. This is an illustrative harness, not a validated benchmark.",
+		"Grounding round trip: Gemma turns a class into a JIRA story, then rebuilds the class from only that story. Claude then reviews how much behavior survived the round trip.",
+		"Legacy comprehension is a recurring token tax. Spend the tokens once: modernize the code, expose the business rules, and make the seams for future microservices visible.",
+		"Audit at scale with deterministic tooling first: Roslyn rates the C# code reproducibly, then Gemma grounds its recommendations on that rating. The numbers come from static analysis; the model supplies the judgment.",
+		"Context audit funnel: a deterministic scan plus an ML.NET classifier decide cheaply whether a repo has usable context. If it passes, Gemma hunts planted traps using the context, and Claude grades how many it caught.",
+		"What if the core business logic lived in a language built for models? CLARA is a deterministic, auditable rule language: the model writes it from a requirement, it compiles and runs, and a second model reviews it — logic a human and an LLM read the same way.",
+		"The same ticket, the same model, no context either way. One arm sees an ordinary C# class where the local policy knowledge lives only in people's heads; the other sees a CLARA policy that carries that knowledge inline. Claude then grades both against sealed criteria neither arm ever saw."
+	];
+
+	private TrainingSession? _session;
+	private readonly Dictionary<int, int> _answers = [];
+	private readonly CancellationTokenSource _pollCancellation = new();
+	private PeriodicTimer? _timer;
+	private int _scene;
+	private int _traceStep;
+	private int _animationRun;
+	private bool _started;
+	private bool _bridgeConnected;
+	private string _learnerPrompt = string.Empty;
+	private string _comparisonTopicId = string.Empty;
+	private string _roundTripClass = RoundTripSamples.LateFeeCalculator;
+	private string _legacyCode = RoundTripSamples.LegacyOrder;
+	private string _auditCode = RoundTripSamples.AuditProject;
+	private string _contextCode = RoundTripSamples.ContextBundle;
+	private string _claraJira = RoundTripSamples.ClaraJira;
+	private string _languageJira = LanguageTestSamples.Jira;
+	private ClaraBenchmarkResult? _benchmark;
+	private ClaraConformanceReport? _conformance;
+	private bool _benchmarkRunning;
+	private bool _drawerOpen = true;
+
+	private string CurrentNarration => _session?.Coach?.Scenes.FirstOrDefault(scene => scene.SceneId == Scenes[_scene].Id)?.Narration ?? BuiltInNarration[_scene];
+	private string ReviewButtonText => !_bridgeConnected ? "Connect VSIX to request Claude" : _session?.ReviewStatus is "queued" or "running" ? "Claude is reviewing…" : "Request Claude feedback";
+	private string ReviewTraceState => _session?.ReviewStatus switch { "queued" => "WAITING", "running" => "LIVE", "failed" => "FAILED", _ => "TRACE" };
+	private string ReviewTraceMessage => _session?.ReviewStatus switch
+	{
+		"queued" => "Waiting for the VSIX to claim the Claude review task…",
+		"running" => "Claude is responding; waiting for the first evidence-backed decision…",
+		"failed" => "The review did not complete. Check the message above, confirm a language model is available in VS Code, and request feedback again.",
+		_ => "Submit a prompt to see how Claude applies each rubric area."
+	};
+
+	private ComparisonTopic? SelectedTopic => string.IsNullOrEmpty(_comparisonTopicId) ? null : ComparisonCatalog.Find(_comparisonTopicId);
+	private bool ComparisonBusy => _session?.Comparison.Status is "queued" or "running" or "judging";
+	private string CompareButtonText => !_bridgeConnected
+		? "Connect VSIX to compare"
+		: ComparisonBusy ? "Comparing…" : "Run comparison";
+	private string? WinningSlot => _session?.Comparison.Verdict?.Ranking.FirstOrDefault();
+	private ComparisonDimensionScore? ScoreFor(string slot) => _session?.Comparison.Verdict?.Scores.FirstOrDefault(score => score.Slot == slot);
+	private string ModelForSlot(string slot) => _session?.Comparison.Answers.FirstOrDefault(answer => answer.Slot == slot) is { } match ? (match.ModelUsed ?? match.RequestedModel) : slot;
+	private bool JudgeSharesCandidateModel => _session?.Comparison.Verdict is { } verdict &&
+		_session.Comparison.Answers.Any(answer => string.Equals(answer.ModelUsed, verdict.JudgeModel, StringComparison.OrdinalIgnoreCase));
+	private bool DuplicateModels => _session?.Comparison.Answers
+		.Where(answer => !string.IsNullOrEmpty(answer.ModelUsed))
+		.GroupBy(answer => answer.ModelUsed, StringComparer.OrdinalIgnoreCase)
+		.Any(group => group.Count() > 1) ?? false;
+
+	private bool RoundTripBusy => _session?.RoundTrip.Status is "queued" or "story" or "recreating" or "qa";
+	private string RoundTripButtonText => !_bridgeConnected
+		? "Connect VSIX to run"
+		: RoundTripBusy ? "Running round-trip…" : "Run round-trip";
+
+	private bool ModernizeBusy => _session?.Modernize.Status is "queued" or "running";
+	private string ModernizeButtonText => !_bridgeConnected
+		? "Connect VSIX to modernize"
+		: ModernizeBusy ? "Modernizing…" : "Modernize with Claude";
+
+	private bool AuditBusy => _session?.Audit.Status is "analyzed" or "queued" or "running";
+	private string AuditButtonText => !_bridgeConnected
+		? "Connect VSIX to audit"
+		: AuditBusy ? "Auditing…" : "Run audit";
+	private static string SeverityClass(string severity) => severity switch { "high" => "sev-high", "medium" => "sev-medium", _ => "sev-low" };
+
+	private bool ContextBusy => _session?.ContextAudit.Status is "analyzed" or "queued" or "gemma" or "judging";
+	private string ContextButtonText => !_bridgeConnected
+		? "Connect VSIX to audit"
+		: ContextBusy ? "Auditing…" : "Run context audit";
+
+	private bool ClaraBusy => _session?.Clara.Status is "authoring" or "reviewing";
+	private string ClaraButtonText => !_bridgeConnected
+		? "Connect VSIX to generate"
+		: ClaraBusy ? "Generating…" : "Generate with Claude";
+
+	private bool LanguageBusy => _session?.LanguageTest.Status is "running" or "judging";
+	private string LanguageButtonText => !_bridgeConnected
+		? "Connect VSIX to run the test"
+		: LanguageBusy ? "Running both arms…" : "Run the A/B test";
+	private LanguageTestArm? ArmFor(string language) =>
+		_session?.LanguageTest.Arms.FirstOrDefault(arm => arm.Language == language);
+
+	protected override void OnInitialized()
+	{
+		_session = Store.CreateSession();
+		_timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+		_ = PollAsync();
+	}
+
+	private async Task PollAsync()
+	{
+		try
+		{
+			while (_timer is not null && await _timer.WaitForNextTickAsync(_pollCancellation.Token))
+			{
+				if (_session is null) continue;
+				var previousReview = _session.ReviewStatus;
+				_session = Store.GetSession(_session.SessionId);
+				_bridgeConnected = Store.IsBridgeConnected(_session.SessionId);
+				await InvokeAsync(StateHasChanged);
+				if (previousReview != "completed" && _session.ReviewStatus == "completed") await JS.InvokeVoidAsync("trainingSpeech.focus", "review-feedback");
+			}
+		}
+		catch (OperationCanceledException) { }
+	}
+
+	private void StartLesson() { if (_session is null) return; _started = true; Store.QueueCoach(_session.SessionId); }
+	private void SubmitReview() { if (_session is null) return; Store.QueueReview(_session.SessionId, _learnerPrompt.Trim()); _session = Store.GetSession(_session.SessionId); }
+	private void RunComparison() { if (_session is null || string.IsNullOrEmpty(_comparisonTopicId)) return; Store.QueueComparison(_session.SessionId, _comparisonTopicId); _session = Store.GetSession(_session.SessionId); }
+	private void RunRoundTrip() { if (_session is null || _roundTripClass.Trim().Length < 20) return; Store.QueueRoundTrip(_session.SessionId, _roundTripClass.Trim()); _session = Store.GetSession(_session.SessionId); }
+	private void RunModernize() { if (_session is null || _legacyCode.Trim().Length < 20) return; Store.QueueModernize(_session.SessionId, _legacyCode.Trim()); _session = Store.GetSession(_session.SessionId); }
+	private void RunAudit() { if (_session is null || _auditCode.Trim().Length < 20) return; Store.QueueAudit(_session.SessionId, _auditCode.Trim()); _session = Store.GetSession(_session.SessionId); }
+	private void RunContextAudit() { if (_session is null || _contextCode.Trim().Length < 20) return; Store.QueueContextAudit(_session.SessionId, _contextCode.Trim()); _session = Store.GetSession(_session.SessionId); }
+	private void RunClaraPoc() { if (_session is null || _claraJira.Trim().Length < 20) return; Store.QueueClaraPoc(_session.SessionId, _claraJira.Trim()); _session = Store.GetSession(_session.SessionId); }
+	private void RunLanguageTest() { if (_session is null || _languageJira.Trim().Length < 20) return; Store.QueueLanguageTest(_session.SessionId, _languageJira.Trim()); _session = Store.GetSession(_session.SessionId); }
+
+	private async Task RunBenchmark()
+	{
+		if (_benchmarkRunning) return;
+		_benchmarkRunning = true;
+		try
+		{
+			var measured = await Task.Run(() => (Conformance: ClaraConformance.Run(), Benchmark: Benchmark.Run()));
+			_conformance = measured.Conformance;
+			_benchmark = measured.Benchmark;
+		}
+		finally
+		{
+			_benchmarkRunning = false;
+		}
+	}
+	private void Answer(int question, int option) => _answers[question] = option;
+	private string? AnswerClass(int question, int option) => !_answers.TryGetValue(question, out var selected) || selected != option ? null : Questions[question].CorrectIndex == option ? "correct" : "incorrect";
+	private void GoTo(int scene) => _scene = Math.Clamp(scene, 0, Scenes.Length - 1);
+	private void ToggleDrawer() => _drawerOpen = !_drawerOpen;	private void Next() => GoTo(_scene + 1);
+	private void Previous() => GoTo(_scene - 1);
+	private void ReplayAnimation() => _animationRun++;
+	private async Task Speak() => await JS.InvokeVoidAsync("trainingSpeech.speak", CurrentNarration);
+	private async Task StopSpeaking() => await JS.InvokeVoidAsync("trainingSpeech.stop");
+	private async Task CopyToken() => await JS.InvokeVoidAsync("trainingSpeech.copy", _session?.BridgeToken ?? string.Empty);
+
+	public ValueTask DisposeAsync()
+	{
+		_pollCancellation.Cancel();
+		_timer?.Dispose();
+		_pollCancellation.Dispose();
+		return ValueTask.CompletedTask;
+	}
+}

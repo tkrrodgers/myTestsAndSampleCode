@@ -1,0 +1,146 @@
+policy LateReturnBilling
+  "Charges a customer for returning rented equipment after its due date. Owned by Depot Billing; see OPS-POL-31."
+
+inputs:
+  replacementValue: money "insured replacement value of the asset, taken from the rental contract"
+  calendarDaysLate: integer "whole days between the contracted due date and the return scan"
+  closureDaysLate: integer "of those days, the ones the depot was closed and could not accept a return"
+  contractCustomer: boolean "true when the customer holds a standing depot contract"
+  damageWaiver: boolean "true when the customer bought the damage waiver at checkout"
+  previousRentals: integer "number of previously completed rentals"
+
+constants:
+  dailyRate: percent = 4.5% "OPS-POL-31 section 3: daily charge as a share of replacement value"
+  insuranceCeiling: percent = 80% "OPS-POL-31 section 9: our insurer will not cover a charge above this share of replacement value"
+  adminFee: money = $15.00 "State tariff section 12: minimum administrative charge on any billable late return"
+  contractGrace: integer = 2 "OPS-POL-31 section 4: grace days granted to contract customers only"
+  waiverShare: percent = 50% "OPS-POL-31 section 7: the damage waiver halves the late charge"
+  loyaltyDiscount: percent = 10% "RENT-4471: discount for repeat customers"
+
+requires:
+  closureDaysLate >= 0 "closure days are a count and are never negative"
+  closureDaysLate <= calendarDaysLate "depot closure days are a subset of the days the item was late"
+
+derive billableDays: integer "days actually charged, after removing depot closure days and any contract grace"
+  rule NotLate:
+    when calendarDaysLate <= 0
+    then billableDays = 0
+    because "OPS-POL-31 section 2: an on-time return is never billable"
+  rule ContractCustomerGrace:
+    when contractCustomer
+    then billableDays = max(calendarDaysLate - closureDaysLate - contractGrace, 0)
+    because "OPS-POL-31 section 4: grace applies to contract customers only"
+  rule WalkUpCustomer:
+    otherwise
+    then billableDays = max(calendarDaysLate - closureDaysLate, 0)
+    because "OPS-POL-31 section 3: the depot cannot charge for days it was closed"
+
+derive grossFee: money "charge before the insurance ceiling and before the administrative minimum"
+  rule NothingBillable:
+    when billableDays <= 0
+    then grossFee = $0.00
+    because "OPS-POL-31 section 2"
+  rule WaiverHolder:
+    when damageWaiver
+    then grossFee = round(replacementValue * dailyRate * billableDays * waiverShare, 2)
+    because "OPS-POL-31 section 7"
+  rule FullRate:
+    otherwise
+    then grossFee = round(replacementValue * dailyRate * billableDays, 2)
+    because "OPS-POL-31 section 3"
+
+derive cappedFee: money "charge after the insurance ceiling is applied"
+  rule NothingToCap:
+    when grossFee <= $0.00
+    then cappedFee = $0.00
+    because "OPS-POL-31 section 2"
+  rule ApplyInsuranceCeiling:
+    otherwise
+    then cappedFee = min(grossFee, round(replacementValue * insuranceCeiling, 2))
+    because "OPS-POL-31 section 9: a charge above the insured ceiling cannot be recovered"
+
+derive discountedFee: money "charge after loyalty discount is applied"
+  rule LoyaltyDiscount:
+    when previousRentals >= 5
+    then discountedFee = round(cappedFee * (100% - loyaltyDiscount), 2)
+    because "RENT-4471: repeat customers receive a loyalty discount"
+  rule NoDiscount:
+    otherwise
+    then discountedFee = cappedFee
+    because "RENT-4471: customers with fewer than 5 rentals are unaffected"
+
+rules:
+  rule NoBillableDays:
+    when billableDays <= 0
+    then fee = $0.00
+    because "OPS-POL-31 section 2: with no billable days there is no charge and no administrative minimum"
+  rule AtLeastTheAdministrativeMinimum:
+    otherwise
+    then fee = max(discountedFee, adminFee)
+    because "State tariff section 12: a billable late return always carries at least the administrative charge"
+
+output:
+  fee: money "total late-return charge added to the customer's invoice"
+
+invariants:
+  fee >= $0.00 "a late return never produces a credit"
+  fee <= round(replacementValue * insuranceCeiling, 2) "OPS-POL-31 section 9: never bill above the insured ceiling"
+  fee = $0.00 or fee >= adminFee "State tariff section 12: a billable late return is never charged below the administrative minimum"
+
+examples:
+  example "returned on time":
+    replacementValue = $1000.00
+    calendarDaysLate = 0
+    closureDaysLate = 0
+    contractCustomer = false
+    damageWaiver = false
+    previousRentals = 0
+    expect fee = $0.00
+  example "contract grace absorbs the delay":
+    replacementValue = $1000.00
+    calendarDaysLate = 2
+    closureDaysLate = 0
+    contractCustomer = true
+    damageWaiver = false
+    previousRentals = 0
+    expect fee = $0.00
+  example "depot closure days are not billable":
+    replacementValue = $2000.00
+    calendarDaysLate = 5
+    closureDaysLate = 2
+    contractCustomer = false
+    damageWaiver = false
+    previousRentals = 0
+    expect fee = $270.00
+  example "damage waiver halves the charge":
+    replacementValue = $1000.00
+    calendarDaysLate = 4
+    closureDaysLate = 0
+    contractCustomer = false
+    damageWaiver = true
+    previousRentals = 0
+    expect fee = $90.00
+  example "administrative minimum applies to a tiny charge":
+    replacementValue = $100.00
+    calendarDaysLate = 1
+    closureDaysLate = 0
+    contractCustomer = false
+    damageWaiver = true
+    previousRentals = 0
+    expect fee = $15.00
+  example "insurance ceiling binds a long overrun":
+    replacementValue = $100.00
+    calendarDaysLate = 60
+    closureDaysLate = 0
+    contractCustomer = false
+    damageWaiver = false
+    previousRentals = 0
+    expect fee = $80.00
+  example "loyalty discount applied":
+    replacementValue = $1000.00
+    calendarDaysLate = 10
+    closureDaysLate = 0
+    contractCustomer = false
+    damageWaiver = false
+    previousRentals = 5
+    expect fee = $405.00

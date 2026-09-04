@@ -1,0 +1,36 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+dist/
+*.user
+*.suo
+
+# IDE
+.vs/
+.idea/
+*.swp
+
+# Node
+node_modules/
+npm-debug.log*
+*.vsix
+
+# Model weights are never committed. See poc-interactive-training/models/.gitignore
+# and the README for the Hugging Face download steps.
+*.onnx
+*.onnx_data
+*.safetensors
+*.gguf
+*.bin
+
+# Local secrets and environment
+.env
+.env.*
+*.pfx
+appsettings.Local.json
+appsettings.*.Local.json
+
+# OS noise
+Thumbs.db
+.DS_Store

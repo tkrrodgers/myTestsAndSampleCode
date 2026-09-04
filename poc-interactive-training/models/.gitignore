@@ -1,0 +1,5 @@
+# Large model weights — do not commit. Download with the documented HF steps.
+embeddinggemma-300m-onnx/onnx/*.onnx_data
+embeddinggemma-300m-onnx/onnx/*.onnx
+embeddinggemma-300m-onnx/tokenizer.json
+embeddinggemma-300m-onnx/tokenizer.model

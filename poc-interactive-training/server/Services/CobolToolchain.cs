@@ -81,7 +81,47 @@ public sealed partial class CobolToolchain
             .Distinct()
             .ToList();
 
+        control.AddRange(ExtractArithmetic(body, localHeader, fields));
+
         return new CobolFacts(true, "", fields, paragraphs, control, body);
+    }
+
+    // The store flag on cob_decimal_get_field is how the compiler records whether a statement had a
+    // ROUNDED clause. 0 truncates toward zero; 1 rounds. Nothing in the COBOL source states this
+    // directly, and it is the difference between 15.82 and 15.83.
+    private static List<string> ExtractArithmetic(string body, string localHeader, List<CobolField> fields)
+    {
+        var byId = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (Match match in FieldIdPattern().Matches(localHeader))
+        {
+            byId.TryAdd(match.Groups["id"].Value, match.Groups["name"].Value.Trim());
+        }
+
+        var facts = new List<string>();
+        foreach (Match match in StorePattern().Matches(body))
+        {
+            var target = byId.GetValueOrDefault(match.Groups["field"].Value, match.Groups["field"].Value);
+            var rounded = match.Groups["flag"].Value != "0";
+            var scale = fields.FirstOrDefault(field => field.Name == target)?.Attribute ?? "";
+            var where = NearestStatement(body, match.Index);
+            facts.Add(rounded
+                ? $"{where}result stored into {target} is ROUNDED{(scale.Length > 0 ? " (" + scale + ")" : "")}"
+                : $"{where}result stored into {target} is TRUNCATED toward zero - the statement has no ROUNDED clause{(scale.Length > 0 ? " (" + scale + ")" : "")}");
+        }
+
+        return facts.Distinct().ToList();
+    }
+
+    private static string NearestStatement(string body, int index)
+    {
+        var matches = StatementPattern().Matches(body[..index]);
+        if (matches.Count == 0)
+        {
+            return "";
+        }
+
+        var last = matches[^1];
+        return $"line {last.Groups[1].Value} {last.Groups[2].Value.Trim()}: ";
     }
 
     // Builds the program and runs it once per input, capturing exactly what the legacy logic produces.
@@ -255,6 +295,15 @@ public sealed partial class CobolToolchain
 
     [GeneratedRegex(@"(?:frame_ptr->perform_through = \d+;|/\* PERFORM [^*]+\*/|/\* Implicit PERFORM return \*/)")]
     private static partial Regex ControlPattern();
+
+    [GeneratedRegex(@"static cob_field (?<id>f_\d+)[^;]*;\s*/\*\s*(?<name>[^*]+?)\s*\*/")]
+    private static partial Regex FieldIdPattern();
+
+    [GeneratedRegex(@"cob_decimal_get_field \(d_\d+, &(?<field>f_\d+), (?<flag>\d+)\)")]
+    private static partial Regex StorePattern();
+
+    [GeneratedRegex(@"/\* Line: (\d+)\s*:\s*(COMPUTE|ADD|SUBTRACT|MULTIPLY|DIVIDE|MOVE)\s*:")]
+    private static partial Regex StatementPattern();
 
     private sealed class TempWorkspace : IDisposable
     {

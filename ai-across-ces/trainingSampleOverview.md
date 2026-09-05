@@ -69,6 +69,35 @@ Zero versus fifty thousand, silently. `ibm-strict.conf` sets `binary-truncate: n
 
 **Open item for the team:** confirm the `TRUNC` option the mainframe build actually uses (`TRUNC(BIN)`, `TRUNC(STD)`, `TRUNC(OPT)` — it is a JCL compile parameter). If production is `TRUNC(STD)` and the oracle runs `-std=ibm`, the oracle and the mainframe disagree and every downstream number inherits it.
 
+### First real run — and what it exposed
+
+Gemma 4 31B, one run per arm, graded by the oracle:
+
+| Arm | Grounding | Cases passed | Prompt tokens |
+| --- | --- | --- | --- |
+| A | none | **1 / 6** | 503 |
+| B | AST / DDG / PDG | **4 / 6** | 893 |
+| C | compiler-resolved facts | **4 / 6** | 737 |
+
+Grounding clearly helped: 1/6 to 4/6. But B and C tied, and **both failed on exactly the same two cases** — 15.825 rendered as 15.83 instead of 15.82, and 4.166625 as 4.17 instead of 4.16.
+
+That is not a precision problem, and a bigger numeric type does not fix it. Both values are exactly representable. The arms *rounded where COBOL truncates*.
+
+**The cause was a defect in arm C, not in the idea.** Arm C was being given the field table — offsets, digits, scale, sign — and nothing about arithmetic semantics. It never learned the `COMPUTE` had no `ROUNDED` clause, so it had no more information about the thing that actually mattered than arm B did.
+
+The compiler does record it. `cob_decimal_get_field(d_0, &f_24, 0)` carries a store flag: `0` truncates, `1` rounds. Compiling the same program with and without `ROUNDED` flips the flag and flips the answer from 15.82 to 15.83. Arm C now extracts it:
+
+```
+line 21 COMPUTE: result stored into WS-MONTHLY-INT is TRUNCATED toward zero
+                - the statement has no ROUNDED clause (11 digits, scale 2, signed)
+```
+
+**The lesson generalises beyond this bug:** grounding only helps if you extract *the facts that decide the answer*. Layout facts do not fix an arithmetic defect. Whoever builds an extraction pipeline has to ask what class of error they are trying to prevent, and go and get that specific fact.
+
+### On numeric representation
+
+A bigger integer type is the wrong fix here, but it is the right fix for a different problem. IBM `ARITH(EXTENDED)` allows **31 significant digits**; C# `decimal` holds 28–29 and Java `double` is not a candidate at all. For production Enterprise COBOL, scaled `BigInteger` (or Java `BigDecimal` with an explicit `MathContext` and `RoundingMode.DOWN`) is the defensible target representation — not because of this failure, but because `decimal` genuinely cannot hold the intermediate range the standard permits.
+
 **How to build Arm C — read this before designing it.** [sampleApproaches.md §2.2](sampleApproaches.md) sells the intermediate C on legibility: "flattened control flow," "LLMs are saturated with C." That is wrong — the compiler emits libcob runtime IR that no model has trained on. But the approach works anyway, for a better reason: **the compiler resolves semantics the COBOL source leaves ambiguous.**
 
 ```c

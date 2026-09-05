@@ -20,6 +20,11 @@ if (args.Contains("--migration-selftest"))
         Console.WriteLine($"  {field.Name,-16} offset {field.Offset,2}  {field.Size} bytes  {field.Attribute}");
     }
 
+    foreach (var fact in facts.ControlFlow)
+    {
+        Console.WriteLine($"  {fact}");
+    }
+
     var oracle = toolchain.RunOracle(MigrationSamples.CobolSource, MigrationSamples.Cases);
     Console.WriteLine("Oracle:");
     foreach (var run in oracle)

@@ -21,7 +21,9 @@ public sealed record TrainingSession(
     ContextAuditState ContextAudit,
     ClaraState Clara,
     LanguageTestState LanguageTest,
-    MigrationState Migration);
+    MigrationState Migration,
+    TicketGateState TicketGate,
+    TrapHuntState TrapHunt);
 
 public sealed record BridgeTask(
     string TaskId,
@@ -349,6 +351,41 @@ public sealed record MigrationState(
     bool ToolchainAvailable,
     string ToolchainStatus,
     IReadOnlyList<MigrationArm> Arms,
+    string? Error);
+
+// --- Tab 17: ticket quality gate ---
+
+public sealed record TicketPrecheck(
+    int Score,
+    bool Passed,
+    IReadOnlyList<ContextStructureSignal> Signals,
+    IReadOnlyList<string> VagueTerms);
+
+public sealed record TicketReview(
+    string Model,
+    int Score,
+    bool Passed,
+    IReadOnlyList<ContextStructureSignal> Findings,
+    string Rewritten,
+    string Verdict);
+
+public sealed record TicketGateState(
+    string Status,
+    string? Ticket,
+    TicketPrecheck? Precheck,
+    TicketReview? Review,
+    string? Error);
+
+// --- Tab 18: cloud design trap hunt ---
+
+public sealed record TrapHuntState(
+    string Status,
+    string Design,
+    string? Findings,
+    string? FindingsModel,
+    ContextJudgeResult? Grade,
+    string? JudgeModel,
+    IReadOnlyList<string> PlantedTraps,
     string? Error);
 
 public sealed record ClaraConformanceReport(

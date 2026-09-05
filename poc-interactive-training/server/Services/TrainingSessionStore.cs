@@ -1231,6 +1231,173 @@ public sealed class TrainingSessionStore
         return request.ToString();
     }
 
+    // --- Ticket quality gate: a deterministic pre-check, then a model review and rewrite ---
+
+    public void QueueTicketGate(string sessionId, string ticket)
+    {
+        if (string.IsNullOrWhiteSpace(ticket) || ticket.Length > 8000)
+        {
+            throw new ArgumentException("Provide a ticket between 1 and 8000 characters.", nameof(ticket));
+        }
+
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.TicketText = ticket.Trim();
+            session.TicketReview = null;
+            session.TicketError = null;
+            session.TicketPrecheck = GovernanceSamples.ScoreTicket(session.TicketText);
+            session.TicketStatus = "running";
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "ticket-gate",
+                ClaudeModel,
+                GptFallbackModel,
+                Prompts.TicketGateSystem,
+                BuildTicketRequest(session),
+                90,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+        }
+    }
+
+    private static void CompleteTicketGate(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out TicketReviewDto? dto) || dto is null)
+        {
+            session.TicketStatus = "failed";
+            session.TicketError = result.ErrorMessage ?? "The ticket review did not match the expected contract.";
+            return;
+        }
+
+        var findings = (dto.Findings ?? [])
+            .Select(finding => new ContextStructureSignal(finding.Criterion ?? "", finding.Met, finding.Note ?? ""))
+            .ToList();
+
+        session.TicketReview = new TicketReview(
+            result.ModelUsed ?? ClaudeModel,
+            Math.Clamp(dto.Score, 0, 100),
+            dto.Passed,
+            findings,
+            dto.Rewritten?.Trim() ?? "",
+            dto.Verdict?.Trim() ?? "");
+        session.TicketStatus = "completed";
+    }
+
+    private static string BuildTicketRequest(SessionState session)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<rubric>");
+        for (var index = 0; index < GovernanceSamples.Rubric.Length; index++)
+        {
+            var criterion = GovernanceSamples.Rubric[index];
+            request.AppendLine($"{index + 1}. {criterion.Name} - {criterion.Test}");
+        }
+
+        request.AppendLine("</rubric>");
+        request.AppendLine("<deterministic_precheck>");
+        foreach (var signal in session.TicketPrecheck?.Signals ?? [])
+        {
+            request.AppendLine($"{(signal.Present ? "PASS" : "FAIL")} {signal.Name}: {signal.Detail}");
+        }
+
+        request.AppendLine("</deterministic_precheck>");
+        request.AppendLine("<ticket>");
+        request.AppendLine(session.TicketText);
+        request.AppendLine("</ticket>");
+        return request.ToString();
+    }
+
+    // --- Trap hunt: an agent audits an IaC design, then is graded against the sealed trap list ---
+
+    public void QueueTrapHunt(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.TrapFindings = null;
+            session.TrapGrade = null;
+            session.TrapError = null;
+            session.TrapStatus = "hunting";
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "trap-hunt",
+                GemmaModel,
+                GptFallbackModel,
+                Prompts.TrapHuntSystem,
+                $"<terraform>\n{GovernanceSamples.TerraformDesign}\n</terraform>\nAudit this proposed sandbox design and list every security, cost and governance defect you find.",
+                120,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+        }
+    }
+
+    private static void CompleteTrapHunt(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || string.IsNullOrWhiteSpace(result.Content))
+        {
+            session.TrapStatus = "failed";
+            session.TrapError = result.ErrorMessage ?? "The audit produced no findings.";
+            return;
+        }
+
+        session.TrapFindings = result.Content.Trim();
+        session.TrapFindingsModel = result.ModelUsed;
+
+        var judge = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "trap-judge",
+            ClaudeModel,
+            null,
+            Prompts.TrapJudgeSystem,
+            BuildTrapJudgeRequest(session),
+            120,
+            DateTimeOffset.UtcNow);
+        session.Tasks[judge.TaskId] = new TaskState(judge);
+        session.TrapStatus = "judging";
+    }
+
+    private static void CompleteTrapJudge(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out ContextJudgeDto? dto) || dto is null)
+        {
+            session.TrapStatus = "failed";
+            session.TrapError = result.ErrorMessage ?? "The audit grade did not match the expected contract.";
+            return;
+        }
+
+        session.TrapGrade = new ContextJudgeResult(
+            Math.Clamp(dto.TrapsFound, 0, GovernanceSamples.PlantedTraps.Length),
+            GovernanceSamples.PlantedTraps.Length,
+            dto.Matched ?? [],
+            dto.Missed ?? [],
+            dto.FalsePositives ?? [],
+            dto.Verdict?.Trim() ?? "");
+        session.TrapJudgeModel = result.ModelUsed;
+        session.TrapStatus = "completed";
+    }
+
+    private static string BuildTrapJudgeRequest(SessionState session)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<planted_defects>");
+        for (var index = 0; index < GovernanceSamples.PlantedTraps.Length; index++)
+        {
+            request.AppendLine($"{index + 1}. {GovernanceSamples.PlantedTraps[index]}");
+        }
+
+        request.AppendLine("</planted_defects>");
+        request.AppendLine("<audit_findings>");
+        request.AppendLine(session.TrapFindings);
+        request.AppendLine("</audit_findings>");
+        return request.ToString();
+    }
+
     public bool AppendReviewTrace(string token, ReviewTraceEvent traceEvent)
     {
         var session = FindByToken(token);
@@ -1362,6 +1529,15 @@ public sealed class TrainingSessionStore
 
                     session.MigrationStatus = "running";
                     break;
+                case "ticket-gate":
+                    session.TicketStatus = "running";
+                    break;
+                case "trap-hunt":
+                    session.TrapStatus = "hunting";
+                    break;
+                case "trap-judge":
+                    session.TrapStatus = "judging";
+                    break;
             }
 
             return task.Task;
@@ -1439,6 +1615,15 @@ public sealed class TrainingSessionStore
                     break;
                 case "migration-arm":
                     CompleteMigrationArm(session, result, succeeded);
+                    break;
+                case "ticket-gate":
+                    CompleteTicketGate(session, result, succeeded);
+                    break;
+                case "trap-hunt":
+                    CompleteTrapHunt(session, result, succeeded);
+                    break;
+                case "trap-judge":
+                    CompleteTrapJudge(session, result, succeeded);
                     break;
             }
 
@@ -1678,6 +1863,17 @@ public sealed class TrainingSessionStore
         public string ClaraStatus { get; set; } = "not-started";
         public string LanguageStatus { get; set; } = "not-started";
         public string MigrationStatus { get; set; } = "not-started";
+        public string TicketStatus { get; set; } = "not-started";
+        public string? TicketText { get; set; }
+        public TicketPrecheck? TicketPrecheck { get; set; }
+        public TicketReview? TicketReview { get; set; }
+        public string? TicketError { get; set; }
+        public string TrapStatus { get; set; } = "not-started";
+        public string? TrapFindings { get; set; }
+        public string? TrapFindingsModel { get; set; }
+        public ContextJudgeResult? TrapGrade { get; set; }
+        public string? TrapJudgeModel { get; set; }
+        public string? TrapError { get; set; }
         public Dictionary<string, MigrationArmState> MigrationArms { get; } = [];
         public Dictionary<string, string> MigrationTaskArm { get; } = [];
         public CobolFacts? MigrationFacts { get; set; }
@@ -1833,7 +2029,22 @@ public sealed class TrainingSessionStore
                         arm.Cases.Count(item => item.Matched),
                         arm.Error))
                     .ToArray(),
-                MigrationError));
+                MigrationError),
+            new TicketGateState(
+                TicketStatus,
+                TicketText,
+                TicketPrecheck,
+                TicketReview,
+                TicketError),
+            new TrapHuntState(
+                TrapStatus,
+                GovernanceSamples.TerraformDesign,
+                TrapFindings,
+                TrapFindingsModel,
+                TrapGrade,
+                TrapJudgeModel,
+                TrapStatus == "completed" ? GovernanceSamples.PlantedTraps : [],
+                TrapError));
     }
 
     private sealed class ComparisonSlotState(string slot, string requestedModel)
@@ -1867,6 +2078,15 @@ public sealed class TrainingSessionStore
     private sealed record ClaraReviewDto(int Fidelity, string? Verdict, List<string>? Strengths, List<string>? Issues, List<string>? LanguageNotes);
 
     private sealed record LanguageScoreDto(int Arm, int Criterion, bool Met, string? Evidence);
+
+    private sealed record TicketFindingDto(string? Criterion, bool Met, string? Note);
+
+    private sealed record TicketReviewDto(
+        int Score,
+        bool Passed,
+        List<TicketFindingDto>? Findings,
+        string? Rewritten,
+        string? Verdict);
 
     private sealed record LanguageVerdictDto(
         List<LanguageScoreDto>? Scores,
@@ -2087,6 +2307,44 @@ public sealed class TrainingSessionStore
 
         // Deliberately contains no COBOL semantics tuition. Telling every arm about implied decimals or
         // ROUNDED would hand them the answer and destroy the comparison the tab exists to make.
+        public const string TicketGateSystem = """
+            You are a delivery lead running a ticket-quality gate before an agent is allowed to pick up work.
+            You are given a rubric, the result of a deterministic pre-check, and the ticket.
+
+            Score the ticket 0-100 against the rubric. A ticket passes only at 70 or above. Be strict: an
+            agent given this ticket must be able to act without guessing. Then rewrite the ticket so it would
+            pass, inventing plausible specifics and marking anything you had to assume with "ASSUMPTION:".
+
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"score":0,"passed":false,"findings":[{"criterion":"...","met":false,"note":"..."}],
+             "rewritten":"...","verdict":"..."}
+            findings must contain one entry per rubric criterion, in order. Coaching commentary, not a
+            validated grade.
+            """;
+
+        public const string TrapHuntSystem = """
+            You are a cloud security and cost reviewer auditing a proposed GCP sandbox design written by a
+            hybrid human/LLM team. Review the Terraform against these five pillars: security and identity,
+            architecture correctness, resource and cost governance, hybrid-team traceability, and
+            infrastructure-as-code hygiene.
+
+            List every defect you find as a short bullet, most severe first. State the resource and the
+            specific problem. Do not pad the list with speculative issues - a false positive costs the team
+            time. Prose only, no JSON.
+            """;
+
+        public const string TrapJudgeSystem = """
+            You are grading an audit. You are given a sealed list of defects that were deliberately planted in
+            a Terraform design, and the findings an agent produced. Decide which planted defects the agent
+            actually identified. Match on meaning, not wording.
+
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"trapsFound":0,"matched":["..."],"missed":["..."],"falsePositives":["..."],"verdict":"..."}
+            trapsFound is the count of planted defects correctly identified. falsePositives lists claims that
+            are not real defects in this design. verdict is 1-2 sentences. Coaching commentary, not a
+            validated grade.
+            """;
+
         public const string MigrationSystem = """
             You are a migration engineer converting a legacy COBOL program to C#. You are given the COBOL
             source, and possibly some analysis artifacts. Reproduce the program's behaviour exactly.

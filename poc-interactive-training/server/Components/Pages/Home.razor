@@ -1186,6 +1186,170 @@
 						}
 					</section>
 					break;
+				case 16:
+					<section>
+						<p class="kicker">STOP BAD WORK BEFORE IT STARTS</p>
+						<h2 id="scene-title">A ticket an agent cannot act on</h2>
+						<p class="rt-intro">Most agent failures are underspecified tickets, not weak models. A <strong>deterministic pre-check</strong> scores the ticket before any model sees it. Claude then grades it against the same rubric and rewrites it so it would pass.</p>
+
+						@if (_session?.TicketGate is { } gate)
+						{
+							<section class="rt-box rt-input-box">
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>The ticket</strong><small>edit it and re-run to see the score move</small></div></header>
+								<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_ticketText" @bind:event="oninput" disabled="@TicketBusy" aria-label="JIRA ticket"></textarea>
+								<div class="rt-actions">
+									<small>@_ticketText.Length / 8000</small>
+									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || TicketBusy)" @onclick="RunTicketGate">@TicketButtonText</button>
+								</div>
+								@if (!_bridgeConnected)
+								{
+									<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running the gate.</p>
+								}
+							</section>
+
+							@if (LivePrecheck is { } precheck)
+							{
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">2</span><div><strong>Deterministic pre-check</strong><small>no model, no bridge · recomputed as you type</small></div></header>
+									<div class="@(precheck.Passed ? "compare-status" : "compare-status failed")" role="status">
+										Score @precheck.Score / 100 — @(precheck.Passed ? "PASSES the gate" : "FAILS the gate (needs 70)")
+									</div>
+									<table class="audit-table">
+										<thead><tr><th>Criterion</th><th>Met</th><th>Detail</th></tr></thead>
+										<tbody>
+											@foreach (var signal in precheck.Signals)
+											{
+												<tr><td>@signal.Name</td><td>@(signal.Present ? "yes" : "no")</td><td>@signal.Detail</td></tr>
+											}
+										</tbody>
+									</table>
+									@if (precheck.VagueTerms.Count > 0)
+									{
+										<h4>Vague language found</h4>
+										<ul class="rt-list warn">@foreach (var term in precheck.VagueTerms) { <li>“@term”</li> }</ul>
+									}
+								</section>
+							}
+
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>Review and rewrite</strong><small>@(gate.Review?.Model ?? "Claude Opus 5")</small></div></header>
+								@if (gate.Review is { } graded)
+								{
+									<div class="@(graded.Passed ? "compare-status" : "compare-status failed")" role="status">
+										Model score @graded.Score / 100 — @(graded.Passed ? "would pass" : "would not pass")
+									</div>
+									<p class="rt-reco">@graded.Verdict</p>
+									<table class="audit-table">
+										<thead><tr><th>Criterion</th><th>Met</th><th>Note</th></tr></thead>
+										<tbody>
+											@foreach (var finding in graded.Findings)
+											{
+												<tr><td>@finding.Name</td><td>@(finding.Present ? "yes" : "no")</td><td>@finding.Detail</td></tr>
+											}
+										</tbody>
+									</table>
+									@if (!string.IsNullOrEmpty(graded.Rewritten))
+									{
+										<h4>The same ticket, rewritten to pass</h4>
+										<pre class="rt-story">@graded.Rewritten</pre>
+									}
+								}
+								else if (TicketBusy)
+								{
+									<div class="rt-pending"><span></span>Claude is grading the ticket…</div>
+								}
+								else if (gate.Status == "failed")
+								{
+									<div class="compare-status failed" role="alert">@(gate.Error ?? "The review did not complete.")</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">The review and rewrite will appear here.</div>
+								}
+							</section>
+						}
+					</section>
+					break;
+				case 17:
+					<section>
+						<p class="kicker">FIND WHAT WAS PLANTED</p>
+						<h2 id="scene-title">Auditing a cloud design an AI helped write</h2>
+						<p class="rt-intro">A proposed GCP sandbox with defects deliberately planted in it. Gemma audits it against the five-pillar checklist; Claude then grades that audit against the sealed list of what was actually planted. The list is revealed only after grading.</p>
+
+						@if (_session?.TrapHunt is { } hunt)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>The proposed design</strong><small>Terraform · human + LLM authored</small></div></header>
+								<pre class="rt-code">@hunt.Design</pre>
+								<div class="rt-actions">
+									<small>@GovernanceSamples.PlantedTraps.Length defects are planted in this file</small>
+									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || TrapBusy)" @onclick="RunTrapHunt">@TrapButtonText</button>
+								</div>
+								@if (!_bridgeConnected)
+								{
+									<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running the audit.</p>
+								}
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>The audit</strong><small>@(hunt.FindingsModel ?? "Gemma 4")</small></div></header>
+								@if (!string.IsNullOrEmpty(hunt.Findings))
+								{
+									<pre class="rt-story">@hunt.Findings</pre>
+								}
+								else if (hunt.Status == "hunting")
+								{
+									<div class="rt-pending"><span></span>Gemma is auditing the design…</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">The agent's findings will appear here.</div>
+								}
+							</section>
+
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>Graded against the sealed list</strong><small>@(hunt.JudgeModel ?? "Claude Opus 5")</small></div></header>
+								@if (hunt.Grade is { } grade)
+								{
+									<div class="@(grade.TrapsFound == grade.TrapsTotal ? "compare-status" : "compare-status failed")" role="status">
+										Found @grade.TrapsFound of @grade.TrapsTotal planted defects.
+									</div>
+									<p class="rt-reco">@grade.Verdict</p>
+									@if (grade.Matched.Count > 0)
+									{
+										<h4>Caught</h4><ul class="rt-list good">@foreach (var item in grade.Matched) { <li>@item</li> }</ul>
+									}
+									@if (grade.Missed.Count > 0)
+									{
+										<h4>Missed</h4><ul class="rt-list warn">@foreach (var item in grade.Missed) { <li>@item</li> }</ul>
+									}
+									@if (grade.FalsePositives.Count > 0)
+									{
+										<h4>False positives — these cost a reviewer's time</h4>
+										<ul class="rt-list warn">@foreach (var item in grade.FalsePositives) { <li>@item</li> }</ul>
+									}
+									@if (hunt.PlantedTraps.Count > 0)
+									{
+										<h4>What was planted</h4>
+										<ol class="rt-list">@foreach (var item in hunt.PlantedTraps) { <li>@item</li> }</ol>
+									}
+								}
+								else if (hunt.Status == "judging")
+								{
+									<div class="rt-pending"><span></span>Claude is grading the audit…</div>
+								}
+								else if (hunt.Status == "failed")
+								{
+									<div class="compare-status failed" role="alert">@(hunt.Error ?? "The audit did not complete.")</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">The grade will appear here once the audit completes.</div>
+								}
+							</section>
+						}
+					</section>
+					break;
 			}
 		</article>
 
@@ -1212,7 +1376,7 @@
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration")];
+	private static readonly (string Id, string Title)[] Scenes = [("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -1245,7 +1409,9 @@
 		"Context audit funnel: a deterministic scan plus an ML.NET classifier decide cheaply whether a repo has usable context. If it passes, Gemma hunts planted traps using the context, and Claude grades how many it caught.",
 		"What if the core business logic lived in a language built for models? CLARA is a deterministic, auditable rule language: the model writes it from a requirement, it compiles and runs, and a second model reviews it — logic a human and an LLM read the same way.",
 		"The same ticket, the same model, no context either way. One arm sees an ordinary C# class where the local policy knowledge lives only in people's heads; the other sees a CLARA policy that carries that knowledge inline. Claude then grades both against sealed criteria neither arm ever saw.",
-		"Three migrations of the same COBOL program, with increasing amounts of grounding — none, static analysis, and facts resolved by the COBOL compiler itself. Every answer is compiled and executed against outputs captured from the real legacy program. Nothing here is graded by a model."
+		"Three migrations of the same COBOL program, with increasing amounts of grounding — none, static analysis, and facts resolved by the COBOL compiler itself. Every answer is compiled and executed against outputs captured from the real legacy program. Nothing here is graded by a model.",
+		"Most agent failures are underspecified tickets, not weak models. A deterministic pre-check scores the ticket before any model sees it, then Claude grades it against the rubric and rewrites it so it would pass.",
+		"A proposed cloud sandbox with defects planted in it. Gemma audits the design against the five-pillar checklist, and Claude grades the audit against the sealed list of what was actually planted."
 	];
 
 	private TrainingSession? _session;
@@ -1265,6 +1431,7 @@
 	private string _contextCode = RoundTripSamples.ContextBundle;
 	private string _claraJira = RoundTripSamples.ClaraJira;
 	private string _languageJira = LanguageTestSamples.Jira;
+	private string _ticketText = GovernanceSamples.WeakTicket;
 	private ClaraBenchmarkResult? _benchmark;
 	private ClaraConformanceReport? _conformance;
 	private bool _benchmarkRunning;
@@ -1340,6 +1507,17 @@
 		_ => "facts resolved by the COBOL compiler"
 	};
 
+	private bool TicketBusy => _session?.TicketGate.Status is "running";
+	private TicketPrecheck? LivePrecheck => string.IsNullOrWhiteSpace(_ticketText) ? null : GovernanceSamples.ScoreTicket(_ticketText);
+	private string TicketButtonText => !_bridgeConnected
+		? "Connect VSIX to review"
+		: TicketBusy ? "Reviewing…" : "Run the gate";
+
+	private bool TrapBusy => _session?.TrapHunt.Status is "hunting" or "judging";
+	private string TrapButtonText => !_bridgeConnected
+		? "Connect VSIX to audit"
+		: TrapBusy ? "Auditing…" : "Run the audit";
+
 	protected override void OnInitialized()
 	{
 		_session = Store.CreateSession();
@@ -1374,6 +1552,8 @@
 	private void RunClaraPoc() { if (_session is null || _claraJira.Trim().Length < 20) return; Store.QueueClaraPoc(_session.SessionId, _claraJira.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunLanguageTest() { if (_session is null || _languageJira.Trim().Length < 20) return; Store.QueueLanguageTest(_session.SessionId, _languageJira.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunMigration() { if (_session is null) return; Store.QueueMigration(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
+	private void RunTicketGate() { if (_session is null || _ticketText.Trim().Length < 10) return; Store.QueueTicketGate(_session.SessionId, _ticketText.Trim()); _session = Store.GetSession(_session.SessionId); }
+	private void RunTrapHunt() { if (_session is null) return; Store.QueueTrapHunt(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
 
 	private async Task RunBenchmark()
 	{

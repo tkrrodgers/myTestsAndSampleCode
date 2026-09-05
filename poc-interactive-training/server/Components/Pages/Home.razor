@@ -191,14 +191,20 @@
 								<header class="rt-head"><span class="rt-step">4</span><div><strong>Where did each change come from?</strong><small>@(change.Audit?.Model ?? "Claude Opus 5") · every decision traced to a quoted sentence</small></div></header>
 								@if (change.Audit is { } audit)
 								{
-									<div class="@(audit.OpenQuestionRaised ? "compare-status" : "compare-status failed")" role="status">
-										@(audit.OpenQuestionRaised
-											? "The missing API field name was raised as an open question, not invented."
-											: "The missing API field name was NOT raised — the agent invented or ignored it.")
+									<div class="@(audit.OpenQuestionRaised && audit.PlaceholdersMarked ? "compare-status" : "compare-status failed")" role="status">
+										@(!audit.OpenQuestionRaised
+											? "The missing API field name was NOT raised — the agent invented or ignored it."
+											: audit.PlaceholdersMarked
+												? "The missing API field name was raised, and the code left it genuinely unresolved."
+												: "Raised as an open question — then hard-coded anyway. Naming a gap in prose is not the same as leaving it open in the code.")
 									</div>
 									@if (!string.IsNullOrEmpty(audit.OpenQuestionNote))
 									{
 										<p class="rt-reco">@audit.OpenQuestionNote</p>
+									}
+									@if (!string.IsNullOrEmpty(audit.PlaceholderNote))
+									{
+										<p class="rt-reco">@audit.PlaceholderNote</p>
 									}
 									<table class="audit-table">
 										<thead><tr><th>Change</th><th>Justified by</th><th>The statement it rests on</th><th></th></tr></thead>
@@ -224,7 +230,7 @@
 									<ul class="rt-list warn">
 										<li>This shows the context was <em>sufficient</em> for this ticket. It does not show it is sufficient for the next one.</li>
 										<li>A quoted sentence proves the claim exists in the artifact. It does not prove the artifact is correct or current — check <code>verified</code> and <code>stale_after</code>.</li>
-										<li>The audit is a model reading another model. The one objective signal here is the open question: it was planted, so either it was raised or it was not.</li>
+										<li>The audit is a model reading another model. The planted gap is the firmest signal, and it has two parts: the agent has to name what is missing <em>and</em> leave it unresolved in the code. An implementation that raises the question and then hard-codes an invented literal has reintroduced the failure the omission exists to catch.</li>
 									</ul>
 								}
 								else if (change.Status == "auditing")

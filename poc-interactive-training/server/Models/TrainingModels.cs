@@ -373,6 +373,8 @@ public sealed record GroundedChangeAudit(
     IReadOnlyList<string> Ungrounded,
     bool OpenQuestionRaised,
     string OpenQuestionNote,
+    bool PlaceholdersMarked,
+    string PlaceholderNote,
     string Verdict);
 
 public sealed record GroundedChangeState(

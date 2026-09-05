@@ -1555,6 +1555,8 @@ public sealed class TrainingSessionStore
             dto.Ungrounded ?? [],
             dto.OpenQuestionRaised,
             dto.OpenQuestionNote?.Trim() ?? "",
+            dto.PlaceholdersMarked,
+            dto.PlaceholderNote?.Trim() ?? "",
             dto.Verdict?.Trim() ?? "");
         session.ChangeStatus = "completed";
     }
@@ -2342,6 +2344,8 @@ public sealed class TrainingSessionStore
         List<string>? Ungrounded,
         bool OpenQuestionRaised,
         string? OpenQuestionNote,
+        bool PlaceholdersMarked,
+        string? PlaceholderNote,
         string? Verdict);
 
     private sealed record TicketReviewDto(
@@ -2597,11 +2601,19 @@ public sealed class TrainingSessionStore
             something no artifact supports - that is the failure mode this exercise exists to catch.
 
             The ticket deliberately omits one fact: the API field name that communicates the estimate source.
-            A correct implementation raises it as an open question instead of inventing a name.
+            Judge that omission on two separate axes, because an implementation can pass the first and fail the
+            second - naming the gap in prose while quietly committing to invented values in the code.
+
+            openQuestionRaised: does it name the missing fact and say who should resolve it?
+            placeholdersMarked: does the code itself leave the unresolved part unresolved? Set this false if it
+            hard-codes invented literals, member names, or enum spellings for the thing it just called open,
+            even when they appear only in comments or tests. Setting it true requires the representation to be
+            abstract or the literals to be explicitly marked provisional pending the API owner.
 
             Return JSON only, no Markdown fences, in exactly this shape:
             {"citations":[{"change":"...","document":"okf/...","statement":"quoted sentence","grounded":true}],
-             "ungrounded":["..."],"openQuestionRaised":true,"openQuestionNote":"...","verdict":"..."}
+             "ungrounded":["..."],"openQuestionRaised":true,"openQuestionNote":"...",
+             "placeholdersMarked":false,"placeholderNote":"...","verdict":"..."}
             statement must be a verbatim quote from the named document. Coaching commentary, not a validated grade.
             """;
 

@@ -20,12 +20,16 @@ public sealed class TrainingSessionStore
     private readonly CSharpAuditAnalyzer _auditAnalyzer;
     private readonly ContextAuditService _contextAudit;
     private readonly EmbeddingGemmaEncoder _encoder;
+    private readonly CobolToolchain _cobol;
+    private readonly MigrationSandbox _sandbox;
 
     // Measured once: what each representation of the same logic actually costs in context.
     private static int CSharpSourceTokens;
     private static int ClaraSourceTokens;
     private static int ContextPackTokens;
     private static bool TokensAreExact;
+    private static bool ToolchainAvailable;
+    private static string ToolchainStatus = "not probed";
 
     private static readonly string[] ContextTraps =
     [
@@ -36,18 +40,22 @@ public sealed class TrainingSessionStore
         "The fee is rounded to whole dollars, but rule 6 requires 2 decimal places."
     ];
 
-    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder)
+    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox)
     {
         _fixture = fixture;
         _auditAnalyzer = auditAnalyzer;
         _contextAudit = contextAudit;
         _encoder = encoder;
+        _cobol = cobol;
+        _sandbox = sandbox;
 
         var (csharpTokens, exact) = _encoder.CountTokens(LanguageTestSamples.CSharpSource);
         CSharpSourceTokens = csharpTokens;
         ClaraSourceTokens = _encoder.CountTokens(LanguageTestSamples.ClaraSource).Tokens;
         ContextPackTokens = _encoder.CountTokens(LanguageTestSamples.ContextPack).Tokens;
         TokensAreExact = exact;
+        ToolchainAvailable = _cobol.IsAvailable;
+        ToolchainStatus = _cobol.StatusMessage;
     }
 
     public TrainingSession CreateSession()
@@ -1053,6 +1061,176 @@ public sealed class TrainingSessionStore
         return request.ToString();
     }
 
+    // --- COBOL migration A/B/C: same program, three levels of grounding, graded by an executable oracle ---
+
+    public void QueueMigration(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.MigrationArms.Clear();
+            session.MigrationTaskArm.Clear();
+            session.MigrationError = null;
+            session.MigrationStatus = "running";
+
+            // The oracle runs first: the arms are graded against what the legacy program actually does.
+            session.MigrationFacts ??= _cobol.ExtractFacts(MigrationSamples.CobolSource);
+            session.MigrationOracle = _cobol.RunOracle(MigrationSamples.CobolSource, MigrationSamples.Cases);
+
+            foreach (var (arm, grounding) in new[]
+            {
+                ("A", "none"),
+                ("B", "structural"),
+                ("C", "compiler")
+            })
+            {
+                var task = new BridgeTask(
+                    Guid.NewGuid().ToString("N"),
+                    sessionId,
+                    "migration-arm",
+                    GemmaModel,
+                    GptFallbackModel,
+                    Prompts.MigrationSystem,
+                    BuildMigrationRequest(session, grounding),
+                    120,
+                    DateTimeOffset.UtcNow);
+
+                var (promptTokens, _) = _encoder.CountTokens(task.SystemPrompt + "\n" + task.UserPrompt);
+                session.MigrationArms[arm] = new MigrationArmState(arm, grounding, GemmaModel)
+                {
+                    TaskId = task.TaskId,
+                    PromptTokens = promptTokens
+                };
+                session.MigrationTaskArm[task.TaskId] = arm;
+                session.Tasks[task.TaskId] = new TaskState(task);
+            }
+        }
+    }
+
+    private void CompleteMigrationArm(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!session.MigrationTaskArm.TryGetValue(result.TaskId, out var armId) ||
+            !session.MigrationArms.TryGetValue(armId, out var arm))
+        {
+            return;
+        }
+
+        arm.ModelUsed = result.ModelUsed;
+        arm.DurationMs = result.DurationMs;
+
+        if (!succeeded || string.IsNullOrWhiteSpace(result.Content))
+        {
+            arm.Status = "failed";
+            arm.Error = result.ErrorMessage ?? "The model returned no code.";
+            MaybeCompleteMigration(session);
+            return;
+        }
+
+        arm.Code = StripCodeFence(result.Content.Trim());
+
+        var run = _sandbox.Run(arm.Code, MigrationSamples.EntryType, MigrationSamples.EntryMethod, MigrationSamples.Cases);
+        arm.Compiled = run.Ran;
+        arm.CompileErrors.Clear();
+        arm.CompileErrors.AddRange(run.CompileErrors);
+        arm.Cases.Clear();
+
+        if (!run.Ran)
+        {
+            arm.Status = "completed";
+            arm.Error = run.Error;
+            MaybeCompleteMigration(session);
+            return;
+        }
+
+        // Grading is arithmetic against the compiled COBOL's own output. No model is consulted.
+        var expected = session.MigrationOracle.ToDictionary(entry => entry.Input, entry => entry);
+        foreach (var output in run.Outputs)
+        {
+            var oracle = expected.GetValueOrDefault(output.Input);
+            var truth = NormaliseOracle(oracle?.Output);
+            var actual = Normalise(output.Value);
+            var matched = output.Error is null && truth is not null && truth == actual;
+            arm.Cases.Add(new MigrationCaseResult(
+                output.Input,
+                truth ?? "(oracle unavailable)",
+                output.Error is null ? actual : "error",
+                matched,
+                output.Error));
+        }
+
+        arm.Status = "completed";
+        MaybeCompleteMigration(session);
+    }
+
+    private static void MaybeCompleteMigration(SessionState session)
+    {
+        if (session.MigrationArms.Count > 0 &&
+            session.MigrationArms.Values.All(arm => arm.Status is "completed" or "failed"))
+        {
+            session.MigrationStatus = "completed";
+        }
+    }
+
+    // COBOL DISPLAY of S9(6)V99 yields "00080585+" - eight digits with a trailing sign and implied scale.
+    private static string? NormaliseOracle(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        var text = raw.Trim();
+        var negative = text.EndsWith('-');
+        text = text.TrimEnd('+', '-');
+        if (!decimal.TryParse(text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var value))
+        {
+            return null;
+        }
+
+        value /= 100m;
+        return (negative ? -value : value).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static string Normalise(string raw) =>
+        decimal.TryParse(raw, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            ? value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
+            : raw.Trim();
+
+    private static string BuildMigrationRequest(SessionState session, string grounding)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<cobol_source>");
+        request.AppendLine(MigrationSamples.CobolSource);
+        request.AppendLine("</cobol_source>");
+
+        if (grounding == "structural")
+        {
+            request.AppendLine("<structural_artifacts>");
+            request.AppendLine(MigrationSamples.StructuralArtifacts);
+            request.AppendLine("</structural_artifacts>");
+        }
+        else if (grounding == "compiler" && session.MigrationFacts is { Compiled: true } facts)
+        {
+            request.AppendLine("<compiler_resolved_facts>");
+            request.AppendLine("Field layout, as resolved by the COBOL compiler:");
+            foreach (var field in facts.Fields)
+            {
+                request.AppendLine($"  {field.Name}: offset {field.Offset}, {field.Size} bytes, {field.Attribute}");
+            }
+
+            request.AppendLine("Control flow, as resolved by the COBOL compiler:");
+            foreach (var line in facts.ControlFlow)
+            {
+                request.AppendLine("  " + line);
+            }
+
+            request.AppendLine("</compiler_resolved_facts>");
+        }
+
+        request.AppendLine(MigrationSamples.Contract);
+        return request.ToString();
+    }
+
     public bool AppendReviewTrace(string token, ReviewTraceEvent traceEvent)
     {
         var session = FindByToken(token);
@@ -1175,6 +1353,15 @@ public sealed class TrainingSessionStore
                 case "claude-language-judge":
                     session.LanguageStatus = "judging";
                     break;
+                case "migration-arm":
+                    if (session.MigrationTaskArm.TryGetValue(task.Task.TaskId, out var migrationArm) &&
+                        session.MigrationArms.TryGetValue(migrationArm, out var migrationState))
+                    {
+                        migrationState.Status = "running";
+                    }
+
+                    session.MigrationStatus = "running";
+                    break;
             }
 
             return task.Task;
@@ -1249,6 +1436,9 @@ public sealed class TrainingSessionStore
                     break;
                 case "claude-language-judge":
                     CompleteLanguageJudge(session, result, succeeded);
+                    break;
+                case "migration-arm":
+                    CompleteMigrationArm(session, result, succeeded);
                     break;
             }
 
@@ -1487,6 +1677,12 @@ public sealed class TrainingSessionStore
 
         public string ClaraStatus { get; set; } = "not-started";
         public string LanguageStatus { get; set; } = "not-started";
+        public string MigrationStatus { get; set; } = "not-started";
+        public Dictionary<string, MigrationArmState> MigrationArms { get; } = [];
+        public Dictionary<string, string> MigrationTaskArm { get; } = [];
+        public CobolFacts? MigrationFacts { get; set; }
+        public IReadOnlyList<CobolOracleRun> MigrationOracle { get; set; } = [];
+        public string? MigrationError { get; set; }
         public string? LanguageJira { get; set; }
         public Dictionary<string, LanguageArmState> LanguageArms { get; } = [];
         public Dictionary<string, string> LanguageTaskArm { get; } = [];
@@ -1610,7 +1806,34 @@ public sealed class TrainingSessionStore
                 LanguageVerdict,
                 LanguageStatus == "completed" ? LanguageTestSamples.SealedCriteria : [],
                 LanguageStatus == "completed",
-                LanguageError));
+                LanguageError),
+            new MigrationState(
+                MigrationStatus,
+                MigrationSamples.CobolSource,
+                MigrationSamples.StructuralArtifacts,
+                MigrationFacts?.Fields ?? [],
+                MigrationFacts?.ControlFlow ?? [],
+                MigrationOracle,
+                ToolchainAvailable,
+                ToolchainStatus,
+                MigrationArms.Values
+                    .OrderBy(arm => arm.Arm, StringComparer.Ordinal)
+                    .Select(arm => new MigrationArm(
+                        arm.Arm,
+                        arm.Grounding,
+                        arm.Status,
+                        arm.RequestedModel,
+                        arm.ModelUsed,
+                        arm.DurationMs,
+                        arm.PromptTokens,
+                        arm.Code,
+                        arm.Compiled,
+                        arm.CompileErrors.ToArray(),
+                        arm.Cases.ToArray(),
+                        arm.Cases.Count(item => item.Matched),
+                        arm.Error))
+                    .ToArray(),
+                MigrationError));
     }
 
     private sealed class ComparisonSlotState(string slot, string requestedModel)
@@ -1665,6 +1888,23 @@ public sealed class TrainingSessionStore
         public int PromptTokens { get; set; }
         public string? Answer { get; set; }
         public ClaraProgramResult? Verification { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private sealed class MigrationArmState(string arm, string grounding, string requestedModel)
+    {
+        public string Arm { get; } = arm;
+        public string Grounding { get; } = grounding;
+        public string RequestedModel { get; } = requestedModel;
+        public string TaskId { get; set; } = "";
+        public string Status { get; set; } = "pending";
+        public string? ModelUsed { get; set; }
+        public long DurationMs { get; set; }
+        public int PromptTokens { get; set; }
+        public string? Code { get; set; }
+        public bool Compiled { get; set; }
+        public List<string> CompileErrors { get; } = [];
+        public List<MigrationCaseResult> Cases { get; } = [];
         public string? Error { get; set; }
     }
 
@@ -1843,6 +2083,15 @@ public sealed class TrainingSessionStore
             fidelity is an integer 1-5 for how completely the policy captures the requirement (5 = complete and
             correct). issues lists missing/incorrect rules or ambiguities. languageNotes assess CLARA itself.
             Coaching commentary, not a validated grade.
+            """;
+
+        // Deliberately contains no COBOL semantics tuition. Telling every arm about implied decimals or
+        // ROUNDED would hand them the answer and destroy the comparison the tab exists to make.
+        public const string MigrationSystem = """
+            You are a migration engineer converting a legacy COBOL program to C#. You are given the COBOL
+            source, and possibly some analysis artifacts. Reproduce the program's behaviour exactly.
+
+            Return ONLY the C# file. No prose, no Markdown fences, no commentary.
             """;
 
         public const string LanguageCSharpSystem = """

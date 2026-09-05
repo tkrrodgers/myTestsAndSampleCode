@@ -20,7 +20,8 @@ public sealed record TrainingSession(
     AuditState Audit,
     ContextAuditState ContextAudit,
     ClaraState Clara,
-    LanguageTestState LanguageTest);
+    LanguageTestState LanguageTest,
+    MigrationState Migration);
 
 public sealed record BridgeTask(
     string TaskId,
@@ -298,6 +299,57 @@ public sealed record ClaraBenchmarkResult(
     string Summary);
 
 public sealed record ClaraConformanceCase(string Name, bool Passed, string Detail);
+
+// --- COBOL migration A/B/C test (tab 16) ---
+
+public sealed record CobolField(string Name, string Base, int Offset, int Size, string Attribute);
+
+public sealed record CobolFacts(
+    bool Compiled,
+    string Error,
+    IReadOnlyList<CobolField> Fields,
+    IReadOnlyList<string> Paragraphs,
+    IReadOnlyList<string> ControlFlow,
+    string GeneratedC);
+
+public sealed record CobolOracleRun(string Input, string Output, string? Error);
+
+public sealed record MigrationOutput(string Input, string Value, string? Error);
+
+public sealed record MigrationRunResult(
+    bool Ran,
+    string Error,
+    IReadOnlyList<string> CompileErrors,
+    IReadOnlyList<MigrationOutput> Outputs);
+
+public sealed record MigrationCaseResult(string Input, string Expected, string Actual, bool Matched, string? Note);
+
+public sealed record MigrationArm(
+    string Arm,
+    string Grounding,
+    string Status,
+    string RequestedModel,
+    string? ModelUsed,
+    long DurationMs,
+    int PromptTokens,
+    string? Code,
+    bool Compiled,
+    IReadOnlyList<string> CompileErrors,
+    IReadOnlyList<MigrationCaseResult> Cases,
+    int Passed,
+    string? Error);
+
+public sealed record MigrationState(
+    string Status,
+    string CobolSource,
+    string StructuralArtifacts,
+    IReadOnlyList<CobolField> CompilerFields,
+    IReadOnlyList<string> CompilerControlFlow,
+    IReadOnlyList<CobolOracleRun> Oracle,
+    bool ToolchainAvailable,
+    string ToolchainStatus,
+    IReadOnlyList<MigrationArm> Arms,
+    string? Error);
 
 public sealed record ClaraConformanceReport(
     int Total,

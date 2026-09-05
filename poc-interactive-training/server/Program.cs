@@ -2,6 +2,51 @@ using PocInteractiveTraining.Server.Components;
 using PocInteractiveTraining.Server.Models;
 using PocInteractiveTraining.Server.Services;
 
+// Proves the migration harness works end to end without any model: the oracle produces ground truth,
+// a correct reference passes every case, and a plausible-but-wrong one is caught.
+if (args.Contains("--migration-selftest"))
+{
+    var toolchain = new CobolToolchain();
+    Console.WriteLine(toolchain.StatusMessage);
+    if (!toolchain.IsAvailable)
+    {
+        return 2;
+    }
+
+    var facts = toolchain.ExtractFacts(MigrationSamples.CobolSource);
+    Console.WriteLine($"Compiler resolved {facts.Fields.Count} fields, {facts.ControlFlow.Count} control-flow facts.");
+    foreach (var field in facts.Fields)
+    {
+        Console.WriteLine($"  {field.Name,-16} offset {field.Offset,2}  {field.Size} bytes  {field.Attribute}");
+    }
+
+    var oracle = toolchain.RunOracle(MigrationSamples.CobolSource, MigrationSamples.Cases);
+    Console.WriteLine("Oracle:");
+    foreach (var run in oracle)
+    {
+        Console.WriteLine($"  {run.Input} -> {(run.Error is null ? run.Output : "ERROR " + run.Error)}");
+    }
+
+    var sandbox = new MigrationSandbox();
+    var correct = sandbox.Run(MigrationReference.Correct, MigrationSamples.EntryType, MigrationSamples.EntryMethod, MigrationSamples.Cases);
+    var naive = sandbox.Run(MigrationReference.Naive, MigrationSamples.EntryType, MigrationSamples.EntryMethod, MigrationSamples.Cases);
+
+    int Score(MigrationRunResult run) => run.Ran
+        ? run.Outputs.Count(output => MigrationReference.Matches(oracle, output))
+        : -1;
+
+    var correctScore = Score(correct);
+    var naiveScore = Score(naive);
+    Console.WriteLine($"Reference implementation: {correctScore}/{MigrationSamples.Cases.Length} cases match the legacy program.");
+    Console.WriteLine($"Naive implementation:     {naiveScore}/{MigrationSamples.Cases.Length} (expected to be lower - it ignores the implied decimals).");
+
+    var healthy = correctScore == MigrationSamples.Cases.Length && naiveScore < correctScore && facts.Fields.Count > 0;
+    Console.WriteLine(healthy
+        ? "Harness OK: it grades a correct migration as correct and catches a wrong one."
+        : "HARNESS FAILURE: the grader does not discriminate.");
+    return healthy ? 0 : 1;
+}
+
 // Compiles one CLARA file, runs its examples, and reports diagnostics. Usable as a CI gate.
 if (args.Length >= 2 && args[0] == "--clara-check")
 {
@@ -66,12 +111,15 @@ builder.Services.AddSingleton(_ => new EmbeddingGemmaEncoder(
     Path.Combine(builder.Environment.ContentRootPath, "..", "models", "embeddinggemma-300m-onnx")));
 builder.Services.AddSingleton<ContextAuditService>();
 builder.Services.AddSingleton<ClaraBenchmark>();
+builder.Services.AddSingleton<CobolToolchain>();
+builder.Services.AddSingleton<MigrationSandbox>();
 builder.Services.AddSingleton<TrainingSessionStore>();
 
 var app = builder.Build();
 
 // Surface embeddinggemma load status and force the context classifier to train at startup.
 app.Logger.LogInformation("Context audit encoder: {Status}", app.Services.GetRequiredService<EmbeddingGemmaEncoder>().StatusMessage);
+app.Logger.LogInformation("COBOL toolchain: {Status}", app.Services.GetRequiredService<CobolToolchain>().StatusMessage);
 var contextAudit = app.Services.GetRequiredService<ContextAuditService>();
 var contextProbe = contextAudit.Analyze(RoundTripSamples.ContextBundle);
 app.Logger.LogInformation("Context audit self-check: {Label}, score {Score}, confidence {Confidence}%.", contextProbe.PredictedLabel, contextProbe.Score, contextProbe.Confidence);

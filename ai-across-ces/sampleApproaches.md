@@ -16,7 +16,7 @@ This file is **raw lesson fuel**, not a finished lesson. It holds four independe
 | # | Approach | Core theme | Best-fit training module |
 | --- | --- | --- | --- |
 | 1 | AST / DDG / PDG-guided COBOL → Java modernization | Structural-artifact grounding for legacy migration | OKF progressive disclosure, context engineering |
-| 2 | GNUcobol intermediate-C roadmap for COBOL → Java at scale | Bridging an LLM's thin-training-data gap using a proxy language — **premise corrected, see §2.2.1** | Model selection & fit, large-scale migration governance |
+| 2 | GNUcobol intermediate-C roadmap for COBOL → Java at scale | Using the compiler to resolve semantics the source leaves ambiguous — **mechanism corrected, see §2.2.1** | Model selection & fit, large-scale migration governance |
 | 3 | Auditing an LLM+human GCP design before sandbox access | Security/cost/architecture review of AI-assisted infra design | Guardrails & grounding, agent QA |
 | 4 | Testing for agent drift & baselining against golden application code | Continuous evaluation pipeline, golden-dataset methodology | Agent QA & regression framework, measurement/ROI |
 
@@ -216,7 +216,7 @@ Using **GNUcobol** to compile COBOL into intermediate C code is an architectural
 
 > **Local install:** the download at `C:\Users\tkrro\Downloads\gnucobol-3.2_win` is a **source distribution** and contains no `cobc.exe`. A working prebuilt GnuCOBOL 3.2rc1 (MinGW x64) from [mridoni/gnucobol-binaries](https://github.com/mridoni/gnucobol-binaries/releases) is installed at `C:\Users\tkrro\tools\gnucobol-3.2rc1`. Setup, the non-obvious `COB_CONFIG_DIR` fix, and verified commands are in [training-fixture/cobol/README.md](../poc-interactive-training/training-fixture/cobol/README.md).
 >
-> ⚠️ **The core premise of this approach has been tested against the real compiler and does not hold as written.** See [§2.2.1 Correction](#221-correction--what-gnucobol-actually-emits) before building any lesson on this material.
+> **The approach works, but not for the reason given below.** The mechanism is semantic disambiguation, not legibility. See [§2.2.1](#221-correction--what-gnucobol-actually-emits-and-why-it-still-works) before building a lesson on this material.
 
 By shifting the source paradigm from **COBOL → Java** to **COBOL → Intermediate C → Java**, the LLM gets a "Rosetta Stone" that preserves decades of dense subject-matter-expert (SME) business logic.
 
@@ -235,11 +235,11 @@ Direct compilation into C unlocks three critical advantages:
 2. **Flattened control flow** — complex legacy patterns like `PERFORM THRU` or overlapping `GO TO` loops are resolved by the compiler into structured C loop variations, switch blocks, or sequential execution. The LLM no longer has to guess the execution path.
 3. **Rich LLM context** — LLMs are saturated with C source training data. The model understands semantic logic, pointer math, and data modifications far better in C, drastically minimizing functional hallucinations of core business rules.
 
-### 2.2.1 Correction — what GnuCOBOL actually emits
+### 2.2.1 Correction — what GnuCOBOL actually emits, and why it still works
 
-*Added after running the real compiler on the `PAYROLL` fixture. The three claims above were written from an assumed output; the actual output contradicts two of them.*
+*Added after running the real compiler. The reasoning in §2.2 is right about the outcome and wrong about the mechanism. A first correction to this section over-swung and has itself been revised — both errors are recorded because the pattern matters.*
 
-Real `cobc -C` output for the overtime branch:
+**The claimed mechanism does not hold.** Real `cobc -C` output for a calculation:
 
 ```c
 if (((int)cob_cmp_numdisp (b_17 + 5, 2, 40LL, 0) > 0))
@@ -248,23 +248,52 @@ cob_decimal_set_field (d_0, &f_20);
 cob_decimal_mul (d_0, dc_1);
 ```
 
-| Claim above | Verdict | Evidence |
+This is libcob runtime IR, not idiomatic C. Control flow is `goto` chains; arithmetic is `cob_decimal_*` calls. The "LLMs are saturated with C training data" argument does not transfer, because no training corpus contains code shaped like this. **Do not sell this approach on legibility.**
+
+**The real mechanism is semantic disambiguation.** The compiler resolves the things that are genuinely undecidable by reading COBOL — and those are precisely the frontiers that stall a migration. From the `HARDPAY` fixture, which exercises `REDEFINES`, `COMP-3`, `PERFORM THRU` and `ROUNDED`:
+
+```c
+static cob_u8_t b_17[21];                     /* WS-RAW-RECORD */
+static cob_field f_22 = {3, b_17 + 6, &a_5};  /* WS-HOURS-PACKED */
+static cob_field f_23 = {4, b_17 + 9, &a_6};  /* WS-RATE */
+
+a_5 = {0x12, 4, 1, 0x0001}   /* packed decimal, 4 digits, scale 1, signed */
+a_6 = {0x12, 6, 2, 0x0001}   /* packed decimal, 6 digits, scale 2, signed */
+```
+
+That is a **complete resolution of a `REDEFINES` overlay** — named field, exact byte offset, exact length, type, digits, scale and sign. The storage buffers are anonymous; the field descriptors are not. This is the hardest thing to get right migrating COBOL by hand.
+
+Control flow is resolved the same way:
+
+```c
+/* PERFORM 0100-GROSS THRU 0300-NET */
+frame_ptr->perform_through = 7;
+/* Line: 27 : Paragraph 0100-GROSS : HARDPAY.cbl */
+/* Line: 32 : Paragraph 0200-BONUS : HARDPAY.cbl */
+/* Line: 39 : Paragraph 0300-NET   : HARDPAY.cbl */
+/* Implicit PERFORM return */
+```
+
+The `THRU` fall-through range is settled, the implicit return is made explicit, and every construct carries a line-and-paragraph back-reference to the source.
+
+**What the compiler settles that a reader cannot:**
+
+| Frontier | What the COBOL shows | What the compiler settles |
 | --- | --- | --- |
-| Flattened control flow into structured C | **False** | Emits `goto` chains with generated labels (`l_2`, `l_5`, `l_6`). Arguably less legible than the `PERFORM` it replaced. |
-| Explicit memory maps as C structs | **Partly false** | Data is anonymous byte-offset buffers (`b_17 + 5`) plus `cob_field_attr` tables, not named structs. |
-| LLMs are saturated with C training data | **Does not transfer** | True of idiomatic C. This is libcob runtime IR, which is in no training distribution either. |
+| `REDEFINES` overlay | two names over one storage area | exact offset, length and type per field |
+| `COMP-3` / `USAGE` | `PIC S9(3)V9 COMP-3` | 3 bytes, 4 digits, scale 1, signed, sign nibble |
+| `PERFORM THRU` | a paragraph range | resolved fall-through and explicit return |
+| `ROUNDED`, implicit `MOVE` truncation | keyword only | exact `cob_decimal_*` rounding semantics |
+| Dead paragraphs | not visible | unreachable labels |
+| Runtime surface | invisible | the exact `libcob` calls used, which maps to Java library choices |
 
-One claim is understated rather than wrong: the output preserves source traceability comments, e.g.
-`/* Line: 20 : Paragraph 0002-OVERTIME-CALC : PAYROLL.cbl */`, which is genuinely useful for mapping generated artifacts back to legacy paragraphs.
+**How to use it in practice.** The model does not read the generated C as better code; it **queries** it for facts it would otherwise guess. Extract the field table, the control-flow resolution and the runtime call list into the prompt. Do not paste the whole file — most of it is `cob_decimal` plumbing that wastes context.
 
-**What survives.** The compiled program **builds and runs**, producing verifiable ground truth
-(`FINAL PAY: 0950.00` for the fixture, arithmetically correct). That makes GnuCOBOL valuable as an
-**executable test oracle** for differential verification (§2.6) — not as a legibility aid for the model.
-Use it to *grade* migrations, not to *ground* them.
+**And it runs.** `HARDPAY` outputs `NET: +010696.81`, which cannot be derived by reading the source. That makes GnuCOBOL simultaneously a **disambiguation oracle** (what does this mean?) and a **test oracle** (is the Java right?). Both are stronger claims than the original legibility argument.
 
 ### 2.3 Step 1 — Extracting data structures (the C state map)
 
-> ⚠️ The C below is **synthetic** — it is what the original capture assumed GnuCOBOL produces, not what it produces. Real output uses anonymous byte buffers and `cob_field_attr` tables (§2.2.1). Retained to show the original reasoning; do not present it as compiler output.
+> The C below is **synthetic** — it is what the original capture assumed GnuCOBOL produces. The real compiler emits field descriptors with exact offsets and packed-decimal attributes instead (see §2.2.1, which carries the same information in a less pretty form). Retained to show the original reasoning; do not present it as compiler output.
 
 GNUcobol translates the global `WORKING-STORAGE` into structured C types. The LLM reads this C roadmap to map structural dependencies and encapsulate them into decoupled Java domain models.
 
@@ -286,7 +315,7 @@ struct ws_employee_t {
 
 ### 2.4 Step 2 — Parsing procedural business logic
 
-> ⚠️ Also **synthetic**. Real output is `cob_decimal_*` runtime calls and `goto` labels, not the clean branch logic shown here (§2.2.1).
+> Also **synthetic**. Real output is `cob_decimal_*` runtime calls and resolved `goto` labels. The execution order it encodes is correct and useful; the shape is not what is shown here (§2.2.1).
 
 Instead of struggling with implicit COBOL keywords, the LLM reads predictable, sequential C instructions where calculations and local-logic adjustments are fully laid bare.
 
@@ -308,7 +337,9 @@ void payroll_logic(struct ws_employee_t *emp) {
 
 ### 2.5 Step 3 — Injecting the C roadmap into the prompt
 
-The automation harness supplies the LLM with the legacy COBOL snippet (to anchor original business names/comments) and the compiled C roadmap (to anchor exact execution functionality).
+> Corrected shape. Inject the **extracted facts**, not the raw generated C — most of the file is `cob_decimal` plumbing that wastes context (§2.2.1).
+
+The automation harness supplies the LLM with the legacy COBOL snippet (to anchor original business names/comments) and the compiler-resolved facts (to anchor exact layout and execution semantics).
 
 ```text
 System: You are an enterprise migration assistant converting legacy modules to Spring Boot.
@@ -523,7 +554,7 @@ flowchart TB
 
 These recur across all four approaches and are good candidates for a shared "core concepts" module before the four worked examples:
 
-1. **Structural grounding beats raw prompting** — AST/DDG/PDG (Approach 1) and reasoning traces (Approach 4) give the LLM a verifiable skeleton instead of trusting free-form generation. Approach 2's C roadmap was assumed to do the same; testing showed it does not (§2.2.1). **Grounding claims must be verified, not assumed.**
+1. **Structural grounding beats raw prompting** — AST/DDG/PDG (Approach 1), the compiler-resolved field and control-flow maps (Approach 2, §2.2.1), and reasoning traces (Approach 4) all give the LLM a verifiable skeleton instead of trusting free-form generation. **But the stated reason for a grounding technique must be verified, not assumed** — Approach 2 works for a different reason than its author believed.
 2. **Hallucination is a named, expected failure mode** — "functional hallucinations" (Approach 1), "hallucinated GCP features/deprecated APIs" (Approach 3) — both need a concrete detection mechanism, not just caution.
 3. **Golden baselines are the recurring verification pattern** — differential verification against the compiled legacy program (Approach 2) and golden-codebase drift scorecards (Approach 4) are the same idea applied at different scales. Both decide correctness by execution rather than by review.
 4. **Human/AI division of labor is explicit, not assumed** — Approach 3's comparison table is the clearest statement of this and should be reused as a template in other modules (e.g., who reviews security vs. who reviews style).

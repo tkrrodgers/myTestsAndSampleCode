@@ -1,6 +1,11 @@
-# COBOL fixture — `PAYROLL`
+# COBOL fixtures
 
-Source for the COBOL → Java grounding demo. Only `PAYROLL.cbl` is tracked; everything else here is generated.
+Source for the COBOL → Java grounding demo. Only the `.cbl` files are tracked; everything else here is generated.
+
+| Fixture | Purpose |
+| --- | --- |
+| `PAYROLL.cbl` | Minimal happy-path program. Good for smoke-testing the toolchain, useless as a lesson — it has no ambiguity for grounding to resolve. |
+| `HARDPAY.cbl` | The real fixture. Contains `REDEFINES`, `COMP-3` packed decimal, `PERFORM THRU` fall-through, a level-88 condition, `ROUNDED` and `ON SIZE ERROR`. Correct answer is `NET: +010696.81`, which cannot be derived by reading the source. |
 
 ## Toolchain
 
@@ -21,31 +26,42 @@ $env:COB_COPY_DIR   = "$gc\share\gnucobol\copy"
 ## Commands
 
 ```powershell
-cobc -C -x PAYROLL.cbl    # emit the intermediate C roadmap (PAYROLL.c, .c.h, .c.l.h)
-cobc -x PAYROLL.cbl       # build PAYROLL.exe
-.\PAYROLL.exe             # run it -> FINAL PAY: 0950.00
+cobc -C -x HARDPAY.cbl    # emit the intermediate C (HARDPAY.c, .c.h, .c.l.h)
+cobc -x HARDPAY.cbl       # build HARDPAY.exe
+.\HARDPAY.exe             # run it -> NET: +010696.81  OVERFLOW: N
 ```
 
-`0950.00` is correct: 40 h × $20.00 + 5 h × $20.00 × 1.5 = $950.00.
+`PAYROLL.exe` prints `FINAL PAY: 0950.00` — correct: 40 h × $20.00 + 5 h × $20.00 × 1.5 = $950.00.
 
-## What the generated C actually looks like
+## What the generated C is good for
 
-Worth knowing before building a lesson on it. The output is **libcob runtime IR, not idiomatic C**:
+The output is **libcob runtime IR, not idiomatic C** — `goto` chains, `cob_decimal_*` calls, anonymous
+byte buffers. Do not present it as "more readable C." Its value is that it **resolves semantics the
+COBOL source leaves ambiguous**, which is what stalls a migration.
+
+From `HARDPAY.c.l.h` — a complete `REDEFINES` overlay resolution:
 
 ```c
-if (((int)cob_cmp_numdisp (b_17 + 5, 2, 40LL, 0) > 0))
-  goto l_5;
-cob_decimal_set_field (d_0, &f_20);
-cob_decimal_mul (d_0, dc_1);
+static cob_u8_t b_17[21];                     /* WS-RAW-RECORD */
+static cob_field f_22 = {3, b_17 + 6, &a_5};  /* WS-HOURS-PACKED */
+static cob_field f_23 = {4, b_17 + 9, &a_6};  /* WS-RATE */
+
+a_5 = {0x12, 4, 1, 0x0001}   /* packed decimal, 4 digits, scale 1, signed */
+a_6 = {0x12, 6, 2, 0x0001}   /* packed decimal, 6 digits, scale 2, signed */
 ```
 
-- Control flow is `goto` chains with labels (`l_2`, `l_5`), not structured blocks.
-- Arithmetic is `cob_decimal_*` runtime calls, not native operators.
-- Data is anonymous byte-offset buffers (`b_17 + 5`), not named structs.
+Name, exact byte offset, length, type, digits, scale, sign. And control flow:
 
-It does preserve source traceability comments:
-`/* Line: 20 : Paragraph 0002-OVERTIME-CALC : PAYROLL.cbl */`
+```c
+/* PERFORM 0100-GROSS THRU 0300-NET */
+frame_ptr->perform_through = 7;
+/* Line: 27 : Paragraph 0100-GROSS : HARDPAY.cbl */
+/* Implicit PERFORM return */
+```
 
-The durable value of this artifact is as an **executable test oracle** for differential verification,
-not as a legibility aid for the model. See
-[trainingSampleOverview.md](../../../ai-across-ces/trainingSampleOverview.md).
+The `THRU` range is resolved and every construct carries a line-and-paragraph back-reference.
+
+**Extract these facts into the prompt; do not paste the whole file.** Most of it is `cob_decimal`
+plumbing that wastes context. See
+[trainingSampleOverview.md](../../../ai-across-ces/trainingSampleOverview.md) tab 16 and
+[sampleApproaches.md §2.2.1](../../../ai-across-ces/sampleApproaches.md).

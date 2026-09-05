@@ -108,6 +108,11 @@ if (args.Contains("--clara-selftest"))
 
 var builder = WebApplication.CreateBuilder(args);
 
+// This POC is run with `dotnet run -c Release` from the project directory, which resolves to the
+// Production environment - and Production does not load the static web assets manifest. Without this,
+// the scoped-CSS bundle 404s and every `.razor.css` rule silently vanishes.
+builder.WebHost.UseStaticWebAssets();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddSingleton<TrainingFixtureProvider>();

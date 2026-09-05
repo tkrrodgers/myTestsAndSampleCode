@@ -1350,6 +1350,96 @@
 						}
 					</section>
 					break;
+				case 18:
+					<section>
+						<p class="kicker">IS THE AGENT STILL DOING THE JOB?</p>
+						<h2 id="scene-title">One golden case, three layers of drift</h2>
+						<p class="rt-intro">A frozen commit, the ticket, and the patch a competent human wrote. A candidate patch is scored across three layers: <strong>functional</strong>, <strong>structural</strong> and <strong>semantic</strong>. The first two are deterministic. Only the last asks a model — and only about intent.</p>
+
+						@if (_session?.Drift is { } drift)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>The golden case</strong><small>ticket + frozen commit + the human patch</small></div></header>
+								<pre class="rt-story">@drift.Ticket</pre>
+								<div class="rt-flow">
+									<div><h4>Frozen baseline</h4><pre class="rt-code">@drift.FrozenCode</pre></div>
+									<div><h4>Human patch</h4><pre class="rt-code">@drift.HumanPatch</pre></div>
+								</div>
+							</section>
+
+							<section class="rt-box rt-input-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Candidate patch</strong><small>@drift.CandidateLabel</small></div></header>
+								<pre class="rt-code">@drift.CandidatePatch</pre>
+								<div class="rt-actions">
+									<small>Score the drifted patch, or the human patch as a control</small>
+									<div>
+										<button class="secondary-command compact" type="button" disabled="@(!_bridgeConnected || DriftBusy)" @onclick="() => RunDrift(true)">Score the control</button>
+										<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || DriftBusy)" @onclick="() => RunDrift(false)">@(DriftBusy ? "Scoring…" : "Score the agent patch")</button>
+									</div>
+								</div>
+								@if (!_bridgeConnected)
+								{
+									<p class="bridge-required" role="status">The structural layer below works without the bridge. Connect the VSIX to add the semantic layer.</p>
+								}
+							</section>
+
+							@if (drift.Structural is { } structural)
+							{
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">3</span><div><strong>Structural layer</strong><small>deterministic · diffed against the human patch</small></div></header>
+									<div class="@(structural.Score == 100 ? "compare-status" : "compare-status failed")" role="status">
+										Structural score @structural.Score / 100
+									</div>
+									<table class="audit-table">
+										<thead><tr><th>Check</th><th>Held</th><th>Detail</th></tr></thead>
+										<tbody>
+											@foreach (var finding in structural.Findings)
+											{
+												<tr><td>@finding.Name</td><td>@(finding.Present ? "yes" : "no")</td><td>@finding.Detail</td></tr>
+											}
+										</tbody>
+									</table>
+									<h4>Functional layer — the verification oracle</h4>
+									<ul class="rt-list">@foreach (var check in DriftSamples.Oracle) { <li>@check.Name — <code>@check.Assertion</code></li> }</ul>
+								</section>
+							}
+
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">4</span><div><strong>Semantic layer</strong><small>@(drift.Semantic?.Model ?? "Claude Opus 5") · goal fidelity and scope discipline</small></div></header>
+								@if (drift.Semantic is { } semantic)
+								{
+									<div class="clara-signature">
+										Goal fidelity <strong>@semantic.GoalFidelity/5</strong> · scope discipline <strong>@semantic.ScopeDiscipline/5</strong>
+									</div>
+									<p class="rt-reco">@semantic.Verdict</p>
+									@if (semantic.Deviations.Count > 0)
+									{
+										<h4>Departures from the ticket</h4>
+										<ul class="rt-list warn">@foreach (var item in semantic.Deviations) { <li>@item</li> }</ul>
+									}
+									<h4>Read this carefully</h4>
+									<ul class="rt-list warn">
+										<li>One golden case. A drift programme needs 30–50; this proves the scorecard, not the trend.</li>
+										<li>Drift is measured over time. A single score is a reading, not a direction.</li>
+										<li>The functional and structural layers are reproducible. The semantic layer is a model's opinion and should be anchored to a human-labelled gold set before anyone acts on it.</li>
+									</ul>
+								}
+								else if (DriftBusy)
+								{
+									<div class="rt-pending"><span></span>Claude is assessing goal fidelity and scope discipline…</div>
+								}
+								else if (drift.Status == "failed")
+								{
+									<div class="compare-status failed" role="alert">@(drift.Error ?? "The review did not complete.")</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">The semantic assessment will appear here.</div>
+								}
+							</section>
+						}
+					</section>
+					break;
 			}
 		</article>
 
@@ -1376,7 +1466,7 @@
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt")];
+	private static readonly (string Id, string Title)[] Scenes = [("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -1411,7 +1501,8 @@
 		"The same ticket, the same model, no context either way. One arm sees an ordinary C# class where the local policy knowledge lives only in people's heads; the other sees a CLARA policy that carries that knowledge inline. Claude then grades both against sealed criteria neither arm ever saw.",
 		"Three migrations of the same COBOL program, with increasing amounts of grounding — none, static analysis, and facts resolved by the COBOL compiler itself. Every answer is compiled and executed against outputs captured from the real legacy program. Nothing here is graded by a model.",
 		"Most agent failures are underspecified tickets, not weak models. A deterministic pre-check scores the ticket before any model sees it, then Claude grades it against the rubric and rewrites it so it would pass.",
-		"A proposed cloud sandbox with defects planted in it. Gemma audits the design against the five-pillar checklist, and Claude grades the audit against the sealed list of what was actually planted."
+		"A proposed cloud sandbox with defects planted in it. Gemma audits the design against the five-pillar checklist, and Claude grades the audit against the sealed list of what was actually planted.",
+		"One golden case: a frozen commit, the ticket, and the patch a human wrote. A candidate patch is scored across three layers — functional, structural and semantic. The first two are deterministic; only the last asks a model."
 	];
 
 	private TrainingSession? _session;
@@ -1518,6 +1609,8 @@
 		? "Connect VSIX to audit"
 		: TrapBusy ? "Auditing…" : "Run the audit";
 
+	private bool DriftBusy => _session?.Drift.Status is "running";
+
 	protected override void OnInitialized()
 	{
 		_session = Store.CreateSession();
@@ -1554,6 +1647,7 @@
 	private void RunMigration() { if (_session is null) return; Store.QueueMigration(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
 	private void RunTicketGate() { if (_session is null || _ticketText.Trim().Length < 10) return; Store.QueueTicketGate(_session.SessionId, _ticketText.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunTrapHunt() { if (_session is null) return; Store.QueueTrapHunt(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
+	private void RunDrift(bool human) { if (_session is null) return; Store.QueueDriftReview(_session.SessionId, human); _session = Store.GetSession(_session.SessionId); }
 
 	private async Task RunBenchmark()
 	{

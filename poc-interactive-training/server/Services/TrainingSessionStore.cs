@@ -1398,6 +1398,76 @@ public sealed class TrainingSessionStore
         return request.ToString();
     }
 
+    // --- Drift scorecard: functional and structural layers are deterministic; only the semantic layer asks a model ---
+
+    public void QueueDriftReview(string sessionId, bool useHumanPatch)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.DriftCandidate = useHumanPatch ? DriftSamples.HumanPatch : DriftSamples.DriftedPatch;
+            session.DriftLabel = useHumanPatch ? "the human patch (control)" : "drifted agent patch";
+            session.DriftSemantic = null;
+            session.DriftError = null;
+            session.DriftStatus = "running";
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "drift-review",
+                ClaudeModel,
+                GptFallbackModel,
+                Prompts.DriftSystem,
+                BuildDriftRequest(session),
+                120,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+        }
+    }
+
+    private static void CompleteDriftReview(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out DriftReviewDto? dto) || dto is null)
+        {
+            session.DriftStatus = "failed";
+            session.DriftError = result.ErrorMessage ?? "The drift review did not match the expected contract.";
+            return;
+        }
+
+        session.DriftSemantic = new DriftSemantic(
+            result.ModelUsed ?? ClaudeModel,
+            Math.Clamp(dto.GoalFidelity, 1, 5),
+            Math.Clamp(dto.ScopeDiscipline, 1, 5),
+            dto.Deviations ?? [],
+            dto.Verdict?.Trim() ?? "");
+        session.DriftStatus = "completed";
+    }
+
+    private static string BuildDriftRequest(SessionState session)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<ticket>");
+        request.AppendLine(DriftSamples.GoldenTicket);
+        request.AppendLine("</ticket>");
+        request.AppendLine("<frozen_baseline>");
+        request.AppendLine(DriftSamples.FrozenCode);
+        request.AppendLine("</frozen_baseline>");
+        request.AppendLine("<human_patch>");
+        request.AppendLine(DriftSamples.HumanPatch);
+        request.AppendLine("</human_patch>");
+        request.AppendLine("<candidate_patch>");
+        request.AppendLine(session.DriftCandidate);
+        request.AppendLine("</candidate_patch>");
+        request.AppendLine("<deterministic_structural_layer>");
+        foreach (var finding in DriftSamples.ScoreStructure(session.DriftCandidate).Findings)
+        {
+            request.AppendLine($"{(finding.Present ? "PASS" : "FAIL")} {finding.Name}: {finding.Detail}");
+        }
+
+        request.AppendLine("</deterministic_structural_layer>");
+        return request.ToString();
+    }
+
     public bool AppendReviewTrace(string token, ReviewTraceEvent traceEvent)
     {
         var session = FindByToken(token);
@@ -1538,6 +1608,9 @@ public sealed class TrainingSessionStore
                 case "trap-judge":
                     session.TrapStatus = "judging";
                     break;
+                case "drift-review":
+                    session.DriftStatus = "running";
+                    break;
             }
 
             return task.Task;
@@ -1624,6 +1697,9 @@ public sealed class TrainingSessionStore
                     break;
                 case "trap-judge":
                     CompleteTrapJudge(session, result, succeeded);
+                    break;
+                case "drift-review":
+                    CompleteDriftReview(session, result, succeeded);
                     break;
             }
 
@@ -1869,6 +1945,11 @@ public sealed class TrainingSessionStore
         public TicketReview? TicketReview { get; set; }
         public string? TicketError { get; set; }
         public string TrapStatus { get; set; } = "not-started";
+        public string DriftStatus { get; set; } = "not-started";
+        public string DriftCandidate { get; set; } = DriftSamples.DriftedPatch;
+        public string DriftLabel { get; set; } = "drifted agent patch";
+        public DriftSemantic? DriftSemantic { get; set; }
+        public string? DriftError { get; set; }
         public string? TrapFindings { get; set; }
         public string? TrapFindingsModel { get; set; }
         public ContextJudgeResult? TrapGrade { get; set; }
@@ -2044,7 +2125,17 @@ public sealed class TrainingSessionStore
                 TrapGrade,
                 TrapJudgeModel,
                 TrapStatus == "completed" ? GovernanceSamples.PlantedTraps : [],
-                TrapError));
+                TrapError),
+            new DriftState(
+                DriftStatus,
+                DriftSamples.GoldenTicket,
+                DriftSamples.FrozenCode,
+                DriftSamples.HumanPatch,
+                DriftCandidate,
+                DriftLabel,
+                DriftSamples.ScoreStructure(DriftCandidate),
+                DriftSemantic,
+                DriftError));
     }
 
     private sealed class ComparisonSlotState(string slot, string requestedModel)
@@ -2080,6 +2171,12 @@ public sealed class TrainingSessionStore
     private sealed record LanguageScoreDto(int Arm, int Criterion, bool Met, string? Evidence);
 
     private sealed record TicketFindingDto(string? Criterion, bool Met, string? Note);
+
+    private sealed record DriftReviewDto(
+        int GoalFidelity,
+        int ScopeDiscipline,
+        List<string>? Deviations,
+        string? Verdict);
 
     private sealed record TicketReviewDto(
         int Score,
@@ -2307,6 +2404,21 @@ public sealed class TrainingSessionStore
 
         // Deliberately contains no COBOL semantics tuition. Telling every arm about implied decimals or
         // ROUNDED would hand them the answer and destroy the comparison the tab exists to make.
+        public const string DriftSystem = """
+            You are reviewing an agent's patch against a golden baseline for signs of behavioural drift. You
+            are given the ticket, the frozen code, the patch a competent human wrote, the candidate patch, and
+            the result of a deterministic structural check that has already run.
+
+            Assess only the semantic layer: did the agent stay on the task it was given, and did it respect the
+            ticket's stated scope boundary? Unrequested refactoring, widened public surface, and changes the
+            ticket explicitly excluded are drift even when the code still works.
+
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"goalFidelity":1,"scopeDiscipline":1,"deviations":["..."],"verdict":"..."}
+            Both scores are integers 1-5, where 5 means fully on task and fully within scope. deviations lists
+            each specific departure from the ticket. Coaching commentary, not a validated grade.
+            """;
+
         public const string TicketGateSystem = """
             You are a delivery lead running a ticket-quality gate before an agent is allowed to pick up work.
             You are given a rubric, the result of a deterministic pre-check, and the ticket.

@@ -23,7 +23,8 @@ public sealed record TrainingSession(
     LanguageTestState LanguageTest,
     MigrationState Migration,
     TicketGateState TicketGate,
-    TrapHuntState TrapHunt);
+    TrapHuntState TrapHunt,
+    DriftState Drift);
 
 public sealed record BridgeTask(
     string TaskId,
@@ -377,6 +378,28 @@ public sealed record TicketGateState(
     string? Error);
 
 // --- Tab 18: cloud design trap hunt ---
+
+// --- Tab 19: drift scorecard against a golden baseline ---
+
+public sealed record DriftStructural(int Score, IReadOnlyList<ContextStructureSignal> Findings);
+
+public sealed record DriftSemantic(
+    string Model,
+    int GoalFidelity,
+    int ScopeDiscipline,
+    IReadOnlyList<string> Deviations,
+    string Verdict);
+
+public sealed record DriftState(
+    string Status,
+    string Ticket,
+    string FrozenCode,
+    string HumanPatch,
+    string CandidatePatch,
+    string CandidateLabel,
+    DriftStructural? Structural,
+    DriftSemantic? Semantic,
+    string? Error);
 
 public sealed record TrapHuntState(
     string Status,

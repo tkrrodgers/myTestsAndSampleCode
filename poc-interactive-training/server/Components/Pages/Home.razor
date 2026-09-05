@@ -132,9 +132,10 @@
 					break;
 				case 3:
 					<section>
-						<div class="illustration-label">Illustration — example investigation flow</div>
-						<h2 id="scene-title">From FUL-1842 to the implementation seam</h2>
-						<p class="story"><strong>FUL-1842</strong> Show a revised delivery estimate after a confirmed carrier delay, preserve the original otherwise, and expose the estimate source.</p>
+						<p class="kicker">DOES THE CONTEXT ACTUALLY CARRY THE WORK?</p>
+						<h2 id="scene-title">From FUL-1842 to a grounded change</h2>
+						<p class="rt-intro">The claim behind every context artifact is that an agent given <em>only</em> the governed context can resolve the ticket correctly. Here it is tested: Gemma 4 gets the OKF bundle and the source, implements <strong>FUL-1842</strong>, and Claude then traces each change back to the <strong>specific document and sentence</strong> that justifies it — and checks whether the deliberately missing fact was flagged rather than invented.</p>
+
 						<div class="trace-grid">
 							@for (var index = 0; index < TraceSteps.Length; index++)
 							{
@@ -143,6 +144,103 @@
 							}
 						</div>
 						<div class="trace-evidence" aria-live="polite"><p class="eyebrow">OBSERVABLE EVIDENCE</p><h3>@TraceSteps[_traceStep].Finding</h3><p>@TraceSteps[_traceStep].Result</p><code>@TraceSteps[_traceStep].Path</code></div>
+
+						@if (_session?.GroundedChange is { } change)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>The context the agent is given</strong><small>the OKF bundle and the current source · nothing else is available to it</small></div></header>
+								@foreach (var artifact in change.Context.Where(item => item.Kind != "jira"))
+								{
+									<details class="artifact-detail">
+										<summary><code>@artifact.Path</code> <small>@artifact.Kind</small></summary>
+										<pre class="rt-code">@artifact.Content</pre>
+									</details>
+								}
+							</section>
+
+							<section class="rt-box rt-input-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>The ticket</strong><small>FUL-1842 · it never names the API field for estimate source — that omission is deliberate</small></div></header>
+								<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_changeJira" @bind:event="oninput" disabled="@ChangeBusy" aria-label="JIRA ticket"></textarea>
+								<div class="rt-actions">
+									<small>@(change.PromptTokens > 0 ? $"{change.PromptTokens:N0} prompt tokens" : "context + ticket")</small>
+									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || ChangeBusy)" @onclick="RunGroundedChange">@ChangeButtonText</button>
+								</div>
+								@if (!_bridgeConnected)
+								{
+									<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running.</p>
+								}
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>The implemented change</strong><small>@(change.ImplementationModel ?? "Gemma 4") · working only from the artifacts above</small></div></header>
+								@if (!string.IsNullOrEmpty(change.Implementation))
+								{
+									<pre class="rt-code">@change.Implementation</pre>
+								}
+								else if (change.Status == "implementing")
+								{
+									<div class="rt-pending"><span></span>Gemma 4 is implementing the ticket from the OKF bundle…</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">The implementation will appear here.</div>
+								}
+							</section>
+
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">4</span><div><strong>Where did each change come from?</strong><small>@(change.Audit?.Model ?? "Claude Opus 5") · every decision traced to a quoted sentence</small></div></header>
+								@if (change.Audit is { } audit)
+								{
+									<div class="@(audit.OpenQuestionRaised ? "compare-status" : "compare-status failed")" role="status">
+										@(audit.OpenQuestionRaised
+											? "The missing API field name was raised as an open question, not invented."
+											: "The missing API field name was NOT raised — the agent invented or ignored it.")
+									</div>
+									@if (!string.IsNullOrEmpty(audit.OpenQuestionNote))
+									{
+										<p class="rt-reco">@audit.OpenQuestionNote</p>
+									}
+									<table class="audit-table">
+										<thead><tr><th>Change</th><th>Justified by</th><th>The statement it rests on</th><th></th></tr></thead>
+										<tbody>
+											@foreach (var citation in audit.Citations)
+											{
+												<tr>
+													<td>@citation.Change</td>
+													<td><code>@citation.Document</code></td>
+													<td>“@citation.Statement”</td>
+													<td>@(citation.Grounded ? "grounded" : "UNSUPPORTED")</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									@if (audit.Ungrounded.Count > 0)
+									{
+										<h4>Asserted without support in any artifact</h4>
+										<ul class="rt-list warn">@foreach (var item in audit.Ungrounded) { <li>@item</li> }</ul>
+									}
+									<p class="rt-reco">@audit.Verdict</p>
+									<h4>Read this carefully</h4>
+									<ul class="rt-list warn">
+										<li>This shows the context was <em>sufficient</em> for this ticket. It does not show it is sufficient for the next one.</li>
+										<li>A quoted sentence proves the claim exists in the artifact. It does not prove the artifact is correct or current — check <code>verified</code> and <code>stale_after</code>.</li>
+										<li>The audit is a model reading another model. The one objective signal here is the open question: it was planted, so either it was raised or it was not.</li>
+									</ul>
+								}
+								else if (change.Status == "auditing")
+								{
+									<div class="rt-pending"><span></span>Claude is tracing each change back to its source statement…</div>
+								}
+								else if (change.Status == "failed")
+								{
+									<div class="compare-status failed" role="alert">@(change.Error ?? "The demo did not complete.")</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">The citation audit will appear here once the change is implemented.</div>
+								}
+							</section>
+						}
 					</section>
 					break;
 				case 4:
@@ -1542,6 +1640,7 @@ cobol85  -&gt; 000000</pre>
 	private string _claraJira = RoundTripSamples.ClaraJira;
 	private string _languageJira = LanguageTestSamples.Jira;
 	private string _ticketText = GovernanceSamples.WeakTicket;
+	private string _changeJira = "";
 	private ClaraBenchmarkResult? _benchmark;
 	private ClaraConformanceReport? _conformance;
 	private bool _benchmarkRunning;
@@ -1630,9 +1729,15 @@ cobol85  -&gt; 000000</pre>
 
 	private bool DriftBusy => _session?.Drift.Status is "running";
 
+	private bool ChangeBusy => _session?.GroundedChange.Status is "implementing" or "auditing";
+	private string ChangeButtonText => !_bridgeConnected
+		? "Connect VSIX to run"
+		: ChangeBusy ? "Working…" : "Resolve the ticket from context";
+
 	protected override void OnInitialized()
 	{
 		_session = Store.CreateSession();
+		_changeJira = _session.GroundedChange.Jira;
 		_timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
 		_ = PollAsync();
 	}
@@ -1667,6 +1772,7 @@ cobol85  -&gt; 000000</pre>
 	private void RunTicketGate() { if (_session is null || _ticketText.Trim().Length < 10) return; Store.QueueTicketGate(_session.SessionId, _ticketText.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunTrapHunt() { if (_session is null) return; Store.QueueTrapHunt(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
 	private void RunDrift(bool human) { if (_session is null) return; Store.QueueDriftReview(_session.SessionId, human); _session = Store.GetSession(_session.SessionId); }
+	private void RunGroundedChange() { if (_session is null) return; Store.QueueGroundedChange(_session.SessionId, _changeJira); _session = Store.GetSession(_session.SessionId); }
 
 	private async Task RunBenchmark()
 	{

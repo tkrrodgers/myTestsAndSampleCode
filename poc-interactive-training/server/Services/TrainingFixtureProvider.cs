@@ -30,6 +30,33 @@ public sealed class TrainingFixtureProvider
 
     public string GroundingPacket => _groundingPacket.Value;
 
+    // The artifacts as separate documents, so the UI can show what the agent was actually given.
+    public IReadOnlyList<Models.FixtureArtifact> Artifacts()
+    {
+        var artifacts = new List<Models.FixtureArtifact>();
+        foreach (var path in ArtifactPaths.Where(path => path != "README.md"))
+        {
+            var file = Path.Combine(_fixtureRoot, path.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(file))
+            {
+                continue;
+            }
+
+            var kind = path.StartsWith("jira/", StringComparison.Ordinal) ? "jira"
+                : path.StartsWith("okf/", StringComparison.Ordinal) ? "okf"
+                : "source";
+            artifacts.Add(new Models.FixtureArtifact(path, kind, File.ReadAllText(file)));
+        }
+
+        return artifacts;
+    }
+
+    public string Read(string path)
+    {
+        var file = Path.Combine(_fixtureRoot, path.Replace('/', Path.DirectorySeparatorChar));
+        return File.Exists(file) ? File.ReadAllText(file) : "";
+    }
+
     public string BuildCoachRequest() => $$"""
         {{GroundingPacket}}
 

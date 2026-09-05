@@ -24,7 +24,8 @@ public sealed record TrainingSession(
     MigrationState Migration,
     TicketGateState TicketGate,
     TrapHuntState TrapHunt,
-    DriftState Drift);
+    DriftState Drift,
+    GroundedChangeState GroundedChange);
 
 public sealed record BridgeTask(
     string TaskId,
@@ -355,6 +356,34 @@ public sealed record MigrationState(
     string? Error);
 
 // --- Tab 17: ticket quality gate ---
+
+// --- Scene 4: does the OKF context actually let an agent resolve the JIRA? ---
+
+public sealed record FixtureArtifact(string Path, string Kind, string Content);
+
+public sealed record GroundingCitation(
+    string Change,
+    string Document,
+    string Statement,
+    bool Grounded);
+
+public sealed record GroundedChangeAudit(
+    string Model,
+    IReadOnlyList<GroundingCitation> Citations,
+    IReadOnlyList<string> Ungrounded,
+    bool OpenQuestionRaised,
+    string OpenQuestionNote,
+    string Verdict);
+
+public sealed record GroundedChangeState(
+    string Status,
+    string Jira,
+    IReadOnlyList<FixtureArtifact> Context,
+    string? Implementation,
+    string? ImplementationModel,
+    int PromptTokens,
+    GroundedChangeAudit? Audit,
+    string? Error);
 
 public sealed record TicketPrecheck(
     int Score,

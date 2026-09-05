@@ -231,10 +231,14 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 }
 
 .stage {
-    display: grid;
-    grid-template-rows: auto auto minmax(500px, 1fr) auto;
+    display: flex;
+    flex-direction: column;
     min-width: 0;
     min-height: 100vh;
+}
+
+.stage-header, .model-banner, .stage-footer {
+    flex: 0 0 auto;
 }
 
 .stage-header {
@@ -296,7 +300,8 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 .scene {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    align-items: center;
+    align-content: start;
+    flex: 1 1 auto;
     min-width: 0;
     padding: clamp(34px, 5vw, 76px) clamp(26px, 6vw, 88px);
     overflow: hidden;
@@ -1253,7 +1258,7 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     .scene-list button span { font-size: .76rem; }
     .scene-list li.active button { border-bottom-color: var(--coral); }
     .bridge-state { margin-top: 0; padding-top: 12px; }
-    .stage { min-height: auto; grid-template-rows: auto auto minmax(620px, auto) auto; }
+    .stage { min-height: auto; }
     .stage-header { min-height: 64px; }
     .scene { padding: 36px 20px; overflow: visible; }
     .scene h2 { font-size: clamp(2.15rem, 12vw, 3.4rem); }
@@ -1909,6 +1914,28 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     color: var(--muted);
     font-size: .72rem;
     font-style: italic;
+}
+
+.artifact-detail {
+    border-top: 1px solid var(--line);
+}
+
+.artifact-detail summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: .8rem;
+}
+
+.artifact-detail summary small {
+    margin-left: 8px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-size: .62rem;
+}
+
+.artifact-detail[open] summary {
+    background: #f6f4ee;
 }
 
 .clara-signature {

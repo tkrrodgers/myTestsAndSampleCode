@@ -30,6 +30,16 @@ public sealed class TrainingSessionStore
     private static bool TokensAreExact;
     private static bool ToolchainAvailable;
     private static string ToolchainStatus = "not probed";
+    private static IReadOnlyList<FixtureArtifact> FixtureArtifacts = [];
+    private static string FixtureJira = "";
+
+    // The fixture ticket ends with a section naming the omission. That is a note to the training author,
+    // not part of the ticket - leaving it in would hand the planted open question straight to the model.
+    private static string StripPlantedHint(string ticket)
+    {
+        var marker = ticket.IndexOf("## Intentionally Missing", StringComparison.Ordinal);
+        return marker < 0 ? ticket.Trim() : ticket[..marker].TrimEnd();
+    }
 
     private static readonly string[] ContextTraps =
     [
@@ -56,6 +66,8 @@ public sealed class TrainingSessionStore
         TokensAreExact = exact;
         ToolchainAvailable = _cobol.IsAvailable;
         ToolchainStatus = _cobol.StatusMessage;
+        FixtureArtifacts = _fixture.Artifacts();
+        FixtureJira = StripPlantedHint(_fixture.Read("jira/FUL-1842.md"));
     }
 
     public TrainingSession CreateSession()
@@ -1468,6 +1480,123 @@ public sealed class TrainingSessionStore
         return request.ToString();
     }
 
+    // --- Scene 4: implement the JIRA from the OKF bundle, then trace every change back to a cited statement ---
+
+    public void QueueGroundedChange(string sessionId, string jira)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.ChangeJira = string.IsNullOrWhiteSpace(jira) ? FixtureJira : jira.Trim();
+            session.ChangeCode = null;
+            session.ChangeModel = null;
+            session.ChangeAudit = null;
+            session.ChangeError = null;
+            session.ChangeStatus = "implementing";
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "grounded-change",
+                GemmaModel,
+                GptFallbackModel,
+                Prompts.GroundedChangeSystem,
+                BuildGroundedChangeRequest(session),
+                150,
+                DateTimeOffset.UtcNow);
+
+            session.ChangePromptTokens = _encoder.CountTokens(task.SystemPrompt + "\n" + task.UserPrompt).Tokens;
+            session.Tasks[task.TaskId] = new TaskState(task);
+        }
+    }
+
+    private void CompleteGroundedChange(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || string.IsNullOrWhiteSpace(result.Content))
+        {
+            session.ChangeStatus = "failed";
+            session.ChangeError = result.ErrorMessage ?? "The implementation task returned nothing.";
+            return;
+        }
+
+        session.ChangeCode = result.Content.Trim();
+        session.ChangeModel = result.ModelUsed;
+
+        var audit = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "grounded-change-audit",
+            ClaudeModel,
+            null,
+            Prompts.GroundedAuditSystem,
+            BuildGroundedAuditRequest(session),
+            150,
+            DateTimeOffset.UtcNow);
+        session.Tasks[audit.TaskId] = new TaskState(audit);
+        session.ChangeStatus = "auditing";
+    }
+
+    private static void CompleteGroundedAudit(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out GroundedAuditDto? dto) || dto is null)
+        {
+            session.ChangeStatus = "failed";
+            session.ChangeError = result.ErrorMessage ?? "The citation audit did not match the expected contract.";
+            return;
+        }
+
+        session.ChangeAudit = new GroundedChangeAudit(
+            result.ModelUsed ?? ClaudeModel,
+            (dto.Citations ?? []).Select(citation => new GroundingCitation(
+                citation.Change?.Trim() ?? "",
+                citation.Document?.Trim() ?? "",
+                citation.Statement?.Trim() ?? "",
+                citation.Grounded)).ToList(),
+            dto.Ungrounded ?? [],
+            dto.OpenQuestionRaised,
+            dto.OpenQuestionNote?.Trim() ?? "",
+            dto.Verdict?.Trim() ?? "");
+        session.ChangeStatus = "completed";
+    }
+
+    private string BuildGroundedChangeRequest(SessionState session)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<jira>");
+        request.AppendLine(session.ChangeJira);
+        request.AppendLine("</jira>");
+
+        foreach (var artifact in _fixture.Artifacts().Where(artifact => artifact.Kind != "jira"))
+        {
+            request.AppendLine($"<artifact path=\"{artifact.Path}\">");
+            request.AppendLine(artifact.Content);
+            request.AppendLine("</artifact>");
+        }
+
+        request.AppendLine("Implement the change. For every decision you make, cite the artifact path that justifies it.");
+        return request.ToString();
+    }
+
+    private string BuildGroundedAuditRequest(SessionState session)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<jira>");
+        request.AppendLine(session.ChangeJira);
+        request.AppendLine("</jira>");
+
+        foreach (var artifact in _fixture.Artifacts().Where(artifact => artifact.Kind != "jira"))
+        {
+            request.AppendLine($"<artifact path=\"{artifact.Path}\">");
+            request.AppendLine(artifact.Content);
+            request.AppendLine("</artifact>");
+        }
+
+        request.AppendLine("<implementation>");
+        request.AppendLine(session.ChangeCode);
+        request.AppendLine("</implementation>");
+        return request.ToString();
+    }
+
     public bool AppendReviewTrace(string token, ReviewTraceEvent traceEvent)
     {
         var session = FindByToken(token);
@@ -1611,6 +1740,12 @@ public sealed class TrainingSessionStore
                 case "drift-review":
                     session.DriftStatus = "running";
                     break;
+                case "grounded-change":
+                    session.ChangeStatus = "implementing";
+                    break;
+                case "grounded-change-audit":
+                    session.ChangeStatus = "auditing";
+                    break;
             }
 
             return task.Task;
@@ -1700,6 +1835,12 @@ public sealed class TrainingSessionStore
                     break;
                 case "drift-review":
                     CompleteDriftReview(session, result, succeeded);
+                    break;
+                case "grounded-change":
+                    CompleteGroundedChange(session, result, succeeded);
+                    break;
+                case "grounded-change-audit":
+                    CompleteGroundedAudit(session, result, succeeded);
                     break;
             }
 
@@ -1946,6 +2087,13 @@ public sealed class TrainingSessionStore
         public string? TicketError { get; set; }
         public string TrapStatus { get; set; } = "not-started";
         public string DriftStatus { get; set; } = "not-started";
+        public string ChangeStatus { get; set; } = "not-started";
+        public string? ChangeJira { get; set; }
+        public string? ChangeCode { get; set; }
+        public string? ChangeModel { get; set; }
+        public int ChangePromptTokens { get; set; }
+        public GroundedChangeAudit? ChangeAudit { get; set; }
+        public string? ChangeError { get; set; }
         public string DriftCandidate { get; set; } = DriftSamples.DriftedPatch;
         public string DriftLabel { get; set; } = "drifted agent patch";
         public DriftSemantic? DriftSemantic { get; set; }
@@ -2135,7 +2283,16 @@ public sealed class TrainingSessionStore
                 DriftLabel,
                 DriftSamples.ScoreStructure(DriftCandidate),
                 DriftSemantic,
-                DriftError));
+                DriftError),
+            new GroundedChangeState(
+                ChangeStatus,
+                ChangeJira ?? FixtureJira,
+                FixtureArtifacts,
+                ChangeCode,
+                ChangeModel,
+                ChangePromptTokens,
+                ChangeAudit,
+                ChangeError));
     }
 
     private sealed class ComparisonSlotState(string slot, string requestedModel)
@@ -2176,6 +2333,15 @@ public sealed class TrainingSessionStore
         int GoalFidelity,
         int ScopeDiscipline,
         List<string>? Deviations,
+        string? Verdict);
+
+    private sealed record GroundedCitationDto(string? Change, string? Document, string? Statement, bool Grounded);
+
+    private sealed record GroundedAuditDto(
+        List<GroundedCitationDto>? Citations,
+        List<string>? Ungrounded,
+        bool OpenQuestionRaised,
+        string? OpenQuestionNote,
         string? Verdict);
 
     private sealed record TicketReviewDto(
@@ -2404,6 +2570,41 @@ public sealed class TrainingSessionStore
 
         // Deliberately contains no COBOL semantics tuition. Telling every arm about implied decimals or
         // ROUNDED would hand them the answer and destroy the comparison the tab exists to make.
+        public const string GroundedChangeSystem = """
+            You are a software engineer implementing a JIRA ticket. You are given the ticket and an Open
+            Knowledge Format (OKF) context bundle: an index, a business concept, an architecture boundary, a
+            decision record, a code map, and the current source files.
+
+            Work from the context. Follow the links: index -> concept -> boundary and decision -> code map ->
+            source. Do not search beyond what you were given, and do not invent facts the artifacts do not state.
+
+            Produce the updated source files. For every decision, add a short comment citing the artifact path
+            that justifies it, for example: // OKF: okf/decisions/adr-024-delay-source.md
+
+            If the ticket depends on something the context does not specify, DO NOT invent it. Implement what
+            you can, leave the unspecified part clearly marked, and finish with an "OPEN QUESTION:" line naming
+            what is missing and who should answer it.
+
+            Return the code and that closing section. No Markdown fences.
+            """;
+
+        public const string GroundedAuditSystem = """
+            You are auditing whether an implementation is genuinely grounded in the context it was given. You
+            have the JIRA ticket, the full OKF bundle and source, and the implementation another model produced.
+
+            For each substantive decision in the implementation, identify the artifact that justifies it and
+            QUOTE the specific sentence from that artifact. Mark grounded=false when the implementation asserts
+            something no artifact supports - that is the failure mode this exercise exists to catch.
+
+            The ticket deliberately omits one fact: the API field name that communicates the estimate source.
+            A correct implementation raises it as an open question instead of inventing a name.
+
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"citations":[{"change":"...","document":"okf/...","statement":"quoted sentence","grounded":true}],
+             "ungrounded":["..."],"openQuestionRaised":true,"openQuestionNote":"...","verdict":"..."}
+            statement must be a verbatim quote from the named document. Coaching commentary, not a validated grade.
+            """;
+
         public const string DriftSystem = """
             You are reviewing an agent's patch against a golden baseline for signs of behavioural drift. You
             are given the ticket, the frozen code, the patch a competent human wrote, the candidate patch, and

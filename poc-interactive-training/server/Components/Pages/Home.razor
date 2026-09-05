@@ -1059,15 +1059,33 @@
 				case 15:
 					<section>
 						<p class="kicker">GROUNDING, GRADED BY A COMPILER</p>
-						<h2 id="scene-title">Three migrations of one COBOL program</h2>
-						<p class="rt-intro">The same legacy program is migrated three times by the same model, with increasing grounding: <strong>none</strong>, then <strong>static-analysis artifacts</strong>, then <strong>facts the COBOL compiler itself resolved</strong>. Every answer is compiled and executed against outputs captured from the real legacy program. <strong>No model grades anything here</strong> — correctness is arithmetic.</p>
+						<h2 id="scene-title">Three migrations of real Enterprise COBOL</h2>
+						<p class="rt-intro">This is the monthly-interest calculation from <strong>AWS CardDemo</strong> — genuine IBM Enterprise COBOL, not a toy. Field layouts come from copybooks <code>CVTRA01Y</code> and <code>CVTRA02Y</code>; the arithmetic is <code>CBACT04C</code> paragraph <code>1300-COMPUTE-INTEREST</code>, unchanged. The same model migrates it three times with increasing grounding: <strong>none</strong>, <strong>static-analysis artifacts</strong>, then <strong>facts resolved by the COBOL compiler</strong>. Every answer is executed against output captured from the real program. <strong>No model grades anything.</strong></p>
+
+						<div class="rt-box">
+							<header class="rt-head"><span class="rt-step">!</span><div><strong>Why a COBOL compiler, and why the IBM dialect</strong><small>the point of the whole tab</small></div></header>
+							<div style="padding:14px">
+								<p class="rt-intro">A model has read enormous amounts of C and very little COBOL — and almost none of it <em>Enterprise</em> COBOL, because that code lives inside banks and insurers and never reaches the public internet. But the real problem is not fluency. <strong>Some COBOL meaning is not in the source text at all.</strong></p>
+								<p class="rt-intro">Look at the one line this tab migrates:</p>
+								<pre class="rt-code">COMPUTE WS-MONTHLY-INT = (TRAN-CAT-BAL * DIS-INT-RATE) / 1200</pre>
+								<p class="rt-intro">There is no <code>ROUNDED</code>, so the result <strong>truncates</strong>. On a balance of $1,000.00 at 18.99% the exact answer is <strong>15.825</strong> and the program pays <strong>15.82</strong>. A migration that rounds pays <strong>15.83</strong> — one cent, on every account, every month. Nothing in the source says “truncate”. The COBOL standard says it, and the compiler implements it.</p>
+								<p class="rt-intro"><strong>The dialect is not cosmetic either.</strong> The same program, the same input, compiled under different dialects:</p>
+								<pre class="rt-code">MOVE 50000 TO WS-BIN.   *&gt; PIC 9(4) COMP
+
+default  -&gt; 000000      truncates to 4 decimal digits
+ibm      -&gt; 050000      keeps the binary value (TRUNC(BIN))
+mf       -&gt; 050000
+cobol85  -&gt; 000000</pre>
+								<p class="rt-intro">Zero versus fifty thousand, with no error and no warning. So the compiler is only an oracle <strong>once you tell it which COBOL you mean</strong>. Run it under the wrong dialect and it becomes a confident, silent liar. This tab compiles with <code>-std=ibm</code> because the source is IBM Enterprise COBOL.</p>
+							</div>
+						</div>
 
 						@if (_session?.Migration is { } migration)
 						{
 							<div class="@(migration.ToolchainAvailable ? "compare-status" : "compare-status failed")" role="status">@migration.ToolchainStatus</div>
 
 							<section class="rt-box">
-								<header class="rt-head"><span class="rt-step">1</span><div><strong>The legacy program</strong><small>REDEFINES overlay · implied decimals · COMP-3 · PERFORM THRU · 88-level range</small></div></header>
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>The legacy program</strong><small>AWS CardDemo CBACT04C · Apache-2.0 · REDEFINES overlay, implied decimals, unrounded COMPUTE</small></div></header>
 								<pre class="rt-code">@migration.CobolSource</pre>
 							</section>
 
@@ -1177,9 +1195,10 @@
 									<h4>Read this carefully</h4>
 									<ul class="rt-list warn">
 										<li>One program, one run per arm. This demonstrates a method; it does not measure a migration programme.</li>
-										<li>The case set covers the branches we thought of. A boundary we did not think of is not covered.</li>
+										<li>The case set covers the branches we thought of. A boundary we did not think of is not covered — note that a deliberately wrong implementation still passes most of these cases.</li>
 										<li>The target is C# rather than Java because the server can execute C# deterministically. The grounding question is the same either way.</li>
-										<li>Arm C's advantage, if any, comes from facts the compiler resolved — not from the compiler's C being easier to read. It is not.</li>
+										<li>Arm C's advantage, if any, comes from facts the compiler resolved — not from the compiler's C being easier to read. It is not; it is <code>goto</code> chains and <code>cob_decimal</code> calls.</li>
+										<li><strong>The oracle is only as right as its dialect.</strong> Before trusting this against production, confirm the <code>TRUNC</code> option the mainframe build actually uses — <code>TRUNC(BIN)</code>, <code>TRUNC(STD)</code> or <code>TRUNC(OPT)</code>. Mismatch it and every number downstream inherits the error.</li>
 									</ul>
 								</section>
 							}

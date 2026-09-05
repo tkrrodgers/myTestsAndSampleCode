@@ -2,42 +2,46 @@ using PocInteractiveTraining.Server.Models;
 
 namespace PocInteractiveTraining.Server.Services;
 
-// Reference migrations used only by the headless harness gate. One is correct; the other is the
-// plausible mistake a reader makes when the implied decimal point in PIC 9(3)V9 is not obvious.
-// If the grader ever scores these the same, the grader is broken.
+// Reference migrations used only by the headless harness gate. One is correct; the other makes the
+// single most common mistake - using ordinary rounding where COBOL truncates, because the COMPUTE has
+// no ROUNDED clause. If the grader ever scores these the same, the grader is broken.
 public static class MigrationReference
 {
     public const string Correct = """
-        public static class LateReturnBilling
+        public static class InterestCalculator
         {
             public static decimal Calculate(string record)
             {
-                int grade = int.Parse(record.Substring(5, 1));
-                decimal hours = decimal.Parse(record.Substring(6, 4)) / 10m;
-                decimal rate = decimal.Parse(record.Substring(10, 6)) / 100m;
+                bool negative = record.Substring(0, 1) == "-";
+                decimal balance = decimal.Parse(record.Substring(1, 11)) / 100m;
+                decimal rate = decimal.Parse(record.Substring(12, 6)) / 100m;
+                if (negative)
+                {
+                    balance = -balance;
+                }
 
-                decimal gross = System.Math.Round(hours * rate, 2, System.MidpointRounding.AwayFromZero);
-                decimal bonus = grade >= 7 && grade <= 9
-                    ? System.Math.Round(gross * 0.075m, 2, System.MidpointRounding.AwayFromZero)
-                    : 0m;
+                decimal exact = balance * rate / 1200m;
 
-                return decimal.Truncate((gross + bonus) * 100m) / 100m;
+                // No ROUNDED on the COBOL COMPUTE, so the result truncates toward zero at 2 decimals.
+                return decimal.Truncate(exact * 100m) / 100m;
             }
         }
         """;
 
     public const string Naive = """
-        public static class LateReturnBilling
+        public static class InterestCalculator
         {
             public static decimal Calculate(string record)
             {
-                int grade = int.Parse(record.Substring(5, 1));
-                decimal hours = decimal.Parse(record.Substring(6, 4));
-                decimal rate = decimal.Parse(record.Substring(10, 6));
+                bool negative = record.Substring(0, 1) == "-";
+                decimal balance = decimal.Parse(record.Substring(1, 11)) / 100m;
+                decimal rate = decimal.Parse(record.Substring(12, 6)) / 100m;
+                if (negative)
+                {
+                    balance = -balance;
+                }
 
-                decimal gross = hours * rate;
-                decimal bonus = grade > 7 ? gross * 0.075m : 0m;
-                return gross + bonus;
+                return System.Math.Round(balance * rate / 1200m, 2);
             }
         }
         """;

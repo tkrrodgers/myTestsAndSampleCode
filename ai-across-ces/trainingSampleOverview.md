@@ -31,20 +31,43 @@ The hardest problem in the source material and the one worth the most. It is als
 
 **Layout — five boxes plus a verdict:**
 
-1. The `HARDPAY` COBOL program, editable.
-2. **Arm A** — raw COBOL, no grounding. Java out.
-3. **Arm B** — COBOL + AST/DDG/PDG artifacts. Java out.
-4. **Arm C** — COBOL + compiler-resolved facts: the field table (offsets, digits, scale, sign), the resolved `PERFORM THRU` range, the `libcob` call list. Java out.
-5. **The oracle** — GnuCOBOL builds and *runs* the COBOL over a fixed input set, capturing true outputs.
-6. **Differential verification** — execute each arm's Java against those inputs. Pass/fail per arm. No LLM judge involved in the correctness call.
+1. The CardDemo interest program, editable.
+2. **Arm A** — raw COBOL, no grounding. C# out.
+3. **Arm B** — COBOL + AST/DDG/PDG artifacts. C# out.
+4. **Arm C** — COBOL + compiler-resolved facts: the field table (offsets, digits, scale, sign) and the resolved control flow. C# out.
+5. **The oracle** — GnuCOBOL builds and *runs* the COBOL over a fixed case set, capturing true outputs.
+6. **Differential verification** — execute each arm's answer against those cases. Pass/fail per arm. No LLM judge involved in the correctness call.
 
-**Use `HARDPAY.cbl`, not `PAYROLL.cbl`.** `PAYROLL` is too simple to demonstrate anything — it has no `REDEFINES`, no `COMP-3`, no `PERFORM THRU`, so all three arms will agree and the lesson proves nothing. `HARDPAY` contains exactly the constructs that stall a migration, and its correct answer (`NET: +010696.81`) cannot be derived by reading the source.
+**Use real Enterprise COBOL, not a synthetic fixture.** The fixture is the monthly-interest calculation from [AWS CardDemo](https://github.com/aws-samples/aws-mainframe-modernization-carddemo) (Apache-2.0) — record layouts from copybooks `CVTRA01Y` and `CVTRA02Y`, arithmetic from `CBACT04C` paragraph `1300-COMPUTE-INTEREST`, unchanged. A stdin driver was added so the oracle can run it over a case set.
 
-**Why this matters:** every other lesson on the platform grades with a model. This one grades with a compiler and a test run. It is the strongest evidence artifact we have, and it directly answers the question leadership will ask about a 62M-line migration: *does the extra pipeline work pay for itself?*
+CardDemo is the right choice over the CMS OPPS Pricer for one reason: **the Pricer drifts.** Its payment rates change quarterly, so a fixture built on it rots and its "correct" answers expire. CardDemo is a stable reference application built for exactly this purpose. (Both CMS Pricer releases do compile cleanly — `pricerqtr4-07` and `pricerqtr4-08` are complete matched sets, 0 errors, 384 `PERFORM THRU` ranges resolved in the 2008 build. Keep that as a scale demonstration, not as the graded fixture.)
 
-**What the learner does:** predicts which variables land in the DDG before it is revealed, then maps each COBOL paragraph to its Java method in each arm.
+**The line that carries the lesson:**
 
-**Blocker — resolved.** The download at `C:\Users\tkrro\Downloads\gnucobol-3.2_win` is a **source distribution** with no `cobc.exe`. A prebuilt GnuCOBOL 3.2rc1 (MinGW x64) from [mridoni/gnucobol-binaries](https://github.com/mridoni/gnucobol-binaries/releases) is now installed at `C:\Users\tkrro\tools\gnucobol-3.2rc1` and the pipeline is verified end to end. Commands and the non-obvious `COB_CONFIG_DIR` fix are in [training-fixture/cobol/README.md](../poc-interactive-training/training-fixture/cobol/README.md).
+```cobol
+COMPUTE WS-MONTHLY-INT = (TRAN-CAT-BAL * DIS-INT-RATE) / 1200
+```
+
+No `ROUNDED`, so it truncates. $1,000.00 at 18.99% is exactly 15.825; the program pays **15.82**. A migration that rounds pays 15.83 — one cent, every account, every month. Nothing in the source says "truncate"; the standard says it and the compiler implements it.
+
+Measured: a deliberately wrong implementation still passes **5 of 6** cases. That is what makes migration defects dangerous, and it is worth showing.
+
+**Blocker — resolved.** The download at `C:\Users\tkrro\Downloads\gnucobol-3.2_win` is a **source distribution** with no `cobc.exe`. A prebuilt GnuCOBOL 3.2rc1 (MinGW x64) from [mridoni/gnucobol-binaries](https://github.com/mridoni/gnucobol-binaries/releases) is installed at `C:\Users\tkrro\tools\gnucobol-3.2rc1`. Commands and the non-obvious `COB_CONFIG_DIR` fix are in [training-fixture/cobol/README.md](../poc-interactive-training/training-fixture/cobol/README.md).
+
+**The dialect is not cosmetic — it changes the numbers.** Same program, same input, four dialects:
+
+```
+MOVE 50000 TO WS-BIN.   *> PIC 9(4) COMP
+
+default  -> 000000      truncates to 4 decimal digits
+ibm      -> 050000      keeps the binary value (TRUNC(BIN))
+mf       -> 050000
+cobol85  -> 000000
+```
+
+Zero versus fifty thousand, silently. `ibm-strict.conf` sets `binary-truncate: no`, `binary-size: 2-4-8`, `binary-byteorder: big-endian`, `hostsign: yes`, `complex-odo: yes` — all of which affect results or acceptance. **The compiler is an oracle only once you tell it which COBOL you mean.** Under the wrong dialect it is a confident, silent liar.
+
+**Open item for the team:** confirm the `TRUNC` option the mainframe build actually uses (`TRUNC(BIN)`, `TRUNC(STD)`, `TRUNC(OPT)` — it is a JCL compile parameter). If production is `TRUNC(STD)` and the oracle runs `-std=ibm`, the oracle and the mainframe disagree and every downstream number inherits it.
 
 **How to build Arm C — read this before designing it.** [sampleApproaches.md §2.2](sampleApproaches.md) sells the intermediate C on legibility: "flattened control flow," "LLMs are saturated with C." That is wrong — the compiler emits libcob runtime IR that no model has trained on. But the approach works anyway, for a better reason: **the compiler resolves semantics the COBOL source leaves ambiguous.**
 

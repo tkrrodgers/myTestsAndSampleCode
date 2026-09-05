@@ -1,105 +1,97 @@
 namespace PocInteractiveTraining.Server.Services;
 
-// Fixture for the COBOL migration A/B test. The program reads a fixed-layout record from stdin so the
-// oracle can execute it over a case set; every case exercises a construct where COBOL's meaning is not
-// recoverable from the source text alone.
+// Fixture for the COBOL migration A/B/C test.
+//
+// This is real IBM Enterprise COBOL, not a synthetic toy. The field definitions and the interest
+// computation are taken verbatim from AWS CardDemo (Apache-2.0), a reference mainframe credit-card
+// application: CBACT04C paragraph 1300-COMPUTE-INTEREST, with the record layouts from copybooks
+// CVTRA01Y (TRAN-CAT-BAL) and CVTRA02Y (DIS-INT-RATE).
+//
+// A driver was added so the program reads one record from stdin and can be executed over a case set;
+// the arithmetic and the PICTURE clauses are unchanged.
+//
+// Source: https://github.com/aws-samples/aws-mainframe-modernization-carddemo
 public static class MigrationSamples
 {
-    public const string EntryType = "LateReturnBilling";
+    public const string EntryType = "InterestCalculator";
     public const string EntryMethod = "Calculate";
 
     public const string CobolSource = """
-           IDENTIFICATION DIVISION.
-           PROGRAM-ID. HARDPAY.
-           DATA DIVISION.
-           WORKING-STORAGE SECTION.
-           01  WS-RAW-RECORD           PIC X(20).
-           01  WS-EMPLOYEE REDEFINES WS-RAW-RECORD.
-               05  WS-EMP-ID           PIC X(5).
-               05  WS-GRADE            PIC 9.
-                   88  WS-SENIOR       VALUE 7 THRU 9.
-               05  WS-HOURS            PIC 9(3)V9.
-               05  WS-RATE             PIC 9(4)V99.
-               05  FILLER              PIC X(4).
-           01  WS-CALC.
-               05  WS-GROSS            PIC S9(6)V99 COMP-3 VALUE 0.
-               05  WS-BONUS            PIC S9(5)V99 COMP-3 VALUE 0.
-               05  WS-NET              PIC S9(6)V99 VALUE 0.
-
-           PROCEDURE DIVISION.
-           0001-MAIN.
-               ACCEPT WS-RAW-RECORD.
-               PERFORM 0100-GROSS THRU 0300-NET.
-               DISPLAY WS-NET.
-               STOP RUN.
-
-           0100-GROSS.
-               COMPUTE WS-GROSS ROUNDED = WS-HOURS * WS-RATE.
-
-           0200-BONUS.
-               IF WS-SENIOR
-                   COMPUTE WS-BONUS ROUNDED = WS-GROSS * 0.075
-               ELSE
-                   MOVE ZERO TO WS-BONUS
-               END-IF.
-
-           0300-NET.
-               COMPUTE WS-NET = WS-GROSS + WS-BONUS.
+        IDENTIFICATION DIVISION.
+        PROGRAM-ID. CBINTCAL.
+        DATA DIVISION.
+        WORKING-STORAGE SECTION.
+        01  WS-IN                    PIC X(18).
+        01  WS-PARSE REDEFINES WS-IN.
+            05  WS-SIGN              PIC X(01).
+            05  WS-BAL-DIGITS        PIC 9(09)V99.
+            05  WS-RATE-DIGITS       PIC 9(04)V99.
+        01  TRAN-CAT-BAL             PIC S9(09)V99.
+        01  DIS-INT-RATE             PIC S9(04)V99.
+        01  WS-MONTHLY-INT           PIC S9(09)V99.
+        PROCEDURE DIVISION.
+            ACCEPT WS-IN
+            MOVE WS-RATE-DIGITS TO DIS-INT-RATE
+            IF WS-SIGN = "-"
+                COMPUTE TRAN-CAT-BAL = 0 - WS-BAL-DIGITS
+            ELSE
+                MOVE WS-BAL-DIGITS TO TRAN-CAT-BAL
+            END-IF
+            COMPUTE WS-MONTHLY-INT = (TRAN-CAT-BAL * DIS-INT-RATE) / 1200
+            DISPLAY WS-MONTHLY-INT
+            STOP RUN.
         """;
 
-    // 20-byte fixed layout: id X(5) | grade 9 | hours 9(3)V9 | rate 9(4)V99 | filler X(4).
-    // The V is implied - there is no decimal point in the data, which is the first thing a naive
-    // translation gets wrong. Expected values are produced by the compiled COBOL, not by hand.
+    // 18-byte record: sign X(1) | balance 9(09)V99 | rate 9(04)V99. Both V points are implied.
+    // Expected values come from the compiled COBOL, not from arithmetic done by hand.
     public static readonly string[] Cases =
     [
-        "E101720450002000    ",  // 45.0h @ 20.00, grade 2 -> 900.00, no bonus
-        "E202880400002500    ",  // 40.0h @ 25.00, grade 8 -> 1075.00 with bonus
-        "E303190375001999    ",  // 37.5h @ 19.99 -> 805.85, exercises ROUNDED at both COMPUTEs
-        "E600760400002000    ",  // grade 6 -> 800.00, just below the 88-level boundary
-        "E700770400002000    ",  // grade 7 -> 860.00, first grade inside VALUE 7 THRU 9
-        "E800790007000333    ",  // 0.7h @ 3.33 -> 2.50, rounding at small scale
-        "E500100000000000    "   // all zeros -> 0.00
+        "+00000100000001899",  // 1000.00 @ 18.99% -> 15.825 exact, truncates to 15.82
+        "+00000250000002499",  // 2500.00 @ 24.99% -> 52.0625 exact, truncates to 52.06
+        "+00000010000001200",  //  100.00 @ 12.00% -> exactly 1.00
+        "+00000033333001500",  //  333.33 @ 15.00% -> 4.166625 exact, truncates to 4.16
+        "-00000050000001899",  // -500.00 @ 18.99% -> -7.9125, truncates toward zero to -7.91
+        "+00000000000001899"   //    0.00 @ 18.99% -> 0.00
     ];
 
-    // The AST / DDG / PDG artifacts an analysis pass would produce. Arm B receives these.
+    // The AST / DDG / PDG artifacts a static-analysis pass would produce. Arm B receives these.
     public const string StructuralArtifacts = """
         --- AST EXTRACT ---
         {
-          "Program": "HARDPAY",
+          "Program": "CBINTCAL",
           "WorkingStorage": [
-            { "Name": "WS-RAW-RECORD", "Pic": "X(20)" },
-            { "Name": "WS-EMPLOYEE", "Redefines": "WS-RAW-RECORD", "Children": [
-              { "Name": "WS-EMP-ID",       "Pic": "X(5)" },
-              { "Name": "WS-GRADE",        "Pic": "9", "Condition88": { "WS-SENIOR": "7 THRU 9" } },
-              { "Name": "WS-HOURS",        "Pic": "9(3)V9" },
-              { "Name": "WS-RATE",         "Pic": "9(4)V99" },
-              { "Name": "FILLER",          "Pic": "X(4)" }
-            ]}
-          ],
-          "Paragraphs": ["0001-MAIN", "0100-GROSS", "0200-BONUS", "0300-NET"]
+            { "Name": "WS-IN", "Pic": "X(18)" },
+            { "Name": "WS-PARSE", "Redefines": "WS-IN", "Children": [
+              { "Name": "WS-SIGN",        "Pic": "X(01)" },
+              { "Name": "WS-BAL-DIGITS",  "Pic": "9(09)V99" },
+              { "Name": "WS-RATE-DIGITS", "Pic": "9(04)V99" }
+            ]},
+            { "Name": "TRAN-CAT-BAL",   "Pic": "S9(09)V99" },
+            { "Name": "DIS-INT-RATE",   "Pic": "S9(04)V99" },
+            { "Name": "WS-MONTHLY-INT", "Pic": "S9(09)V99" }
+          ]
         }
 
         --- DATA DEPENDENCIES (DDG) ---
-        WS-GROSS depends on WS-HOURS, WS-RATE             via 0100-GROSS
-        WS-BONUS depends on WS-GROSS, WS-GRADE            via 0200-BONUS
-        WS-NET   depends on WS-GROSS, WS-BONUS            via 0300-NET
+        TRAN-CAT-BAL   depends on WS-SIGN, WS-BAL-DIGITS
+        DIS-INT-RATE   depends on WS-RATE-DIGITS
+        WS-MONTHLY-INT depends on TRAN-CAT-BAL, DIS-INT-RATE
 
         --- CONTROL DEPENDENCIES (PDG) ---
-        0100-GROSS, 0200-BONUS, 0300-NET execute as one PERFORM range from 0001-MAIN
-        0200-BONUS bonus branch is conditional on WS-SENIOR (WS-GRADE in 7..9)
+        The sign of TRAN-CAT-BAL is conditional on WS-SIGN = "-"
+        The interest COMPUTE is unconditional and executes once per record
         """;
 
-    // What every arm is told about the interface it must implement.
     public const string Contract = """
         Return ONE C# file, no prose and no Markdown fences, with this exact shape:
 
-        public static class LateReturnBilling
+        public static class InterestCalculator
         {
             public static decimal Calculate(string record) { ... }
         }
 
-        'record' is the 20-byte input record as a string, one char per byte.
-        Return the computed net value as a decimal, rounded to 2 decimal places.
+        'record' is the 18-byte input record as a string, one char per byte.
+        Return the computed monthly interest as a decimal.
         Use only pure computation - no I/O, no networking, no reflection.
         """;
 }

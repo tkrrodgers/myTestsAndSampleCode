@@ -293,15 +293,17 @@
 							{
 								var currentQuestion = questionIndex;
 								var question = Questions[questionIndex];
-								<fieldset class="question-block">
-									<legend><span>@(questionIndex + 1)</span>@question.Prompt</legend>
+								<div class="question-block" role="group" aria-labelledby="question-label-@questionIndex">
+									<p class="question-prompt" id="question-label-@questionIndex"><span>@(questionIndex + 1)</span>@question.Prompt</p>
+									<div class="question-options">
 									@for (var optionIndex = 0; optionIndex < question.Options.Count; optionIndex++)
 									{
 										var currentOption = optionIndex;
 										<label class="answer-option @AnswerClass(currentQuestion, currentOption)"><input type="radio" name="question-@questionIndex" checked="@(_answers.GetValueOrDefault(currentQuestion, -1) == currentOption)" @onchange="() => Answer(currentQuestion, currentOption)" /><span>@((char)('A' + optionIndex))</span>@question.Options[optionIndex]</label>
 									}
 									@if (_answers.ContainsKey(currentQuestion)) { <p class="answer-feedback">@question.Feedback</p> }
-								</fieldset>
+									</div>
+								</div>
 							}
 						</div>
 					</section>

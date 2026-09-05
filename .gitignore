@@ -16,6 +16,13 @@ node_modules/
 npm-debug.log*
 *.vsix
 
+# GnuCOBOL generated output — only the .cbl source is tracked
+*.exe
+*.c.h
+*.c.l.h
+training-fixture/cobol/*.c
+poc-interactive-training/training-fixture/cobol/*.c
+
 # Model weights are never committed. See poc-interactive-training/models/.gitignore
 # and the README for the Hugging Face download steps.
 *.onnx

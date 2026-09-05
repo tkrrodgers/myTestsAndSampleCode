@@ -1,0 +1,25 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. PAYROLL.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  WS-EMPLOYEE.
+           05  WS-EMP-ID       PIC X(5) VALUE "E101".
+           05  WS-HOURS        PIC 9(2) VALUE 45.
+           05  WS-RATE         PIC 9(2)V99 VALUE 20.00.
+           05  WS-PAY          PIC 9(4)V99 VALUE 0.
+       PROCEDURE DIVISION.
+       0001-MAIN-LOGIC.
+           IF WS-HOURS > 40
+               PERFORM 0002-OVERTIME-CALC
+           ELSE
+               PERFORM 0003-REGULAR-CALC
+           END-IF.
+           DISPLAY "FINAL PAY: " WS-PAY.
+           STOP RUN.
+
+       0002-OVERTIME-CALC.
+           MULTIPLY WS-RATE BY 40 GIVING WS-PAY.
+           COMPUTE WS-PAY = WS-PAY + ((WS-HOURS - 40) * WS-RATE * 1.5).
+
+       0003-REGULAR-CALC.
+           MULTIPLY WS-RATE BY WS-HOURS GIVING WS-PAY.

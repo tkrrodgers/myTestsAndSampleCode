@@ -11,6 +11,7 @@ public sealed class TrainingSessionStore
     private const string GptFallbackModel = "GPT-5.6 Sol";
     private const string ClaudeModel = "Claude Opus 5";
     private const string ClaraAuthorModel = "Claude Opus 4.8";
+    private const string GeminiAdvisorModel = "Gemini 3.7 Flash";
     private static readonly string[] ComparisonModels = ["GPT-5.6 Sol", "Claude Opus 5.0", "Gemini 3.7 Flash"];
     private const string JudgeModel = "GPT-5.6 Sol";
     private static readonly TimeSpan ClaimLease = TimeSpan.FromSeconds(30);
@@ -838,6 +839,122 @@ public sealed class TrainingSessionStore
 
         request.AppendLine("</execution>");
         request.AppendLine("Review whether the CLARA policy faithfully and unambiguously encodes the requirement, and assess CLARA as an LLM-legible business-logic language.");
+        return request.ToString();
+    }
+
+    public void QueueLlmSupport(string sessionId, string requirement)
+    {
+        if (string.IsNullOrWhiteSpace(requirement) || requirement.Length > 8000)
+        {
+            throw new ArgumentException("Provide a requirement between 1 and 8000 characters.", nameof(requirement));
+        }
+
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.SupportRequirement = requirement.Trim();
+            session.SupportAdvice = null;
+            session.SupportAdviceModel = null;
+            session.SupportSynthesis = null;
+            session.SupportSynthesisModel = null;
+            session.SupportError = null;
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "gemini-gcp-advisor",
+                GeminiAdvisorModel,
+                null,
+                Prompts.GeminiAdvisorSystem,
+                $"<requirement>\n{session.SupportRequirement}\n</requirement>\nSurface the Google Cloud services, constraints, and authoritative documentation links this design depends on.",
+                90,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.SupportStatus = "advising";
+        }
+    }
+
+    private static void CompleteGeminiAdvice(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded)
+        {
+            session.SupportStatus = "failed";
+            session.SupportError = result.ErrorMessage ?? "The Gemini advisory task failed.";
+            return;
+        }
+
+        if (!TryDeserialize(result.Content!, out GeminiAdviceDto? dto) || dto is null || string.IsNullOrWhiteSpace(dto.Overview))
+        {
+            session.SupportStatus = "failed";
+            session.SupportError = "The Gemini advisory did not match the expected contract.";
+            return;
+        }
+
+        session.SupportAdvice = new GeminiAdvice(
+            dto.Overview!.Trim(),
+            dto.Services ?? [],
+            dto.Constraints ?? [],
+            dto.Citations ?? []);
+        session.SupportAdviceModel = result.ModelUsed;
+
+        var task = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "claude-gcp-synthesis",
+            ClaudeModel,
+            null,
+            Prompts.ClaudeSynthesisSystem,
+            BuildSupportSynthesisRequest(session),
+            120,
+            DateTimeOffset.UtcNow);
+        session.Tasks[task.TaskId] = new TaskState(task);
+        session.SupportStatus = "synthesizing";
+    }
+
+    private static void CompleteSupportSynthesis(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded)
+        {
+            session.SupportStatus = "failed";
+            session.SupportError = result.ErrorMessage ?? "The synthesis task failed.";
+            return;
+        }
+
+        if (!TryDeserialize(result.Content!, out SupportSynthesisDto? dto) || dto is null || string.IsNullOrWhiteSpace(dto.DesignSummary))
+        {
+            session.SupportStatus = "failed";
+            session.SupportError = "The synthesis did not match the expected contract.";
+            return;
+        }
+
+        session.SupportSynthesis = new SupportSynthesis(
+            dto.AlreadyKnew ?? [],
+            dto.LearnedFromGemini ?? [],
+            dto.NeedsVerification ?? [],
+            dto.DesignSummary!.Trim(),
+            (dto.DesignSteps ?? []).Select(step => new SupportDesignStep(
+                step.Step ?? "step",
+                step.Detail ?? string.Empty,
+                step.Source is "own" or "gemini" or "unverified" ? step.Source : "unverified")).ToList(),
+            dto.ProvenanceNote?.Trim() ?? string.Empty);
+        session.SupportSynthesisModel = result.ModelUsed;
+        session.SupportStatus = "completed";
+    }
+
+    private static string BuildSupportSynthesisRequest(SessionState session)
+    {
+        var advice = session.SupportAdvice;
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<requirement>");
+        request.AppendLine(session.SupportRequirement);
+        request.AppendLine("</requirement>");
+        request.AppendLine($"<advisory model=\"{session.SupportAdviceModel}\" status=\"unverified model output, not ground truth\">");
+        request.AppendLine(advice?.Overview);
+        request.AppendLine("Services: " + string.Join(", ", advice?.Services ?? []));
+        request.AppendLine("Constraints: " + string.Join(" | ", advice?.Constraints ?? []));
+        request.AppendLine("Cited documentation: " + string.Join(" | ", advice?.Citations ?? []));
+        request.AppendLine("</advisory>");
+        request.AppendLine("Separate what you already knew from what this advisory taught you, flag what you cannot accept without checking the primary documentation, then produce the migration design.");
         return request.ToString();
     }
 
@@ -1703,6 +1820,12 @@ public sealed class TrainingSessionStore
                 case "claude-clara-review":
                     session.ClaraStatus = "reviewing";
                     break;
+                case "gemini-gcp-advisor":
+                    session.SupportStatus = "advising";
+                    break;
+                case "claude-gcp-synthesis":
+                    session.SupportStatus = "synthesizing";
+                    break;
                 case "gemma-language-csharp":
                 case "gemma-language-clara":
                     if (session.LanguageArms.TryGetValue(
@@ -1814,6 +1937,12 @@ public sealed class TrainingSessionStore
                     break;
                 case "claude-clara-review":
                     CompleteClaraReview(session, result, succeeded);
+                    break;
+                case "gemini-gcp-advisor":
+                    CompleteGeminiAdvice(session, result, succeeded);
+                    break;
+                case "claude-gcp-synthesis":
+                    CompleteSupportSynthesis(session, result, succeeded);
                     break;
                 case "gemma-language-csharp":
                 case "gemma-language-clara":
@@ -2125,6 +2254,14 @@ public sealed class TrainingSessionStore
         public string? ClaraReviewModel { get; set; }
         public string? ClaraError { get; set; }
 
+        public string SupportStatus { get; set; } = "not-started";
+        public string? SupportRequirement { get; set; }
+        public GeminiAdvice? SupportAdvice { get; set; }
+        public string? SupportAdviceModel { get; set; }
+        public SupportSynthesis? SupportSynthesis { get; set; }
+        public string? SupportSynthesisModel { get; set; }
+        public string? SupportError { get; set; }
+
         public TrainingSession Snapshot() => new(
             SessionId,
             BridgeToken,
@@ -2294,7 +2431,15 @@ public sealed class TrainingSessionStore
                 ChangeModel,
                 ChangePromptTokens,
                 ChangeAudit,
-                ChangeError));
+                ChangeError),
+            new LlmSupportState(
+                SupportStatus,
+                SupportRequirement,
+                SupportAdvice,
+                SupportAdviceModel,
+                SupportSynthesis,
+                SupportSynthesisModel,
+                SupportError));
     }
 
     private sealed class ComparisonSlotState(string slot, string requestedModel)
@@ -2326,6 +2471,18 @@ public sealed class TrainingSessionStore
     private sealed record ContextJudgeDto(int TrapsFound, List<string>? Matched, List<string>? Missed, List<string>? FalsePositives, string? Verdict);
 
     private sealed record ClaraReviewDto(int Fidelity, string? Verdict, List<string>? Strengths, List<string>? Issues, List<string>? LanguageNotes);
+
+    private sealed record GeminiAdviceDto(string? Overview, List<string>? Services, List<string>? Constraints, List<string>? Citations);
+
+    private sealed record SupportStepDto(string? Step, string? Detail, string? Source);
+
+    private sealed record SupportSynthesisDto(
+        List<string>? AlreadyKnew,
+        List<string>? LearnedFromGemini,
+        List<string>? NeedsVerification,
+        string? DesignSummary,
+        List<SupportStepDto>? DesignSteps,
+        string? ProvenanceNote);
 
     private sealed record LanguageScoreDto(int Arm, int Criterion, bool Met, string? Evidence);
 
@@ -2570,6 +2727,38 @@ public sealed class TrainingSessionStore
             fidelity is an integer 1-5 for how completely the policy captures the requirement (5 = complete and
             correct). issues lists missing/incorrect rules or ambiguities. languageNotes assess CLARA itself.
             Coaching commentary, not a validated grade.
+            """;
+
+        public const string GeminiAdvisorSystem = """
+            You are acting as a Google Cloud retrieval and gap-finding instrument, not as the designer.
+            Your job is to surface the Google-specific services, platform constraints, quotas, and configuration
+            prerequisites the requirement depends on, and to point at the authoritative documentation for each.
+            Prefer precise, current Google Cloud product names and exact configuration terms over generic cloud
+            advice. Do not design the whole solution and do not invent URLs; if you are unsure of a fact or a
+            link, say so in the constraint text instead of guessing.
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"overview":"...","services":["..."],"constraints":["..."],"citations":["https://cloud.google.com/..."]}
+            overview is 2-3 sentences. services names the GCP services with the specific feature that matters.
+            constraints lists platform behaviors, limits, or prerequisites that materially change the design.
+            citations lists official Google Cloud documentation URLs supporting the above.
+            """;
+
+        public const string ClaudeSynthesisSystem = """
+            You are the designer. You are given a requirement and an advisory from a Google-specialist model.
+            Treat that advisory as an UNVERIFIED MODEL CLAIM, not ground truth: it may be current where your own
+            knowledge is stale, and it may also be wrong. Your value here is provenance discipline.
+            Be honest and specific about your own knowledge boundary — do not pretend to have known something you
+            did not, and do not accept a specific claim (exact quotas, limits, API names, availability) merely
+            because the advisory asserted it.
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"alreadyKnew":["..."],"learnedFromGemini":["..."],"needsVerification":["..."],"designSummary":"...",
+             "designSteps":[{"step":"...","detail":"...","source":"own|gemini|unverified"}],"provenanceNote":"..."}
+            alreadyKnew: facts you could have supplied without the advisory.
+            learnedFromGemini: things the advisory told you that you did not know or would have stated less precisely.
+            needsVerification: specific claims you refuse to rely on until checked against the cited primary docs.
+            designSteps: the migration design; tag each step's source as own, gemini (advisory-sourced), or
+            unverified (advisory-sourced and still unconfirmed).
+            provenanceNote: one or two sentences on what a human must verify before this design is trusted.
             """;
 
         // Deliberately contains no COBOL semantics tuition. Telling every arm about implied decimals or

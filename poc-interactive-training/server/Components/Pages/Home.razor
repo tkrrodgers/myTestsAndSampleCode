@@ -479,6 +479,126 @@
 					break;
 				case 9:
 					<section>
+						<p class="kicker">ONE MODEL GROUNDS ANOTHER</p>
+						<h2 id="scene-title">Using a specialist model as a source, not an oracle</h2>
+						<p class="rt-intro">Claude's knowledge of Google Cloud has a boundary; a Google-specialist model may sit past it. The legitimate pattern is to treat the specialist as a <strong>retrieval and gap-finding instrument</strong> — harvest its services, constraints and citations — then have the designer state plainly what it already knew, what it just learned, and what it refuses to trust until the primary docs are checked. Model output is a claim with provenance, never a baseline of truth.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Design requirement — migrate to GCP</strong><small>editable</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_supportRequirement" @bind:event="oninput" disabled="@SupportBusy" aria-label="GCP migration requirement"></textarea>
+							<div class="rt-actions">
+								<small>@_supportRequirement.Length / 8000</small>
+								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _supportRequirement.Trim().Length < 20 || SupportBusy)" @onclick="RunLlmSupport">@SupportButtonText</button>
+							</div>
+							@if (!_bridgeConnected)
+							{
+								<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running.</p>
+							}
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>Gemini's role &amp; answer</strong><small>@(_session?.LlmSupport.AdviceModel ?? "Gemini 3.7 Flash") · retrieval instrument, not the designer</small></div></header>
+							@if (_session?.LlmSupport.Advice is { } geminiAdvice)
+							{
+								<div class="audit-body">
+									<div class="compare-status" role="status">Role: surface GCP-specific services, constraints, and authoritative citations. Its output is an <strong>unverified model claim</strong> passed downstream as evidence, not as truth.</div>
+									<p class="rt-reco">@geminiAdvice.Overview</p>
+									@if (geminiAdvice.Services.Count > 0)
+									{
+										<h4>Services surfaced</h4><ul class="mod-service-list">@foreach (var service in geminiAdvice.Services) { <li>@service</li> }</ul>
+									}
+									@if (geminiAdvice.Constraints.Count > 0)
+									{
+										<h4>Platform constraints</h4><ul class="rt-list warn">@foreach (var constraint in geminiAdvice.Constraints) { <li>@constraint</li> }</ul>
+									}
+									@if (geminiAdvice.Citations.Count > 0)
+									{
+										<h4>Cited documentation (the part worth keeping)</h4><ul class="rt-list good">@foreach (var citation in geminiAdvice.Citations) { <li><code>@citation</code></li> }</ul>
+									}
+								</div>
+							}
+							else if (_session?.LlmSupport.Status == "advising")
+							{
+								<div class="rt-pending"><span></span>Gemini is surfacing GCP services, constraints and citations…</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">Gemini's surfaced services, constraints and documentation links will appear here.</div>
+							}
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Claude's use of that information</strong><small>the knowledge boundary, stated honestly</small></div></header>
+							@if (_session?.LlmSupport.Synthesis is { } synth)
+							{
+								<div class="audit-body">
+									<div class="know-grid">
+										<div class="know-col own">
+											<p class="eyebrow">ALREADY KNEW</p>
+											<ul>@foreach (var item in synth.AlreadyKnew) { <li>@item</li> }</ul>
+										</div>
+										<div class="know-col learned">
+											<p class="eyebrow">LEARNED FROM GEMINI</p>
+											<ul>@foreach (var item in synth.LearnedFromGemini) { <li>@item</li> }</ul>
+										</div>
+										<div class="know-col unverified">
+											<p class="eyebrow">WILL NOT TRUST UNVERIFIED</p>
+											<ul>@foreach (var item in synth.NeedsVerification) { <li>@item</li> }</ul>
+										</div>
+									</div>
+								</div>
+							}
+							else if (_session?.LlmSupport.Status is "advising" or "synthesizing")
+							{
+								<div class="rt-pending"><span></span>Claude is separating what it knew from what it learned…</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">Claude's knowledge-boundary breakdown will appear here.</div>
+							}
+						</section>
+
+						<section class="rt-qa">
+							<header class="rt-head"><span class="rt-step">4</span><div><strong>Final design implementation</strong><small>every step tagged with its source</small></div></header>
+							@if (_session?.LlmSupport.Synthesis is { } design)
+							{
+								<div class="coach-label">Designed by @_session.LlmSupport.SynthesisModel using @(_session.LlmSupport.AdviceModel ?? "the advisory") as a cited source — not as a baseline.</div>
+								<p class="rt-reco">@design.DesignSummary</p>
+								<table class="audit-table">
+									<thead><tr><th>Step</th><th>Detail</th><th>Source</th></tr></thead>
+									<tbody>
+										@foreach (var step in design.DesignSteps)
+										{
+											<tr>
+												<td>@step.Step</td>
+												<td>@step.Detail</td>
+												<td><span class="src-tag src-@step.Source">@(step.Source switch { "own" => "Claude", "gemini" => "Gemini + verified", _ => "needs verification" })</span></td>
+											</tr>
+										}
+									</tbody>
+								</table>
+								@if (!string.IsNullOrWhiteSpace(design.ProvenanceNote))
+								{
+									<h4>Before this design is trusted</h4><p class="rt-reco">@design.ProvenanceNote</p>
+								}
+							}
+							else if (_session?.LlmSupport.Status == "synthesizing")
+							{
+								<div class="rt-pending"><span></span>Claude is producing the grounded migration design…</div>
+							}
+							else
+							{
+								<div class="rt-placeholder">The final, source-tagged migration design will appear here.</div>
+							}
+							@if (_session?.LlmSupport.Status == "failed")
+							{
+								<div class="compare-status failed" role="alert">@(_session?.LlmSupport.Error ?? "The demo did not complete.")</div>
+							}
+						</section>
+					</section>
+					break;
+				case 10:
+					<section>
 						<p class="kicker">GROUNDING ROUND TRIP</p>
 						<h2 id="scene-title">Class → JIRA story → class</h2>
 						<p class="rt-intro">Gemma 4 reads a class and writes the JIRA story it satisfies, then rebuilds the class from <em>only that story</em>. Claude Opus 5.0 then reviews how much of the original behavior survived the round trip. This measures how well a generated artifact grounds a faithful reconstruction — it is coaching commentary, not a validated grade.</p>
@@ -570,7 +690,7 @@
 						</section>
 					</section>
 					break;
-				case 10:
+				case 11:
 					<section>
 						<p class="kicker">MODERNIZE FOR AI-FRIENDLINESS</p>
 						<h2 id="scene-title">Spend comprehension tokens once</h2>
@@ -637,7 +757,7 @@
 						</section>
 					</section>
 					break;
-				case 11:
+				case 12:
 					<section>
 						<p class="kicker">AGENTIC-READINESS AUDIT · CODE</p>
 						<h2 id="scene-title">Rate the code deterministically, then let Gemma advise</h2>
@@ -742,7 +862,7 @@
 						</section>
 					</section>
 					break;
-				case 12:
+				case 13:
 					<section>
 						<p class="kicker">AGENTIC-READINESS AUDIT · CONTEXT</p>
 						<h2 id="scene-title">Does the context actually help an agent?</h2>
@@ -852,7 +972,7 @@
 						</section>
 					</section>
 					break;
-				case 13:
+				case 14:
 					<section>
 						<p class="kicker">A LANGUAGE FOR THE LOGIC LAYER</p>
 						<h2 id="scene-title">Business rules in a language built for models</h2>
@@ -1017,7 +1137,7 @@
 						</section>
 					</section>
 					break;
-				case 14:
+				case 15:
 					<section>
 						<p class="kicker">DOES THE REPRESENTATION CHANGE THE OUTCOME?</p>
 						<h2 id="scene-title">The same ticket, the same model, no context either way</h2>
@@ -1162,7 +1282,7 @@
 						}
 					</section>
 					break;
-				case 15:
+				case 16:
 					<section>
 						<p class="kicker">GROUNDING, GRADED BY A COMPILER</p>
 						<h2 id="scene-title">Three migrations of real Enterprise COBOL</h2>
@@ -1311,7 +1431,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 16:
+				case 17:
 					<section>
 						<p class="kicker">STOP BAD WORK BEFORE IT STARTS</p>
 						<h2 id="scene-title">A ticket an agent cannot act on</h2>
@@ -1395,7 +1515,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 17:
+				case 18:
 					<section>
 						<p class="kicker">FIND WHAT WAS PLANTED</p>
 						<h2 id="scene-title">Auditing a cloud design an AI helped write</h2>
@@ -1475,7 +1595,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 18:
+				case 19:
 					<section>
 						<p class="kicker">IS THE AGENT STILL DOING THE JOB?</p>
 						<h2 id="scene-title">One golden case, three layers of drift</h2>
@@ -1591,7 +1711,7 @@ cobol85  -&gt; 000000</pre>
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard")];
+	private static readonly (string Id, string Title)[] Scenes = [("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -1618,6 +1738,7 @@ cobol85  -&gt; 000000</pre>
 		"Choose the evidence that should control the investigation. These checks practice the mental model; they are not a workplace competency grade.",
 		"Write a prompt that controls the investigation and requires evidence. Claude will return coaching commentary against the rubric, not a grade.",
 		"Ask three models the same Google Cloud question, then let an impartial judge model blind-score the anonymized answers against a reference checklist. This is an illustrative harness, not a validated benchmark.",
+		"A specialist model can sit past another model's knowledge boundary. Harvest its services, constraints and citations as evidence, then state plainly what was already known, what was learned, and what still needs the primary documentation before anyone trusts it.",
 		"Grounding round trip: Gemma turns a class into a JIRA story, then rebuilds the class from only that story. Claude then reviews how much behavior survived the round trip.",
 		"Legacy comprehension is a recurring token tax. Spend the tokens once: modernize the code, expose the business rules, and make the seams for future microservices visible.",
 		"Audit at scale with deterministic tooling first: Roslyn rates the C# code reproducibly, then Gemma grounds its recommendations on that rating. The numbers come from static analysis; the model supplies the judgment.",
@@ -1641,6 +1762,7 @@ cobol85  -&gt; 000000</pre>
 	private bool _bridgeConnected;
 	private string _learnerPrompt = string.Empty;
 	private string _comparisonTopicId = string.Empty;
+	private string _supportRequirement = RoundTripSamples.GcpMigrationRequirement;
 	private string _roundTripClass = RoundTripSamples.LateFeeCalculator;
 	private string _legacyCode = RoundTripSamples.LegacyOrder;
 	private string _auditCode = RoundTripSamples.AuditProject;
@@ -1670,6 +1792,10 @@ cobol85  -&gt; 000000</pre>
 	private string CompareButtonText => !_bridgeConnected
 		? "Connect VSIX to compare"
 		: ComparisonBusy ? "Comparing…" : "Run comparison";
+	private bool SupportBusy => _session?.LlmSupport.Status is "advising" or "synthesizing";
+	private string SupportButtonText => !_bridgeConnected
+		? "Connect VSIX to run"
+		: SupportBusy ? "Running…" : "Run grounded design";
 	private string? WinningSlot => _session?.Comparison.Verdict?.Ranking.FirstOrDefault();
 	private ComparisonDimensionScore? ScoreFor(string slot) => _session?.Comparison.Verdict?.Scores.FirstOrDefault(score => score.Slot == slot);
 	private string ModelForSlot(string slot) => _session?.Comparison.Answers.FirstOrDefault(answer => answer.Slot == slot) is { } match ? (match.ModelUsed ?? match.RequestedModel) : slot;
@@ -1770,6 +1896,7 @@ cobol85  -&gt; 000000</pre>
 	private void StartLesson() { if (_session is null) return; _started = true; Store.QueueCoach(_session.SessionId); }
 	private void SubmitReview() { if (_session is null) return; Store.QueueReview(_session.SessionId, _learnerPrompt.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunComparison() { if (_session is null || string.IsNullOrEmpty(_comparisonTopicId)) return; Store.QueueComparison(_session.SessionId, _comparisonTopicId); _session = Store.GetSession(_session.SessionId); }
+	private void RunLlmSupport() { if (_session is null || _supportRequirement.Trim().Length < 20) return; Store.QueueLlmSupport(_session.SessionId, _supportRequirement.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunRoundTrip() { if (_session is null || _roundTripClass.Trim().Length < 20) return; Store.QueueRoundTrip(_session.SessionId, _roundTripClass.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunModernize() { if (_session is null || _legacyCode.Trim().Length < 20) return; Store.QueueModernize(_session.SessionId, _legacyCode.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunAudit() { if (_session is null || _auditCode.Trim().Length < 20) return; Store.QueueAudit(_session.SessionId, _auditCode.Trim()); _session = Store.GetSession(_session.SessionId); }

@@ -25,7 +25,8 @@ public sealed record TrainingSession(
     TicketGateState TicketGate,
     TrapHuntState TrapHunt,
     DriftState Drift,
-    GroundedChangeState GroundedChange);
+    GroundedChangeState GroundedChange,
+    LlmSupportState LlmSupport);
 
 public sealed record BridgeTask(
     string TaskId,
@@ -510,4 +511,32 @@ public sealed record ClaraState(
     ClaraProgramResult? Result,
     ClaraReview? Review,
     string? ReviewModel,
+    string? Error);
+
+public sealed record GeminiAdvice(
+    string Overview,
+    IReadOnlyList<string> Services,
+    IReadOnlyList<string> Constraints,
+    IReadOnlyList<string> Citations);
+
+public sealed record SupportDesignStep(
+    string Step,
+    string Detail,
+    string Source);
+
+public sealed record SupportSynthesis(
+    IReadOnlyList<string> AlreadyKnew,
+    IReadOnlyList<string> LearnedFromGemini,
+    IReadOnlyList<string> NeedsVerification,
+    string DesignSummary,
+    IReadOnlyList<SupportDesignStep> DesignSteps,
+    string ProvenanceNote);
+
+public sealed record LlmSupportState(
+    string Status,
+    string? Requirement,
+    GeminiAdvice? Advice,
+    string? AdviceModel,
+    SupportSynthesis? Synthesis,
+    string? SynthesisModel,
     string? Error);

@@ -228,4 +228,27 @@ public static class RoundTripSamples
             daysOverdue = 30
             expect fee = $250.00
         """;
+
+    // A GCP migration design requirement chosen to sit where Google-specific platform knowledge matters
+    // most, so the knowledge gap between a general model and a Google-specialist model is observable.
+    public const string GcpMigrationRequirement = """
+        MIG-3120: Migrate the Fulfillment order-status service to Google Cloud
+
+        Current state:
+        - A containerized .NET order-status API, currently on self-managed VMs.
+        - PostgreSQL relational store, single region, ~4 TB, read-heavy.
+        - Carrier-event ingestion via an on-premise message broker.
+
+        Design requirements:
+        1. Run the API as a managed container workload that can scale to zero off-peak.
+        2. Relational store must survive a full region loss with strong consistency for
+           read-write transactions; document the replication and quorum behavior.
+        3. Ingest carrier events with at-least-once delivery and replay for 7 days.
+        4. The API must not be reachable from the public internet; internal consumers in
+           other projects must reach it privately.
+        5. Prevent data exfiltration of the fulfillment datasets to projects outside our
+           security boundary, while still allowing an authorized analytics project to query.
+        6. State any GCP quotas, constraints, or configuration prerequisites that materially
+           affect this design.
+        """;
 }

@@ -1958,6 +1958,65 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     overflow-wrap: anywhere;
 }
 
+/* Model Uses LLM Support scene */
+.know-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.know-col {
+    padding: 12px;
+    border-top: 3px solid var(--line);
+    background: #fafaf7;
+}
+
+.know-col .eyebrow {
+    margin-bottom: 6px;
+}
+
+.know-col ul {
+    margin: 0;
+    padding-left: 16px;
+}
+
+.know-col li {
+    font-size: .78rem;
+    line-height: 1.5;
+    margin-bottom: 4px;
+}
+
+.know-col.own {
+    border-top-color: var(--cobalt);
+}
+
+.know-col.learned {
+    border-top-color: var(--forest);
+    background: #eef4f0;
+}
+
+.know-col.unverified {
+    border-top-color: var(--coral);
+    background: #fbf2f0;
+}
+
+.src-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: .64rem;
+    font-weight: 800;
+    white-space: nowrap;
+    color: var(--white);
+}
+
+.src-own { background: var(--cobalt); }
+.src-gemini { background: var(--forest); }
+.src-unverified { background: var(--coral); }
+
+@media (max-width: 900px) {
+    .know-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 900px) {
     .rt-flow { grid-template-columns: 1fr; }
     .audit-dims { grid-template-columns: 1fr; }

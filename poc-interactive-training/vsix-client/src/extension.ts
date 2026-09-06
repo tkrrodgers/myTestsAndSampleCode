@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 interface BridgeTask {
 	taskId: string;
 	sessionId: string;
-	kind: 'coach-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review';
+	kind: 'coach-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis';
 	preferredModel: string;
 	fallbackModel?: string;
 	systemPrompt: string;
@@ -174,6 +174,10 @@ function taskLabel(task: BridgeTask): string {
 			return 'Claude CLARA authoring';
 		case 'claude-clara-review':
 			return 'Claude CLARA review';
+		case 'gemini-gcp-advisor':
+			return `${task.preferredModel} GCP advisory`;
+		case 'claude-gcp-synthesis':
+			return 'Claude grounded synthesis';
 		default:
 			return `${task.preferredModel} narration`;
 	}

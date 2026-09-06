@@ -26,7 +26,11 @@ public sealed record TrainingSession(
     TrapHuntState TrapHunt,
     DriftState Drift,
     GroundedChangeState GroundedChange,
-    LlmSupportState LlmSupport);
+    LlmSupportState LlmSupport,
+    ContextCurveState ContextCurve,
+    FramingState Framing,
+    EphemeralState Ephemeral,
+    ConsolidationState Consolidation);
 
 public sealed record BridgeTask(
     string TaskId,
@@ -100,20 +104,36 @@ public sealed record ComparisonAnswer(
     string? Content,
     long DurationMs,
     IReadOnlyList<string> MatchedKeywords,
-    int KeywordCoverage);
+    int KeywordCoverage,
+    string? Error,
+    string? ErrorCode);
+
+public sealed record ReferenceDocument(
+    string Url,
+    string Title,
+    bool Retrieved,
+    int Characters,
+    string Text,
+    bool Truncated,
+    DateTimeOffset AttemptedAt,
+    string? Error,
+    bool FromCache);
 
 public sealed record ComparisonDimensionScore(
     string Slot,
     int Factuality,
     int Completeness,
     int Conciseness,
-    string? Notes);
+    string? Notes,
+    IReadOnlyList<string> Evidence,
+    IReadOnlyList<string> Unsupported);
 
 public sealed record ComparisonVerdict(
     string JudgeModel,
     IReadOnlyList<ComparisonDimensionScore> Scores,
     IReadOnlyList<string> Ranking,
-    string Rationale);
+    string Rationale,
+    string? CoverageNote);
 
 public sealed record ComparisonState(
     string Status,
@@ -122,6 +142,8 @@ public sealed record ComparisonState(
     string? Question,
     IReadOnlyList<ComparisonAnswer> Answers,
     ComparisonVerdict? Verdict,
+    IReadOnlyList<ReferenceDocument> Sources,
+    int GroundingTokens,
     string? Error);
 
 public sealed record RoundTripQa(
@@ -540,3 +562,418 @@ public sealed record LlmSupportState(
     SupportSynthesis? Synthesis,
     string? SynthesisModel,
     string? Error);
+
+// --- Phase 0 prerequisites: agent registry, data tiering, incident path (deterministic, no model) ---
+
+public sealed class AgentRegistration
+{
+    public string Name { get; set; } = string.Empty;
+    public string Owner { get; set; } = string.Empty;
+    public string ReleaseId { get; set; } = string.Empty;
+    public string Model { get; set; } = string.Empty;
+    public string BlastRadius { get; set; } = "Repo";
+    public string Autonomy { get; set; } = "Suggests";
+    public string DataTier { get; set; } = "Internal";
+    public string AgentStatus { get; set; } = "Piloting";
+    public bool ToolEnabled { get; set; }
+    public string RuntimeIdentity { get; set; } = string.Empty;
+    public string ActionPolicy { get; set; } = string.Empty;
+    public string ApprovalMode { get; set; } = string.Empty;
+    public int? DependsOnTier { get; set; }
+}
+
+public sealed record ControlRequirement(
+    string Control,
+    string Requirement,
+    bool Required);
+
+public sealed record AgentTierResult(
+    int Tier,
+    string TierName,
+    IReadOnlyList<string> Reasons,
+    IReadOnlyList<string> MissingFields,
+    bool Registrable,
+    IReadOnlyList<ControlRequirement> Controls,
+    string ReviewCadence);
+
+public sealed record DataTierFinding(
+    string Label,
+    string Category,
+    int Tier,
+    int Count,
+    string Sample);
+
+public sealed record IncidentPath(
+    string Severity,
+    string Summary,
+    IReadOnlyList<string> Steps,
+    string Owner,
+    string Sla);
+
+public sealed record DataTierAssessment(
+    int Tier,
+    string TierName,
+    string Decision,
+    string Rationale,
+    IReadOnlyList<DataTierFinding> Findings,
+    string Scrubbed,
+    IncidentPath Incident);
+
+// --- Phase 1: context sufficiency tiers, action authority, neutral framing ---
+
+public sealed record ContextTierRun(
+    int Tier,
+    int Attempt,
+    string Status,
+    int Score,
+    IReadOnlyList<string> Met,
+    IReadOnlyList<string> Missed,
+    string? Plan,
+    string? ModelUsed,
+    string? Error);
+
+public sealed record ContextTierResult(
+    int Index,
+    string Id,
+    string Label,
+    string Description,
+    int PromptTokens,
+    int MedianScore,
+    int BestScore,
+    int WorstScore,
+    IReadOnlyList<string> MedianMet,
+    IReadOnlyList<string> MedianMissed,
+    IReadOnlyList<ContextTierRun> Runs);
+
+public sealed record TierDegradation(
+    string BestTier,
+    string WorstTier,
+    int Drop,
+    IReadOnlyList<string> LostCriteria,
+    string FloorTier,
+    string Note);
+
+public sealed record TierJudgement(
+    string Tier,
+    int Correctness,
+    int Grounding,
+    string Assessment,
+    IReadOnlyList<string> Errors);
+
+public sealed record CurveJudgeVerdict(
+    string Summary,
+    IReadOnlyList<TierJudgement> Tiers,
+    IReadOnlyList<string> DegradationEvidence,
+    string MinimumViableContext,
+    string Caveat);
+
+public sealed record ContextCurveState(
+    string Status,
+    int RunsPerTier,
+    IReadOnlyList<ContextTierResult> Tiers,
+    TierDegradation? Degradation,
+    CurveJudgeVerdict? Verdict,
+    string? JudgeModel,
+    bool TokensExact,
+    string? Error);
+
+public sealed record CandidateAction(
+    string Id,
+    string Description,
+    bool Reversible,
+    bool ProductionAffecting,
+    bool CustomerVisible,
+    bool SecurityPolicy,
+    bool InEnvelope);
+
+public sealed record ActionAuthorityDecision(
+    string ActionId,
+    string Description,
+    string Verdict,
+    string VerdictLabel,
+    IReadOnlyList<string> Reasons,
+    IReadOnlyList<string> ExactActionChecks,
+    IncidentPath Intervention);
+
+public sealed record FramingArm(
+    string Id,
+    string Label,
+    string Framing,
+    string Status,
+    string? Answer,
+    string? ModelUsed,
+    int PromptTokens,
+    double SimilarityToNeutral,
+    string? Error);
+
+public sealed record FramingVerdict(
+    bool SubstanceChanged,
+    string Summary,
+    IReadOnlyList<string> Differences,
+    string Recommendation);
+
+public sealed record FramingState(
+    string Status,
+    string? Question,
+    IReadOnlyList<FramingArm> Arms,
+    FramingVerdict? Verdict,
+    string? JudgeModel,
+    string? Error);
+
+// --- Phase 2: regression adequacy (real mutation testing) and the ephemeral test-ticket harness ---
+
+public sealed record MutantResult(
+    string Description,
+    int Line,
+    string Original,
+    string Mutated,
+    bool Killed,
+    string Detail);
+
+public sealed record MutationReport(
+    bool Ran,
+    int MutationScore,
+    int TotalMutants,
+    int KilledMutants,
+    IReadOnlyList<string> BaselineTests,
+    IReadOnlyList<MutantResult> Mutants,
+    string Verdict,
+    string? Error);
+
+public sealed record EphemeralRecord(
+    string TicketId,
+    string Owner,
+    string Storage,
+    string Ttl,
+    string LogPolicy,
+    string PayloadDigest,
+    IReadOnlyList<string> Purged);
+
+public sealed record EphemeralState(
+    string Status,
+    string? RawTicket,
+    DataTierAssessment? Gate,
+    EphemeralRecord? Record,
+    string? AgentPlan,
+    string? AgentModel,
+    string? Error);
+
+// --- Phase 3: portfolio context tiers and cross-repo common-code audit (deterministic) ---
+
+public sealed record PortfolioRepo(
+    string Name,
+    string AmpId,
+    string Purpose,
+    string Owner,
+    int Score,
+    bool Stale,
+    string StaleAfter,
+    IReadOnlyList<string> Present,
+    IReadOnlyList<string> Missing);
+
+public sealed record PortfolioAmp(
+    string AmpId,
+    string Name,
+    string Convention,
+    int AverageScore,
+    int WeakestScore,
+    bool Stale,
+    string StaleAfter,
+    int RepoCount,
+    int StaleRepos);
+
+public sealed record TierConflict(
+    string Repo,
+    string Field,
+    string CortexSays,
+    string RepoSays,
+    string Resolution);
+
+public sealed record PortfolioReport(
+    string CortexName,
+    int PortfolioScore,
+    int WeakestScore,
+    string WeakestRepo,
+    bool CortexStale,
+    string CortexStaleAfter,
+    IReadOnlyList<PortfolioAmp> Amps,
+    IReadOnlyList<PortfolioRepo> Repos,
+    IReadOnlyList<TierConflict> Conflicts,
+    IReadOnlyList<string> StalenessCascades);
+
+public sealed record CommonCodeMember(
+    string Name,
+    string Repo,
+    int Lines);
+
+public sealed record CommonCodeCluster(
+    string Name,
+    string Kind,
+    IReadOnlyList<CommonCodeMember> Members,
+    IReadOnlyList<string> Repos,
+    int DuplicateLines,
+    bool IsDuplication,
+    string Recommendation);
+
+public sealed record SimilarityPair(
+    string Left,
+    string Right,
+    double Similarity,
+    bool CrossRepo);
+
+public sealed record CorpusRepo(
+    string Name,
+    string AssetClass,
+    string Divergence,
+    string OkfQuality,
+    int Files,
+    int Lines,
+    int NonFunctionalFiles,
+    int FunctionalFiles);
+
+// How well the clustering separated known duplicates from everything else, measured against the source tree.
+public sealed record SeparationMetrics(
+    double DuplicateMean,
+    double DuplicateMin,
+    double UnrelatedMean,
+    double UnrelatedMax,
+    double Margin,
+    int NearestNeighbourHits,
+    int NearestNeighbourTotal);
+
+public sealed record CommonCodeReport(
+    bool UsedEmbeddings,
+    bool CorpusAvailable,
+    string CorpusStatus,
+    double Threshold,
+    int UnitCount,
+    IReadOnlyList<CorpusRepo> Repos,
+    SeparationMetrics Separation,
+    IReadOnlyList<CommonCodeCluster> Clusters,
+    int DuplicatedClusters,
+    int FunctionalPrize,
+    int NonFunctionalPrize,
+    IReadOnlyList<string> Strategy,
+    IReadOnlyList<SimilarityPair> TopPairs);
+
+// --- Consolidation: Claude designs, Gemma implements ---
+
+public sealed record ConsolidationModule(
+    string Name,
+    string Responsibility,
+    string PublicApi,
+    IReadOnlyList<string> Replaces);
+
+public sealed record ConsolidationDesign(
+    string LibraryName,
+    string Summary,
+    IReadOnlyList<ConsolidationModule> Modules,
+    IReadOnlyList<string> MigrationSteps,
+    IReadOnlyList<string> Risks,
+    IReadOnlyList<string> OutOfScope,
+    string ImplementationSpec);
+
+public sealed record ConsolidationFile(
+    string Path,
+    string Purpose,
+    string Source);
+
+public sealed record ConsolidationBuild(
+    IReadOnlyList<ConsolidationFile> Files,
+    IReadOnlyList<string> Assumptions,
+    int ModulesTotal,
+    int ModulesCompleted,
+    IReadOnlyList<string> FailedModules);
+
+// The point of the split: the expensive model writes the spec, the cheap model writes the volume.
+public sealed record ConsolidationTokens(
+    int DesignPromptTokens,
+    int DesignOutputTokens,
+    int BuildPromptTokens,
+    int BuildOutputTokens,
+    int CorpusTokens,
+    bool Exact);
+
+public sealed record ConsolidationState(
+    string Status,
+    ConsolidationDesign? Design,
+    string? DesignModel,
+    ConsolidationBuild? Build,
+    string? BuildModel,
+    ConsolidationTokens? Tokens,
+    string? Error);
+
+// --- Phase 4: token economics, pattern library, plan-first, leadership walkthrough ---
+
+public sealed record EconomicsRow(
+    string Rung,
+    string Model,
+    string Kind,
+    int SuccessPercent,
+    decimal CostPerAttempt,
+    decimal AttemptsPerSuccess,
+    decimal CostPerSuccess,
+    string Note);
+
+public sealed record EconomicsReport(
+    int PromptTokens,
+    int OutputTokens,
+    IReadOnlyList<EconomicsRow> Rows,
+    string CheapestPerSuccess,
+    string CheapestPerAttempt,
+    bool RateCardMisleads,
+    IReadOnlyList<string> Policy);
+
+public sealed class PatternSubmission
+{
+    public string Title { get; set; } = string.Empty;
+    public string Problem { get; set; } = string.Empty;
+    public string Approach { get; set; } = string.Empty;
+    public string Evidence { get; set; } = string.Empty;
+    public string ContextNeeded { get; set; } = string.Empty;
+    public string FailureModes { get; set; } = string.Empty;
+}
+
+public sealed record LibraryEntry(
+    string Title,
+    string Problem,
+    string Approach,
+    string Evidence,
+    string ContextNeeded,
+    string FailureModes,
+    bool Admitted,
+    int Score,
+    IReadOnlyList<string> Tags);
+
+public sealed record CurationCheck(
+    string Name,
+    bool Passed,
+    string Requirement,
+    string Why);
+
+public sealed record LibraryReview(
+    bool Admitted,
+    int Score,
+    IReadOnlyList<CurationCheck> Checks,
+    string Verdict,
+    int LibrarySize);
+
+public sealed record PlanCheck(
+    string Name,
+    bool Passed,
+    string Requirement);
+
+public sealed record PlanReview(
+    int Score,
+    IReadOnlyList<PlanCheck> Checks,
+    string Verdict,
+    int SummaryWords);
+
+public sealed record LeadershipAct(
+    string Act,
+    string Question,
+    string Control,
+    string Metric,
+    string Summary,
+    int SceneIndex,
+    string SceneName);

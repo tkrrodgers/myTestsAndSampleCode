@@ -251,4 +251,22 @@ public static class RoundTripSamples
         6. State any GCP quotas, constraints, or configuration prerequisites that materially
            affect this design.
         """;
+
+    // Objective 2d test payload. Deliberately seeded with values that must never reach a model, so the
+    // Phase 0 gate has something real to catch. All values are synthetic.
+    public const string EphemeralTestPayload = """
+        # FUL-TEST-9001 (ephemeral - never committed)
+        Reproduce the late-fee defect with a real customer record.
+
+        Customer contact: dana.whitfield@contoso-example.com, phone 415-555-0182
+        Account reference: 4111 1111 1111 1111
+        Taxpayer id on file: 123-45-6789
+
+        Repro environment:
+          host  : billing-batch-07.internal
+          db    : Server=10.42.7.19;Database=billing;User Id=svc_billing;Password=Wint3r-Repro-2026;
+          token : eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdmNfYmlsbGluZyJ9.9xQm2vQe1sLpTd7Kc0RbYh4NuAeWzFjX
+
+        Steps: run the overdue batch, capture the fee, compare against the documented policy.
+        """;
 }

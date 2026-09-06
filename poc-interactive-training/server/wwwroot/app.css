@@ -1471,6 +1471,29 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 
 .answer-failed {
     color: var(--error);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.answer-failed strong {
+    font-size: .82rem;
+}
+
+.answer-failed span {
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.answer-failed code {
+    font-size: .7rem;
+    background: #f6dfdc;
+    padding: 2px 6px;
+}
+
+.answer-failed .answer-failed-hint {
+    font-size: .72rem;
+    font-style: italic;
 }
 
 @keyframes spin {
@@ -1489,6 +1512,51 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     border-left-color: var(--coral);
     background: #f6dfdc;
     color: var(--error);
+}
+
+/* A long judge wait reads as a hang unless the panel is visibly alive. */
+.compare-status.working {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: status-breathe 2s ease-in-out infinite;
+}
+
+.compare-status .working-spinner {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--gold);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.compare-status .working-dots i {
+    font-style: normal;
+    animation: dot-fade 1.4s infinite;
+}
+
+.compare-status .working-dots i:nth-child(2) { animation-delay: .2s; }
+.compare-status .working-dots i:nth-child(3) { animation-delay: .4s; }
+
+@keyframes status-breathe {
+    0%, 100% { background: #f8edcf; }
+    50% { background: #fdf7e6; }
+}
+
+@keyframes dot-fade {
+    0%, 60%, 100% { opacity: .25; }
+    30% { opacity: 1; }
+}
+
+/* Rapid flashing is a seizure risk and an annoyance; keep the meaning, drop the motion. */
+@media (prefers-reduced-motion: reduce) {
+    .compare-status.working,
+    .compare-status .working-spinner,
+    .compare-status .working-dots i {
+        animation: none;
+    }
 }
 
 .compare-verdict {
@@ -1918,7 +1986,6 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 .ctx-rich { background: #2f7d4f; }
 .ctx-adequate { background: #c79320; }
 .ctx-poor { background: var(--coral); }
-
 .ctx-method {
     margin: 10px 0 0;
     color: var(--muted);
@@ -2012,6 +2079,232 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 .src-own { background: var(--cobalt); }
 .src-gemini { background: var(--forest); }
 .src-unverified { background: var(--coral); }
+
+/* Phase 0 — registry, tiering, data gate */
+.p0-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    padding: 14px;
+}
+
+.p0-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: .72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted);
+}
+
+.p0-form input[type="text"],
+.p0-form select {
+    padding: 8px 10px;
+    border: 1px solid var(--ink);
+    background: var(--white);
+    font-size: .85rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink);
+}
+
+.p0-form .p0-check {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    grid-column: 1 / -1;
+    text-transform: none;
+    color: var(--ink);
+    font-size: .8rem;
+}
+
+.tier-r0 { background: #7c8a84; }
+.tier-r1 { background: var(--cobalt); }
+.tier-r2 { background: #c79320; }
+.tier-r3 { background: var(--coral); }
+
+.decision-allow, .decision-allowinternal { background: var(--forest); }
+.decision-scrub { background: #c79320; }
+.decision-block { background: var(--coral); }
+
+.audit-table tr.p0-req td {
+    font-weight: 700;
+}
+
+.audit-table tr.p0-opt td {
+    color: var(--muted);
+}
+
+/* Phase 1 — curve, authority, framing */
+.audit-table tr.curve-plateau td {
+    background: #e7efe9;
+    font-weight: 700;
+}
+
+.audit-table tr.curve-plateau td:first-child::after {
+    content: " ◀ plateau";
+    color: var(--forest);
+    font-size: .62rem;
+    font-weight: 800;
+}
+
+.verdict-auto { background: var(--forest); }
+.verdict-approve { background: #c79320; }
+.verdict-propose { background: var(--cobalt); }
+.verdict-deny { background: var(--coral); }
+
+.audit-table tr.p0-clickable {
+    cursor: pointer;
+}
+
+.audit-table tr.p0-clickable:hover td {
+    background: #f0eee6;
+}
+
+/* Phase 4 — library entries and the leadership act map */
+.repo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin: 14px 0;
+}
+
+.repo-card {
+    padding: 14px;
+    border: 1px solid var(--ink);
+    background: var(--white);
+}
+
+.repo-card h3 {
+    margin: 0 0 4px;
+    font-family: Georgia, serif;
+    font-size: .95rem;
+    font-weight: 400;
+}
+
+.repo-card .repo-asset {
+    margin: 0 0 6px;
+    font-size: .72rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--forest);
+}
+
+.repo-card .repo-diverge {
+    margin: 0 0 8px;
+    font-size: .78rem;
+    line-height: 1.5;
+    color: var(--muted);
+}
+
+.repo-card .repo-stats {
+    margin: 8px 0 0;
+    font-size: .72rem;
+    color: var(--muted);
+    border-top: 1px solid #e2e0d8;
+    padding-top: 6px;
+}
+
+.audit-table tr.econ-best td {
+    background: #eef4ee;
+}
+
+.pipeline-chain {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 16px 0;
+}
+
+.pipeline-chain span {
+    padding: 5px 10px;
+    border: 1px solid var(--ink);
+    background: var(--white);
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: .72rem;
+    white-space: nowrap;
+}
+
+.pipeline-chain span:last-child {
+    background: var(--forest);
+    color: var(--white);
+    border-color: var(--forest);
+}
+
+.pipeline-chain span + span::before {
+    content: "\2192\00a0";
+    color: var(--muted);
+}
+
+.audit-table tr.econ-best td:first-child::after {
+    content: " ◀ cheapest per success";
+    color: var(--forest);
+    font-size: .68rem;
+    letter-spacing: .04em;
+}
+
+.lib-entry {
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    border-left: 3px solid var(--forest);
+    background: #fafaf7;
+}
+
+.lib-entry strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: .92rem;
+}
+
+.lib-entry p {
+    margin: 3px 0;
+    font-size: .78rem;
+    line-height: 1.5;
+}
+
+.lib-entry .lib-fail {
+    color: #7a4a12;
+}
+
+.act-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    margin: 20px 0;
+}
+
+.act-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px;
+    border: 1px solid var(--ink);
+    background: var(--white);
+}
+
+.act-card h3 {
+    margin: 0;
+    font-family: Georgia, serif;
+    font-size: 1.05rem;
+    font-weight: 400;
+}
+
+.act-card .act-summary {
+    flex: 1 1 auto;
+    margin: 4px 0;
+    font-size: .8rem;
+    line-height: 1.5;
+    color: var(--muted);
+}
+
+.act-card button {
+    margin-top: 6px;
+    align-self: flex-start;
+}
 
 @media (max-width: 900px) {
     .know-grid { grid-template-columns: 1fr; }

@@ -192,6 +192,54 @@ public sealed class EmbeddingGemmaEncoder : IDisposable
         }
     }
 
+    // Source files routinely exceed the 512-token window. Encoding only the first window would compare
+    // file headers rather than files, so window the whole document and mean-pool the chunk vectors.
+    public float[]? EncodeDocument(string text)
+    {
+        if (!IsAvailable || _tokenizer is null || string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var ids = _tokenizer.EncodeToIds(text).ToArray();
+        if (ids.Length <= MaxTokens)
+        {
+            return Encode(text);
+        }
+
+        var pooled = new float[Dimension == 0 ? 768 : Dimension];
+        var windows = 0;
+        for (var start = 0; start < ids.Length; start += MaxTokens)
+        {
+            var window = _tokenizer.Decode(ids[start..Math.Min(start + MaxTokens, ids.Length)]);
+            var vector = Encode(window);
+            if (vector is null)
+            {
+                continue;
+            }
+
+            if (pooled.Length != vector.Length)
+            {
+                pooled = new float[vector.Length];
+            }
+
+            for (var index = 0; index < vector.Length; index++)
+            {
+                pooled[index] += vector[index];
+            }
+
+            windows++;
+        }
+
+        if (windows == 0)
+        {
+            return null;
+        }
+
+        var norm = MathF.Sqrt(pooled.Sum(value => value * value));
+        return norm <= 0 ? null : pooled.Select(value => value / norm).ToArray();
+    }
+
     public static float CosineSimilarity(float[] left, float[] right)
     {
         if (left.Length != right.Length || left.Length == 0)

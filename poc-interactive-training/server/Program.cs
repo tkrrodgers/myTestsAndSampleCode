@@ -52,6 +52,60 @@ if (args.Contains("--migration-selftest"))
     return healthy ? 0 : 1;
 }
 
+// Prints the measured cross-repo similarity distribution so the clustering threshold is chosen from
+// the data rather than guessed. Run this before pointing the audit at a different estate.
+if (args.Contains("--calibrate-corpus"))
+{
+    var corpus = new TradingCorpus(null);
+    Console.WriteLine(corpus.StatusMessage);
+    if (!corpus.IsAvailable)
+    {
+        return 2;
+    }
+
+    using var calibrationEncoder = new EmbeddingGemmaEncoder(string.Empty);
+    Console.WriteLine(calibrationEncoder.StatusMessage);
+    var pairs = new CommonCodeAuditService(calibrationEncoder, corpus).AllPairs();
+    var crossRepo = pairs.Where(pair => pair.CrossRepo).ToList();
+
+    Console.WriteLine($"\n{crossRepo.Count} cross-repo pairs. Top 25:");
+    foreach (var pair in crossRepo.Take(25))
+    {
+        Console.WriteLine($"  {pair.Similarity:0.0000}  {pair.Left}  ~  {pair.Right}");
+    }
+
+    // Same-name pairs across repos are the known duplicates; everything else is the noise floor.
+    static string ClassOf(string label) => label.Split('/')[^1];
+    var duplicates = crossRepo.Where(pair => ClassOf(pair.Left) == ClassOf(pair.Right)).ToList();
+    var unrelated = crossRepo.Where(pair => ClassOf(pair.Left) != ClassOf(pair.Right)).ToList();
+    Console.WriteLine($"\nKnown duplicates ({duplicates.Count}): min {duplicates.Min(pair => pair.Similarity):0.0000}  mean {duplicates.Average(pair => pair.Similarity):0.0000}  max {duplicates.Max(pair => pair.Similarity):0.0000}");
+    Console.WriteLine($"Unrelated       ({unrelated.Count}): min {unrelated.Min(pair => pair.Similarity):0.0000}  mean {unrelated.Average(pair => pair.Similarity):0.0000}  max {unrelated.Max(pair => pair.Similarity):0.0000}");
+
+    var floor = duplicates.Min(pair => pair.Similarity);
+    var ceiling = unrelated.Max(pair => pair.Similarity);
+    Console.WriteLine(floor > ceiling
+        ? $"\nSeparable. Gap [{ceiling:0.0000}, {floor:0.0000}] — midpoint threshold {(floor + ceiling) / 2:0.0000}"
+        : $"\nNOT cleanly separable: the worst duplicate ({floor:0.0000}) scores below the best unrelated pair ({ceiling:0.0000}). Any single threshold will misclassify.");
+    return 0;
+}
+
+// Prints what the judge would actually read from a reference page. HTML-to-text extraction that quietly
+// returns navigation chrome would poison the grounding without failing anything.
+if (args.Length >= 2 && args[0] == "--fetch-doc")
+{
+    using var probeHttp = new HttpClient();
+    var probe = await new DocumentationFetcher(probeHttp).FetchAsync([args[1]], CancellationToken.None);
+    foreach (var document in probe)
+    {
+        Console.WriteLine($"retrieved={document.Retrieved} title={document.Title}");
+        Console.WriteLine(document.Retrieved
+            ? $"{document.Characters:N0} characters supplied{(document.Truncated ? " (truncated)" : "")}\n---\n{document.Text[..Math.Min(document.Text.Length, 2500)]}"
+            : $"error: {document.Error}");
+    }
+
+    return probe.Any(document => document.Retrieved) ? 0 : 2;
+}
+
 // Compiles one CLARA file, runs its examples, and reports diagnostics. Usable as a CI gate.
 if (args.Length >= 2 && args[0] == "--clara-check")
 {
@@ -117,6 +171,16 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddSingleton<TrainingFixtureProvider>();
 builder.Services.AddSingleton<CSharpAuditAnalyzer>();
+builder.Services.AddSingleton<AgentRegistryService>();
+builder.Services.AddSingleton<DataTierClassifier>();
+builder.Services.AddSingleton<ActionAuthorityService>();
+builder.Services.AddSingleton<RegressionAdequacyService>();
+builder.Services.AddSingleton<PortfolioContextService>();
+builder.Services.AddSingleton(_ => new TradingCorpus(builder.Configuration["TradingCorpusRoot"]));
+builder.Services.AddHttpClient<DocumentationFetcher>();
+builder.Services.AddSingleton<CommonCodeAuditService>();
+builder.Services.AddSingleton<TokenEconomicsService>();
+builder.Services.AddSingleton<PatternLibraryService>();
 builder.Services.AddSingleton(_ => new EmbeddingGemmaEncoder(
     Path.Combine(builder.Environment.ContentRootPath, "..", "models", "embeddinggemma-300m-onnx")));
 builder.Services.AddSingleton<ContextAuditService>();
@@ -141,6 +205,93 @@ foreach (var diagnostic in claraProbe.Errors.Concat(claraProbe.Warnings))
 {
     app.Logger.LogWarning("CLARA self-check: {Diagnostic}", diagnostic);
 }
+
+// Phase 0 gates must hold with no model available; prove both on a known-bad payload at startup.
+var tierProbe = app.Services.GetRequiredService<AgentRegistryService>().Evaluate(new AgentRegistration
+{
+    Name = "probe", Owner = "", ReleaseId = "1", Model = "claude-opus-5@2026-08",
+    BlastRadius = "Shared-prod", Autonomy = "Acts-autonomously", DataTier = "Restricted",
+    AgentStatus = "Active", ToolEnabled = true
+});
+app.Logger.LogInformation("Agent registry self-check: {TierName}, registrable={Registrable}, {Missing} missing field(s).",
+    tierProbe.TierName, tierProbe.Registrable, tierProbe.MissingFields.Count);
+
+var gateProbe = app.Services.GetRequiredService<DataTierClassifier>().Assess(RoundTripSamples.EphemeralTestPayload);
+app.Logger.LogInformation("Data-tier gate self-check: {Tier} -> {Decision}, {Findings} finding type(s), incident {Severity}.",
+    gateProbe.TierName, gateProbe.Decision, gateProbe.Findings.Count, gateProbe.Incident.Severity);
+
+// The tier scorer must separate a grounded plan from a plausible one, or the degradation is meaningless.
+var richPlan = "Fix RegTMarginCalculator.OptionMargin in the risk stage. Branch on right1: for a put the OTM " +
+    "amount is underlying - strike, and the alternative minimum is 10% of the strike, not the underlying. " +
+    "Apply ADR-031 so a cash-secured put margins at strike x contracts x 100 minus premium. STRADDLE and " +
+    "STRANGLE fall through to the naked branch and carry a put leg. Add a test per right. Open question: the " +
+    "cash-collateral attribute name is not agreed — do not invent it.";
+var barePlan = "Read the ticket, increase the margin for short puts, and ship it.";
+app.Logger.LogInformation("Context-tier scorer self-check: grounded plan {Rich}/100, bare plan {Bare}/100.",
+    ContextTierScorer.Score(richPlan).Score, ContextTierScorer.Score(barePlan).Score);
+
+// Mutation testing is only meaningful if surviving mutants are actually found; the fixture is built to
+// leave the enhanced behaviour uncovered, so a 100% score here would mean the harness is broken.
+var mutationProbe = app.Services.GetRequiredService<RegressionAdequacyService>()
+    .Analyse(RegressionSamples.Source, RegressionSamples.Tests);
+app.Logger.LogInformation("Regression adequacy self-check: ran={Ran}, score {Score}%, {Killed}/{Total} mutants killed.{Error}",
+    mutationProbe.Ran, mutationProbe.MutationScore, mutationProbe.KilledMutants, mutationProbe.TotalMutants,
+    mutationProbe.Error is null ? string.Empty : " " + mutationProbe.Error);
+
+var portfolioProbe = app.Services.GetRequiredService<PortfolioContextService>().Build(DateTimeOffset.UtcNow);
+app.Logger.LogInformation("Portfolio tier self-check: {Score}/100 portfolio, weakest {Weakest} at {WeakestScore}, {Conflicts} tier conflict(s), {Cascades} staleness warning(s).",
+    portfolioProbe.PortfolioScore, portfolioProbe.WeakestRepo, portfolioProbe.WeakestScore,
+    portfolioProbe.Conflicts.Count, portfolioProbe.StalenessCascades.Count);
+
+app.Logger.LogInformation("Trading corpus: {Status}", app.Services.GetRequiredService<TradingCorpus>().StatusMessage);
+
+// The judge is grounded on live documentation, so a retrieval failure must surface here rather than as
+// a mysterious comparison failure later. Network-dependent, so it must not gate startup.
+_ = Task.Run(async () =>
+{
+    var probeUrls = ComparisonCatalog.Topics.Select(topic => topic.ReferenceUrls[0]).ToList();
+    var fetched = await app.Services.GetRequiredService<DocumentationFetcher>().FetchAsync(probeUrls, CancellationToken.None);
+    var ok = fetched.Count(document => document.Retrieved);
+    app.Logger.LogInformation("Documentation grounding self-check: {Ok}/{Total} reference pages retrieved, {Characters} characters of ground truth.",
+        ok, fetched.Count, fetched.Where(document => document.Retrieved).Sum(document => document.Characters));
+    foreach (var failure in fetched.Where(document => !document.Retrieved))
+    {
+        app.Logger.LogWarning("Documentation grounding: {Url} could not be retrieved — {Error}", failure.Url, failure.Error);
+    }
+});
+
+// Embedding 30+ real source files takes minutes on CPU, so this self-check must not gate startup.
+_ = Task.Run(() =>
+{
+    var commonCodeProbe = app.Services.GetRequiredService<CommonCodeAuditService>().Analyse();
+    app.Logger.LogInformation("Common-code audit self-check: embeddings={Embeddings}, {Duplicated} duplicated cluster(s) across {Units} files, duplicates {DuplicateMean:0.000} vs unrelated {UnrelatedMean:0.000} (margin {Margin:0.000}, {Hits}/{Total} nearest-neighbour hits), prize {Functional} functional / {NonFunctional} non-functional lines.",
+        commonCodeProbe.UsedEmbeddings, commonCodeProbe.DuplicatedClusters, commonCodeProbe.UnitCount,
+        commonCodeProbe.Separation.DuplicateMean, commonCodeProbe.Separation.UnrelatedMean, commonCodeProbe.Separation.Margin,
+        commonCodeProbe.Separation.NearestNeighbourHits, commonCodeProbe.Separation.NearestNeighbourTotal,
+        commonCodeProbe.FunctionalPrize, commonCodeProbe.NonFunctionalPrize);
+});
+
+// Phase 4. The economics probe asserts the interesting case: the rung that is cheapest per attempt
+// is not the rung that is cheapest per successful outcome.
+var economicsProbe = app.Services.GetRequiredService<TokenEconomicsService>().Build(4200, 700,
+    [("open-weight", 35), ("open-weight-grounded", 78), ("mid", 72), ("frontier", 91)]);
+app.Logger.LogInformation("Token economics self-check: cheapest/attempt {Attempt}, cheapest/success {Success}, rate card misleads={Misleads}.",
+    economicsProbe.CheapestPerAttempt, economicsProbe.CheapestPerSuccess, economicsProbe.RateCardMisleads);
+
+// A deliberately thin submission must be held, or the gate is decorative.
+var libraryProbe = app.Services.GetRequiredService<PatternLibraryService>().Submit(new PatternSubmission
+{
+    Title = "Great prompt",
+    Problem = "It works really well and the team likes it.",
+    Approach = "Ask the model to fix the bug and it usually does the right thing."
+});
+app.Logger.LogInformation("Pattern library self-check: thin submission admitted={Admitted}, score {Score}%, {Failed} check(s) failed.",
+    libraryProbe.Admitted, libraryProbe.Score, libraryProbe.Checks.Count(check => !check.Passed));
+
+var planProbe = PlanFirstChecker.Review(PlanFirstSamples.GoodPlan);
+var codeFirstProbe = PlanFirstChecker.Review("Here is the fix:\n```csharp\nvar x = 1;\n```");
+app.Logger.LogInformation("Plan-first self-check: good plan {Good}%, code-first plan {CodeFirst}%.",
+    planProbe.Score, codeFirstProbe.Score);
 
 if (!app.Environment.IsDevelopment())
 {

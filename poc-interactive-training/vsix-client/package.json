@@ -41,6 +41,11 @@
           "minimum": 750,
           "maximum": 10000,
           "description": "Delay between local task polls."
+        },
+        "pocTraining.requireApproval": {
+          "type": "boolean",
+          "default": false,
+          "description": "Require explicit approval of each exact action before it runs (competency 12). Off by default so batch scenes stay usable; turning it on demonstrates the R2/R3 approval gate."
         }
       }
     }

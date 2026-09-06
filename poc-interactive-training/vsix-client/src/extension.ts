@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 interface BridgeTask {
 	taskId: string;
 	sessionId: string;
-	kind: 'coach-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis';
+	kind: 'coach-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis' | 'context-curve-plan' | 'framing-arm' | 'framing-judge' | 'claude-consolidation-design' | 'gemma-consolidation-build' | 'claude-curve-judge';
 	preferredModel: string;
 	fallbackModel?: string;
 	systemPrompt: string;
@@ -137,6 +137,31 @@ async function pollLoop(serverUrl: string, token: string, signal: AbortSignal): 
 
 async function runTask(serverUrl: string, token: string, task: BridgeTask, signal: AbortSignal): Promise<void> {
 	const label = taskLabel(task);
+
+	// Competency 12: exact-action approval. Batch scenes make per-call prompts impractical, so this is a
+	// setting rather than a removal — turning it off is a recorded choice, not an accident.
+	if (vscode.workspace.getConfiguration('pocTraining').get<boolean>('requireApproval', false)) {
+		log(`${label}: awaiting approval…`);
+		const choice = await vscode.window.showInformationMessage(
+			`Approve this exact action?\n\nTask: ${label}\nModel requested: ${task.preferredModel}\nPrompt: ${task.userPrompt.length} chars`,
+			{ modal: true },
+			'Approve', 'Deny');
+		if (choice !== 'Approve') {
+			log(`${label}: DENIED by operator. Recorded as a refusal, not a failure.`);
+			await submitResult(serverUrl, token, {
+				taskId: task.taskId,
+				sessionId: task.sessionId,
+				status: 'failed',
+				modelRequested: task.preferredModel,
+				fallbackUsed: false,
+				durationMs: 0,
+				errorCode: 'operator_denied',
+				errorMessage: 'The operator denied this action at the approval gate.'
+			}, signal);
+			return;
+		}
+	}
+
 	log(`${label}: task received — connecting to a language model…`);
 	setStatus(task.kind === 'coach-narration' ? 'coaching' : 'reviewing');
 	const result = await executeTask(task, serverUrl, token, signal);
@@ -178,6 +203,18 @@ function taskLabel(task: BridgeTask): string {
 			return `${task.preferredModel} GCP advisory`;
 		case 'claude-gcp-synthesis':
 			return 'Claude grounded synthesis';
+		case 'context-curve-plan':
+			return `${task.preferredModel} plan (context tier)`;
+		case 'claude-curve-judge':
+			return 'Claude context comparison';
+		case 'framing-arm':
+			return 'Framing arm';
+		case 'framing-judge':
+			return 'Claude framing review';
+		case 'claude-consolidation-design':
+			return 'Claude consolidation design';
+		case 'gemma-consolidation-build':
+			return `${task.preferredModel} implementation`;
 		default:
 			return `${task.preferredModel} narration`;
 	}

@@ -76,6 +76,8 @@ The remaining review recommendations were applied **inside** existing documents 
 **Leadership & team:**
 - [Overview of the New AI Team](../OverviewOfNewAITeam.md) — plain-language executive summary of every area and its importance. **Start here if you are new.**
 - [New CES Team Roles](../newCESTeamRoles.md) — role definitions, staffing sequence, decision rights, and document ownership.
+- [My New Director Role](MyNewDirectorRole.md) — the leadership objectives this programme is now steered by.
+- [Enhancing the Current Interactive Training](enhancingCurrentInteractiveTraining.md) — design that turns those objectives into a phased curriculum, and the corrections applied to earlier claims.
 
 **Platform design:**
 - [Interactive AI Training Design](interactiveAITrainingDesign.md) — the multimedia training platform (VSIX client ↔ training server ↔ Blazor UI) that delivers the enablement curriculum in [07](07-enablement-and-interactive-training.md). Staged behind explicit build gates (§14.1).

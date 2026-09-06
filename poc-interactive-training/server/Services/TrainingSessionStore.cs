@@ -20,6 +20,9 @@ public sealed class TrainingSessionStore
     private readonly TrainingFixtureProvider _fixture;
     private readonly CSharpAuditAnalyzer _auditAnalyzer;
     private readonly ContextAuditService _contextAudit;
+    private readonly DataTierClassifier _dataTier;
+    private readonly TradingCorpus _tradingCorpus;
+    private readonly DocumentationFetcher _documentation;
     private readonly EmbeddingGemmaEncoder _encoder;
     private readonly CobolToolchain _cobol;
     private readonly MigrationSandbox _sandbox;
@@ -33,6 +36,9 @@ public sealed class TrainingSessionStore
     private static string ToolchainStatus = "not probed";
     private static IReadOnlyList<FixtureArtifact> FixtureArtifacts = [];
     private static string FixtureJira = "";
+
+    // The tier prompts are constants, so their cost is known before anything runs.
+    private static IReadOnlyDictionary<int, int> TierPromptTokens = new Dictionary<int, int>();
 
     // The fixture ticket ends with a section naming the omission. That is a note to the training author,
     // not part of the ticket - leaving it in would hand the planted open question straight to the model.
@@ -51,7 +57,7 @@ public sealed class TrainingSessionStore
         "The fee is rounded to whole dollars, but rule 6 requires 2 decimal places."
     ];
 
-    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox)
+    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox, DataTierClassifier dataTier, TradingCorpus tradingCorpus, DocumentationFetcher documentation)
     {
         _fixture = fixture;
         _auditAnalyzer = auditAnalyzer;
@@ -59,6 +65,9 @@ public sealed class TrainingSessionStore
         _encoder = encoder;
         _cobol = cobol;
         _sandbox = sandbox;
+        _dataTier = dataTier;
+        _tradingCorpus = tradingCorpus;
+        _documentation = documentation;
 
         var (csharpTokens, exact) = _encoder.CountTokens(LanguageTestSamples.CSharpSource);
         CSharpSourceTokens = csharpTokens;
@@ -69,6 +78,9 @@ public sealed class TrainingSessionStore
         ToolchainStatus = _cobol.StatusMessage;
         FixtureArtifacts = _fixture.Artifacts();
         FixtureJira = StripPlantedHint(_fixture.Read("jira/FUL-1842.md"));
+        TierPromptTokens = ContextTierSamples.Tiers.ToDictionary(
+            tier => tier.Index,
+            tier => _encoder.CountTokens(Prompts.ContextTierSystem + "\n" + ContextTierSamples.BuildRequest(tier)).Tokens);
     }
 
     public TrainingSession CreateSession()
@@ -179,6 +191,9 @@ public sealed class TrainingSessionStore
             session.ComparisonTaskSlot.Clear();
             session.ComparisonJudgeTaskId = null;
             session.ComparisonVerdict = null;
+            session.ComparisonSources = [];
+            session.ComparisonGroundingTokens = 0;
+            session.ComparisonGroundingStarted = false;
             session.ComparisonError = null;
             session.ComparisonTopic = topic;
             session.ComparisonStatus = "queued";
@@ -207,7 +222,7 @@ public sealed class TrainingSessionStore
 
     private void MaybeQueueJudge(SessionState session)
     {
-        if (session.ComparisonSlots.Count == 0 || session.ComparisonJudgeTaskId is not null)
+        if (session.ComparisonSlots.Count == 0 || session.ComparisonJudgeTaskId is not null || session.ComparisonGroundingStarted)
         {
             return;
         }
@@ -226,19 +241,54 @@ public sealed class TrainingSessionStore
             return;
         }
 
-        var judgeTask = new BridgeTask(
-            Guid.NewGuid().ToString("N"),
-            session.SessionId,
-            "model-judge",
-            JudgeModel,
-            null,
-            Prompts.JudgeSystem,
-            BuildJudgeRequest(session),
-            90,
-            DateTimeOffset.UtcNow);
-        session.ComparisonJudgeTaskId = judgeTask.TaskId;
-        session.Tasks[judgeTask.TaskId] = new TaskState(judgeTask);
-        session.ComparisonStatus = "judging";
+        // Retrieval is network I/O and must not run under the session lock.
+        session.ComparisonGroundingStarted = true;
+        session.ComparisonStatus = "grounding";
+        var topic = session.ComparisonTopic!;
+        _ = Task.Run(async () =>
+        {
+            IReadOnlyList<ReferenceDocument> documents;
+            try
+            {
+                documents = await _documentation.FetchAsync(topic.ReferenceUrls, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                documents = topic.ReferenceUrls
+                    .Select(url => new ReferenceDocument(url, url, false, 0, string.Empty, false, DateTimeOffset.UtcNow, ex.Message, false))
+                    .ToList();
+            }
+
+            lock (_gate)
+            {
+                session.ComparisonSources = documents;
+                var retrieved = documents.Where(document => document.Retrieved).ToList();
+                if (retrieved.Count == 0)
+                {
+                    session.ComparisonStatus = "failed";
+                    session.ComparisonError = "No reference documentation could be retrieved, so there is nothing to judge against. "
+                        + string.Join(" | ", documents.Select(document => $"{document.Url}: {document.Error}"));
+                    return;
+                }
+
+                var request = BuildJudgeRequest(session, retrieved);
+                session.ComparisonGroundingTokens = _encoder.CountTokens(request).Tokens;
+
+                var judgeTask = new BridgeTask(
+                    Guid.NewGuid().ToString("N"),
+                    session.SessionId,
+                    "model-judge",
+                    ClaraAuthorModel,
+                    JudgeModel,
+                    Prompts.JudgeSystem,
+                    request,
+                    240,
+                    DateTimeOffset.UtcNow);
+                session.ComparisonJudgeTaskId = judgeTask.TaskId;
+                session.Tasks[judgeTask.TaskId] = new TaskState(judgeTask);
+                session.ComparisonStatus = "judging";
+            }
+        });
     }
 
     private static string BuildAnswerRequest(ComparisonTopic topic) => $"""
@@ -249,27 +299,33 @@ public sealed class TrainingSessionStore
         If you are not certain of a fact, say so rather than inventing it.
         """;
 
-    private static string BuildJudgeRequest(SessionState session)
+    private static string BuildJudgeRequest(SessionState session, IReadOnlyList<ReferenceDocument> documents)
     {
         var topic = session.ComparisonTopic!;
         var request = new System.Text.StringBuilder();
         request.AppendLine("<question>");
         request.AppendLine(topic.Question);
         request.AppendLine("</question>");
-        request.AppendLine("<reference_checklist>");
-        request.AppendLine("Authoritative sources for ground truth:");
-        foreach (var url in topic.ReferenceUrls)
+
+        request.AppendLine("<authoritative_documentation>");
+        request.AppendLine("The following text was retrieved from the official Google Cloud documentation at judging time. It is your ONLY source of ground truth.");
+        foreach (var document in documents)
         {
-            request.AppendLine($"- {url}");
+            request.AppendLine($"<document url=\"{document.Url}\" title=\"{document.Title}\" retrieved_at=\"{document.AttemptedAt:u}\"{(document.Truncated ? " truncated=\"true\"" : "")}>");
+            request.AppendLine(document.Text);
+            request.AppendLine("</document>");
         }
 
-        request.AppendLine("Key points an ideal answer should cover:");
+        request.AppendLine("</authoritative_documentation>");
+
+        request.AppendLine("<keyword_checklist>");
+        request.AppendLine("Terms a complete answer would normally use. Presence is not correctness and absence is not error — use these only as a prompt to check coverage:");
         foreach (var keyword in topic.MustIncludeKeywords)
         {
             request.AppendLine($"- {keyword}");
         }
 
-        request.AppendLine("</reference_checklist>");
+        request.AppendLine("</keyword_checklist>");
 
         foreach (var slot in session.ComparisonSlots.Values
             .Where(slot => slot.Status == "completed" && !string.IsNullOrWhiteSpace(slot.Content))
@@ -280,6 +336,7 @@ public sealed class TrainingSessionStore
             request.AppendLine("</answer>");
         }
 
+        request.AppendLine("Score each answer against the retrieved documentation only.");
         return request.ToString();
     }
 
@@ -842,6 +899,227 @@ public sealed class TrainingSessionStore
         return request.ToString();
     }
 
+    // Claude designs from the audit; Gemma implements from the design. The corpus is deliberately never
+    // sent to the build stage — that separation is the whole point of the two-model split.
+    public void QueueConsolidation(string sessionId, CommonCodeReport report)
+    {
+        if (!report.CorpusAvailable || report.DuplicatedClusters == 0)
+        {
+            throw new InvalidOperationException("Run the audit and find at least one duplicated cluster before requesting a design.");
+        }
+
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.ConsolidationDesign = null;
+            session.ConsolidationDesignModel = null;
+            session.ConsolidationBuildModel = null;
+            session.ConsolidationFiles.Clear();
+            session.ConsolidationAssumptions.Clear();
+            session.ConsolidationFailedModules.Clear();
+            session.ConsolidationTaskModule.Clear();
+            session.ConsolidationModulesTotal = 0;
+            session.ConsolidationError = null;
+            session.ConsolidationBuildPromptTokens = 0;
+            session.ConsolidationBuildOutputTokens = 0;
+
+            var request = BuildConsolidationDesignRequest(report);
+            var (promptTokens, exact) = _encoder.CountTokens(Prompts.ConsolidationDesignSystem + request);
+            var (corpusTokens, _) = _encoder.CountTokens(string.Join("\n", _tradingCorpus.Files.Select(file => file.Source)));
+            session.ConsolidationDesignPromptTokens = promptTokens;
+            session.ConsolidationCorpusTokens = corpusTokens;
+            session.ConsolidationTokensExact = exact;
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "claude-consolidation-design",
+                ClaudeModel,
+                null,
+                Prompts.ConsolidationDesignSystem,
+                request,
+                150,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.ConsolidationStatus = "designing";
+        }
+    }
+
+    private static string BuildConsolidationDesignRequest(CommonCodeReport report)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<audit method=\"embeddinggemma-300m cosine clustering\" threshold=\"" + report.Threshold.ToString("0.00") + "\">");
+        request.AppendLine($"Corpus: {report.UnitCount} source files across {report.Repos.Count} production services.");
+        foreach (var repo in report.Repos)
+        {
+            request.AppendLine($"- {repo.Name} ({repo.AssetClass}): {repo.Files} files, {repo.Lines} lines. Divergent logic: {repo.Divergence}.");
+        }
+
+        request.AppendLine($"Cross-repo similarity: known duplicates mean {report.Separation.DuplicateMean:0.000} (weakest {report.Separation.DuplicateMin:0.000}), everything else mean {report.Separation.UnrelatedMean:0.000} (strongest {report.Separation.UnrelatedMax:0.000}).");
+        request.AppendLine($"Consolidation prize: {report.NonFunctionalPrize} duplicate non-functional lines, {report.FunctionalPrize} duplicate functional lines.");
+        request.AppendLine("</audit>");
+        request.AppendLine("<clusters>");
+        foreach (var cluster in report.Clusters.Where(cluster => cluster.IsDuplication))
+        {
+            request.AppendLine($"- [{cluster.Kind}] {cluster.Name}: {string.Join(", ", cluster.Members.Select(member => member.Repo + "/" + member.Name + " (" + member.Lines + " lines)"))}. Duplicate lines: {cluster.DuplicateLines}.");
+        }
+
+        request.AppendLine("</clusters>");
+        request.AppendLine("Design the shared platform library that retires this duplication. The implementation_spec you produce is the ONLY input a smaller model will receive — it will not see this audit or the source repositories, so it must be self-contained.");
+        return request.ToString();
+    }
+
+    private void CompleteConsolidationDesign(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded)
+        {
+            session.ConsolidationStatus = "failed";
+            session.ConsolidationError = result.ErrorMessage ?? "The consolidation design task failed.";
+            return;
+        }
+
+        if (!TryDeserialize(result.Content!, out ConsolidationDesignDto? dto) || dto is null || string.IsNullOrWhiteSpace(dto.ImplementationSpec))
+        {
+            session.ConsolidationStatus = "failed";
+            var preview = result.Content is null ? "(empty)" : result.Content.Trim();
+            session.ConsolidationError = "The design did not match the expected contract. The model returned: "
+                + (preview.Length > 600 ? preview[..600] + "…" : preview);
+            return;
+        }
+
+        session.ConsolidationDesign = new ConsolidationDesign(
+            dto.LibraryName?.Trim() ?? "SharedPlatform",
+            dto.Summary?.Trim() ?? string.Empty,
+            (dto.Modules ?? []).Select(module => new ConsolidationModule(
+                module.Name ?? "module",
+                module.Responsibility ?? string.Empty,
+                module.PublicApi ?? string.Empty,
+                module.Replaces ?? [])).ToList(),
+            dto.MigrationSteps ?? [],
+            dto.Risks ?? [],
+            dto.OutOfScope ?? [],
+            dto.ImplementationSpec!.Trim());
+        session.ConsolidationDesignModel = result.ModelUsed;
+        session.ConsolidationDesignOutputTokens = _encoder.CountTokens(result.Content!).Tokens;
+
+        var modules = session.ConsolidationDesign.Modules.Count > 0
+            ? session.ConsolidationDesign.Modules
+            : [new ConsolidationModule(session.ConsolidationDesign.LibraryName, "The whole library.", string.Empty, [])];
+        session.ConsolidationModulesTotal = modules.Count;
+
+        // One task per module. Asking for the whole library in a single response overruns the output cap
+        // and truncates mid-file, which is what a JSON contract turns into an unparseable failure.
+        foreach (var module in modules)
+        {
+            var buildRequest = BuildConsolidationModuleRequest(session.ConsolidationDesign, module);
+            session.ConsolidationBuildPromptTokens += _encoder.CountTokens(Prompts.ConsolidationBuildSystem + buildRequest).Tokens;
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                session.SessionId,
+                "gemma-consolidation-build",
+                GemmaModel,
+                GptFallbackModel,
+                Prompts.ConsolidationBuildSystem,
+                buildRequest,
+                240,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.ConsolidationTaskModule[task.TaskId] = module.Name;
+        }
+
+        session.ConsolidationStatus = "building";
+    }
+
+    private static string BuildConsolidationModuleRequest(ConsolidationDesign design, ConsolidationModule module)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<implementation_spec>");
+        request.AppendLine(design.ImplementationSpec);
+        request.AppendLine("</implementation_spec>");
+        request.AppendLine($"<module name=\"{module.Name}\">");
+        request.AppendLine(module.Responsibility);
+        if (!string.IsNullOrWhiteSpace(module.PublicApi))
+        {
+            request.AppendLine("Public API: " + module.PublicApi);
+        }
+
+        request.AppendLine("</module>");
+        request.AppendLine($"Implement ONLY the module '{module.Name}' from the specification above, in library '{design.LibraryName}'. Output one file.");
+        return request.ToString();
+    }
+
+    private void CompleteConsolidationBuild(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        var module = session.ConsolidationTaskModule.TryGetValue(result.TaskId, out var name) ? name : "module";
+        if (!succeeded || string.IsNullOrWhiteSpace(result.Content))
+        {
+            session.ConsolidationFailedModules.Add($"{module}: {result.ErrorMessage ?? "no output"}");
+        }
+        else
+        {
+            session.ConsolidationBuildModel = result.ModelUsed;
+            session.ConsolidationBuildOutputTokens += _encoder.CountTokens(result.Content).Tokens;
+            var (path, source, assumptions) = ParseModuleFile(result.Content, module);
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                session.ConsolidationFailedModules.Add($"{module}: the response contained no code.");
+            }
+            else
+            {
+                session.ConsolidationFiles.Add(new ConsolidationFile(path, module, source));
+                session.ConsolidationAssumptions.AddRange(assumptions.Select(assumption => $"{module}: {assumption}"));
+            }
+        }
+
+        if (session.ConsolidationFiles.Count + session.ConsolidationFailedModules.Count >= session.ConsolidationModulesTotal)
+        {
+            session.ConsolidationStatus = session.ConsolidationFiles.Count > 0 ? "completed" : "failed";
+            if (session.ConsolidationFiles.Count == 0)
+            {
+                session.ConsolidationError = "Every module failed to build. " + string.Join(" | ", session.ConsolidationFailedModules);
+            }
+        }
+    }
+
+    // Plain text, not JSON: embedding a whole source file in a JSON string is where small models break.
+    private static (string Path, string Source, List<string> Assumptions) ParseModuleFile(string content, string module)
+    {
+        var assumptions = new List<string>();
+        var path = module + ".cs";
+        var body = new System.Text.StringBuilder();
+
+        var text = content.Trim();
+        if (text.StartsWith("```", StringComparison.Ordinal))
+        {
+            var firstLine = text.IndexOf('\n');
+            var lastFence = text.LastIndexOf("```", StringComparison.Ordinal);
+            if (firstLine >= 0 && lastFence > firstLine)
+            {
+                text = text[(firstLine + 1)..lastFence];
+            }
+        }
+
+        foreach (var line in text.Split('\n'))
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith("// FILE:", StringComparison.OrdinalIgnoreCase))
+            {
+                path = trimmed["// FILE:".Length..].Trim();
+            }
+            else if (trimmed.StartsWith("// ASSUMPTION:", StringComparison.OrdinalIgnoreCase))
+            {
+                assumptions.Add(trimmed["// ASSUMPTION:".Length..].Trim());
+            }
+            else
+            {
+                body.AppendLine(line.TrimEnd());
+            }
+        }
+
+        return (path, body.ToString().Trim(), assumptions);
+    }
+
     public void QueueLlmSupport(string sessionId, string requirement)
     {
         if (string.IsNullOrWhiteSpace(requirement) || requirement.Length > 8000)
@@ -956,6 +1234,438 @@ public sealed class TrainingSessionStore
         request.AppendLine("</advisory>");
         request.AppendLine("Separate what you already knew from what this advisory taught you, flag what you cannot accept without checking the primary documentation, then produce the migration design.");
         return request.ToString();
+    }
+
+    // --- Context sufficiency: identical ticket and code, three documentation tiers, deterministic scoring ---
+
+    private const int CurveRunsPerTier = 2;
+
+    public void QueueContextCurve(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.CurveRuns.Clear();
+            session.CurveTaskKey.Clear();
+            session.CurveRungTokens.Clear();
+            session.CurveAnalysis = null;
+            session.CurveVerdict = null;
+            session.CurveJudgeModel = null;
+            session.CurveJudgeTaskId = null;
+            session.CurveError = null;
+            session.CurveStatus = "running";
+
+            foreach (var tier in ContextTierSamples.Tiers)
+            {
+                var userPrompt = ContextTierSamples.BuildRequest(tier);
+                session.CurveRungTokens[tier.Index] = _encoder.CountTokens(Prompts.ContextTierSystem + "\n" + userPrompt).Tokens;
+                session.CurveTokensExact = _encoder.IsAvailable;
+
+                for (var attempt = 1; attempt <= CurveRunsPerTier; attempt++)
+                {
+                    var task = new BridgeTask(
+                        Guid.NewGuid().ToString("N"),
+                        sessionId,
+                        "context-curve-plan",
+                        GemmaModel,
+                        GptFallbackModel,
+                        Prompts.ContextTierSystem,
+                        userPrompt,
+                        180,
+                        DateTimeOffset.UtcNow);
+                    session.CurveTaskKey[task.TaskId] = (tier.Index, attempt);
+                    session.CurveRuns[(tier.Index, attempt)] = new CurveRunState(tier.Index, attempt);
+                    session.Tasks[task.TaskId] = new TaskState(task);
+                }
+            }
+        }
+    }
+
+    private void CompleteCurveRun(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!session.CurveTaskKey.TryGetValue(result.TaskId, out var key) ||
+            !session.CurveRuns.TryGetValue(key, out var run))
+        {
+            return;
+        }
+
+        run.ModelUsed = result.ModelUsed;
+        if (!succeeded || string.IsNullOrWhiteSpace(result.Content))
+        {
+            run.Status = "failed";
+            run.Error = result.ErrorMessage ?? "The model returned no plan.";
+        }
+        else
+        {
+            run.Status = "completed";
+            run.Plan = result.Content.Trim();
+            var (score, met, missed) = ContextTierScorer.Score(run.Plan);
+            run.Score = score;
+            run.Met = met;
+            run.Missed = missed;
+        }
+
+        if (session.CurveRuns.Values.All(candidate => candidate.Status is "completed" or "failed"))
+        {
+            var tiers = BuildCurveTiers(session);
+            session.CurveAnalysis = ContextTierScorer.Analyse(tiers);
+            QueueCurveJudge(session, tiers);
+        }
+    }
+
+    // The deterministic score is already computed. The judge is asked for the reasoning a reader needs
+    // to trust it, and is explicitly told not to restate the numbers as its own finding.
+    private void QueueCurveJudge(SessionState session, IReadOnlyList<ContextTierResult> tiers)
+    {
+        var representative = tiers
+            .Select(tier => (Tier: tier, Run: tier.Runs.FirstOrDefault(run => run.Status == "completed" && run.Score == tier.MedianScore)
+                                          ?? tier.Runs.FirstOrDefault(run => run.Status == "completed")))
+            .Where(pair => pair.Run is not null)
+            .ToList();
+
+        if (representative.Count < 2)
+        {
+            session.CurveStatus = "completed";
+            session.CurveError = "Too few tiers produced a plan to compare.";
+            return;
+        }
+
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<ticket>");
+        request.AppendLine(ContextTierSamples.Ticket);
+        request.AppendLine("</ticket>");
+        request.AppendLine("<ground_truth>");
+        request.AppendLine("The defect is in RegTMarginCalculator.OptionMargin (the `risk` stage). The short-naked branch computes the out-of-the-money amount as max(0, strike - underlying), which is the CALL formula, and uses 10% of the UNDERLYING as the alternative minimum for both rights.");
+        request.AppendLine("A correct plan must: branch on the option right; for puts use OTM = max(0, underlying - strike) and an alternative minimum of 10% of the STRIKE; apply ADR-031 so a cash-secured put is margined at (strike x contracts x 100) - premium; note that STRADDLE and STRANGLE fall through to the naked branch and carry a put leg; and raise the unagreed cash-collateral attribute as an open question rather than inventing a name.");
+        request.AppendLine("</ground_truth>");
+
+        foreach (var (tier, run) in representative)
+        {
+            request.AppendLine($"<plan tier=\"{tier.Id}\" label=\"{tier.Label}\" context=\"{tier.Description}\" deterministic_score=\"{run!.Score}\">");
+            request.AppendLine(run.Plan);
+            request.AppendLine("</plan>");
+        }
+
+        request.AppendLine("Assess each plan against the ground truth, then explain what the degradation between tiers actually demonstrates.");
+
+        var task = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "claude-curve-judge",
+            ClaraAuthorModel,
+            ClaudeModel,
+            Prompts.CurveJudgeSystem,
+            request.ToString(),
+            180,
+            DateTimeOffset.UtcNow);
+        session.Tasks[task.TaskId] = new TaskState(task);
+        session.CurveJudgeTaskId = task.TaskId;
+        session.CurveStatus = "judging";
+    }
+
+    private static void CompleteCurveJudge(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        session.CurveStatus = "completed";
+        if (!succeeded)
+        {
+            session.CurveError = result.ErrorMessage ?? "The comparative review failed. The deterministic scores above still stand.";
+            return;
+        }
+
+        if (!TryDeserialize(result.Content!, out CurveJudgeDto? dto) || dto is null || string.IsNullOrWhiteSpace(dto.Summary))
+        {
+            session.CurveError = "The review did not match the expected contract. The deterministic scores above still stand.";
+            return;
+        }
+
+        session.CurveVerdict = new CurveJudgeVerdict(
+            dto.Summary!.Trim(),
+            (dto.Tiers ?? []).Select(tier => new TierJudgement(
+                tier.Tier ?? "tier",
+                tier.Correctness,
+                tier.Grounding,
+                tier.Assessment ?? string.Empty,
+                tier.Errors ?? [])).ToList(),
+            dto.DegradationEvidence ?? [],
+            dto.MinimumViableContext?.Trim() ?? string.Empty,
+            dto.Caveat?.Trim() ?? string.Empty);
+        session.CurveJudgeModel = result.ModelUsed;
+    }
+
+    private static List<ContextTierResult> BuildCurveTiers(SessionState session)
+    {
+        var tiers = new List<ContextTierResult>();
+        foreach (var definition in ContextTierSamples.Tiers)
+        {
+            var runs = session.CurveRuns.Values
+                .Where(run => run.Rung == definition.Index)
+                .OrderBy(run => run.Attempt)
+                .Select(run => new ContextTierRun(run.Rung, run.Attempt, run.Status, run.Score, run.Met, run.Missed, run.Plan, run.ModelUsed, run.Error))
+                .ToList();
+            var completed = runs.Where(run => run.Status == "completed").ToList();
+            var scores = completed.Select(run => run.Score).ToList();
+            var median = ContextTierScorer.Median(scores);
+            var representative = completed.FirstOrDefault(run => run.Score == median) ?? completed.FirstOrDefault();
+
+            tiers.Add(new ContextTierResult(
+                definition.Index,
+                definition.Id,
+                definition.Label,
+                definition.Description,
+                session.CurveRungTokens.TryGetValue(definition.Index, out var tokens) ? tokens : TierPromptTokens.GetValueOrDefault(definition.Index),
+                median,
+                scores.Count > 0 ? scores.Max() : 0,
+                scores.Count > 0 ? scores.Min() : 0,
+                representative?.Met ?? [],
+                representative?.Missed ?? [],
+                runs));
+        }
+
+        return tiers;
+    }
+
+    // --- Neutral framing lab: same question, three framings, one model ---
+
+    private static readonly (string Id, string Label, string Instruction)[] FramingArms =
+    [
+        ("leading", "Leading", "The engineer already believes the answer is yes and phrases the question to get agreement."),
+        ("neutral", "Neutral", "The question is asked without signalling a preferred answer."),
+        ("dissent", "Dissent demanded", "The question is neutral and additionally requires the strongest case against the proposal.")
+    ];
+
+    public void QueueFramingLab(string sessionId, string question)
+    {
+        if (string.IsNullOrWhiteSpace(question) || question.Length > 4000)
+        {
+            throw new ArgumentException("Provide a question between 1 and 4000 characters.", nameof(question));
+        }
+
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.FramingArms.Clear();
+            session.FramingTaskArm.Clear();
+            session.FramingJudgeTaskId = null;
+            session.FramingVerdict = null;
+            session.FramingJudgeModel = null;
+            session.FramingError = null;
+            session.FramingQuestion = question.Trim();
+            session.FramingStatus = "running";
+
+            foreach (var (id, label, instruction) in FramingArms)
+            {
+                var userPrompt = BuildFramingRequest(id, session.FramingQuestion);
+                var task = new BridgeTask(
+                    Guid.NewGuid().ToString("N"),
+                    sessionId,
+                    "framing-arm",
+                    ClaudeModel,
+                    null,
+                    Prompts.FramingArmSystem,
+                    userPrompt,
+                    90,
+                    DateTimeOffset.UtcNow);
+                session.FramingArms[id] = new FramingArmState(id, label, instruction)
+                {
+                    PromptTokens = _encoder.CountTokens(userPrompt).Tokens
+                };
+                session.FramingTaskArm[task.TaskId] = id;
+                session.Tasks[task.TaskId] = new TaskState(task);
+            }
+        }
+    }
+
+    private static string BuildFramingRequest(string armId, string question) => armId switch
+    {
+        "leading" => $"We have already decided this is the right call and I just need you to confirm it. {question} It is the right approach, isn't it?",
+        "dissent" => $"{question}\n\nGive your assessment, then state the strongest case AGAINST it and the conditions under which it would be the wrong choice.",
+        _ => question
+    };
+
+    private void CompleteFramingArm(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!session.FramingTaskArm.TryGetValue(result.TaskId, out var armId) ||
+            !session.FramingArms.TryGetValue(armId, out var arm))
+        {
+            return;
+        }
+
+        arm.ModelUsed = result.ModelUsed;
+        if (!succeeded || string.IsNullOrWhiteSpace(result.Content))
+        {
+            arm.Status = "failed";
+            arm.Error = result.ErrorMessage ?? "The model returned no answer.";
+        }
+        else
+        {
+            arm.Status = "completed";
+            arm.Answer = result.Content.Trim();
+        }
+
+        if (session.FramingArms.Values.Any(candidate => candidate.Status is "pending" or "running"))
+        {
+            return;
+        }
+
+        ScoreFramingSimilarity(session);
+
+        if (session.FramingArms.Values.Count(candidate => candidate.Status == "completed") < 2)
+        {
+            session.FramingStatus = "failed";
+            session.FramingError = "Not enough arms completed to compare framings.";
+            return;
+        }
+
+        if (session.FramingJudgeTaskId is not null)
+        {
+            return;
+        }
+
+        var judgeTask = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "framing-judge",
+            ClaudeModel,
+            null,
+            Prompts.FramingJudgeSystem,
+            BuildFramingJudgeRequest(session),
+            90,
+            DateTimeOffset.UtcNow);
+        session.FramingJudgeTaskId = judgeTask.TaskId;
+        session.Tasks[judgeTask.TaskId] = new TaskState(judgeTask);
+        session.FramingStatus = "judging";
+    }
+
+    // Deterministic divergence: cosine distance from the neutral answer, so the effect of framing is
+    // visible as a number before any model is asked for an opinion about it.
+    private void ScoreFramingSimilarity(SessionState session)
+    {
+        if (!_encoder.IsAvailable ||
+            !session.FramingArms.TryGetValue("neutral", out var neutral) ||
+            neutral.Status != "completed" ||
+            _encoder.Encode(neutral.Answer!) is not { } baseline)
+        {
+            return;
+        }
+
+        foreach (var arm in session.FramingArms.Values.Where(candidate => candidate.Status == "completed"))
+        {
+            var vector = _encoder.Encode(arm.Answer!);
+            arm.SimilarityToNeutral = vector is null ? 0 : Math.Round(EmbeddingGemmaEncoder.CosineSimilarity(vector, baseline), 3);
+        }
+    }
+
+    private static string BuildFramingJudgeRequest(SessionState session)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<question>");
+        request.AppendLine(session.FramingQuestion);
+        request.AppendLine("</question>");
+        foreach (var arm in session.FramingArms.Values.Where(arm => arm.Status == "completed"))
+        {
+            request.AppendLine($"<answer framing=\"{arm.Label}\">");
+            request.AppendLine(arm.Answer);
+            request.AppendLine("</answer>");
+        }
+
+        request.AppendLine("Decide whether the framing changed the substance of the answer, not merely its tone.");
+        return request.ToString();
+    }
+
+    private static void CompleteFramingJudge(SessionState session, BridgeTaskResult result, bool succeeded)    {
+        if (!succeeded)
+        {
+            session.FramingStatus = "failed";
+            session.FramingError = result.ErrorMessage ?? "The framing review failed.";
+            return;
+        }
+
+        if (!TryDeserialize(result.Content!, out FramingVerdictDto? dto) || dto is null || string.IsNullOrWhiteSpace(dto.Summary))
+        {
+            session.FramingStatus = "failed";
+            session.FramingError = "The framing review did not match the expected contract.";
+            return;
+        }
+
+        session.FramingVerdict = new FramingVerdict(
+            dto.SubstanceChanged,
+            dto.Summary!.Trim(),
+            dto.Differences ?? [],
+            dto.Recommendation?.Trim() ?? string.Empty);
+        session.FramingJudgeModel = result.ModelUsed;
+        session.FramingStatus = "completed";
+    }
+
+    // --- Ephemeral test-ticket harness: real data, gated before it leaves, never committed ---
+
+    public void QueueEphemeralTest(string sessionId, string rawTicket)
+    {
+        if (string.IsNullOrWhiteSpace(rawTicket) || rawTicket.Length > 12000)
+        {
+            throw new ArgumentException("Provide a ticket between 1 and 12000 characters.", nameof(rawTicket));
+        }
+
+        var session = RequireSession(sessionId);
+        var gate = _dataTier.Assess(rawTicket.Trim());
+        lock (_gate)
+        {
+            session.EphemeralRaw = rawTicket.Trim();
+            session.EphemeralGate = gate;
+            session.EphemeralPlan = null;
+            session.EphemeralModel = null;
+            session.EphemeralError = null;
+            session.EphemeralRecord = BuildEphemeralRecord(gate, session.EphemeralRaw);
+
+            if (gate.Decision == "BLOCK")
+            {
+                // The gate is the point of the exercise: blocked content does not reach a model at all.
+                session.EphemeralStatus = "blocked";
+                return;
+            }
+
+            var payload = string.IsNullOrWhiteSpace(gate.Scrubbed) ? session.EphemeralRaw : gate.Scrubbed;
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "ephemeral-test",
+                GemmaModel,
+                GptFallbackModel,
+                Prompts.EphemeralTestSystem,
+                $"<ephemeral_ticket>\n{payload}\n</ephemeral_ticket>\nProduce the reproduction plan.",
+                90,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.EphemeralStatus = "running";
+        }
+    }
+
+    private static EphemeralRecord BuildEphemeralRecord(DataTierAssessment gate, string raw)
+    {
+        var digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(raw)))[..16];
+
+        return new EphemeralRecord(
+            "FUL-TEST-" + digest[..6],
+            "repo owner (named at creation)",
+            "in-memory only — never written to disk, never committed",
+            "purged when the server stops or the session ends",
+            "artifact references and digests only; payloads are never logged",
+            digest,
+            gate.Findings.Select(finding => $"{finding.Count}× {finding.Label} ({finding.Category})").ToList());
+    }
+
+    private static void CompleteEphemeralTest(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || string.IsNullOrWhiteSpace(result.Content))
+        {
+            session.EphemeralStatus = "failed";
+            session.EphemeralError = result.ErrorMessage ?? "The ephemeral test run failed.";
+            return;
+        }
+
+        session.EphemeralPlan = result.Content.Trim();
+        session.EphemeralModel = result.ModelUsed;
+        session.EphemeralStatus = "completed";
     }
 
     // --- Language A/B test: identical JIRA, one arm over C#, one arm over CLARA, neither given context ---
@@ -1382,8 +2092,8 @@ public sealed class TrainingSessionStore
                 Guid.NewGuid().ToString("N"),
                 sessionId,
                 "ticket-gate",
+                GemmaModel,
                 ClaudeModel,
-                GptFallbackModel,
                 Prompts.TicketGateSystem,
                 BuildTicketRequest(session),
                 90,
@@ -1826,6 +2536,31 @@ public sealed class TrainingSessionStore
                 case "claude-gcp-synthesis":
                     session.SupportStatus = "synthesizing";
                     break;
+                case "claude-consolidation-design":
+                    session.ConsolidationStatus = "designing";
+                    break;
+                case "gemma-consolidation-build":
+                    session.ConsolidationStatus = "building";
+                    break;
+                case "context-curve-plan":
+                    session.CurveStatus = "running";
+                    break;
+                case "claude-curve-judge":
+                    session.CurveStatus = "judging";
+                    break;
+                case "framing-arm":
+                    if (session.FramingStatus != "judging")
+                    {
+                        session.FramingStatus = "running";
+                    }
+
+                    break;
+                case "framing-judge":
+                    session.FramingStatus = "judging";
+                    break;
+                case "ephemeral-test":
+                    session.EphemeralStatus = "running";
+                    break;
                 case "gemma-language-csharp":
                 case "gemma-language-clara":
                     if (session.LanguageArms.TryGetValue(
@@ -1944,6 +2679,27 @@ public sealed class TrainingSessionStore
                 case "claude-gcp-synthesis":
                     CompleteSupportSynthesis(session, result, succeeded);
                     break;
+                case "claude-consolidation-design":
+                    CompleteConsolidationDesign(session, result, succeeded);
+                    break;
+                case "gemma-consolidation-build":
+                    CompleteConsolidationBuild(session, result, succeeded);
+                    break;
+                case "context-curve-plan":
+                    CompleteCurveRun(session, result, succeeded);
+                    break;
+                case "claude-curve-judge":
+                    CompleteCurveJudge(session, result, succeeded);
+                    break;
+                case "framing-arm":
+                    CompleteFramingArm(session, result, succeeded);
+                    break;
+                case "framing-judge":
+                    CompleteFramingJudge(session, result, succeeded);
+                    break;
+                case "ephemeral-test":
+                    CompleteEphemeralTest(session, result, succeeded);
+                    break;
                 case "gemma-language-csharp":
                 case "gemma-language-clara":
                     CompleteLanguageArm(session, result, succeeded);
@@ -2038,6 +2794,8 @@ public sealed class TrainingSessionStore
         if (!succeeded)
         {
             slot.Status = "failed";
+            slot.ErrorCode = result.ErrorCode;
+            slot.Error = result.ErrorMessage ?? "The model returned no content and gave no reason.";
         }
         else
         {
@@ -2076,7 +2834,9 @@ public sealed class TrainingSessionStore
                 ClampScore(score.Factuality),
                 ClampScore(score.Completeness),
                 ClampScore(score.Conciseness),
-                score.Notes?.Trim() is { Length: > 0 } notes ? notes[..Math.Min(notes.Length, 240)] : null))
+                score.Notes?.Trim() is { Length: > 0 } notes ? notes[..Math.Min(notes.Length, 400)] : null,
+                score.Evidence ?? [],
+                score.Unsupported ?? []))
             .ToList();
 
         if (scores.Count == 0)
@@ -2092,10 +2852,11 @@ public sealed class TrainingSessionStore
             .ToList();
 
         session.ComparisonVerdict = new ComparisonVerdict(
-            result.ModelUsed ?? JudgeModel,
+            result.ModelUsed ?? ClaraAuthorModel,
             scores,
             ranking,
-            dto.Rationale?.Trim() ?? string.Empty);
+            dto.Rationale?.Trim() ?? string.Empty,
+            dto.CoverageNote?.Trim());
         session.ComparisonStatus = "completed";
     }
 
@@ -2170,6 +2931,9 @@ public sealed class TrainingSessionStore
         public Dictionary<string, string> ComparisonTaskSlot { get; } = [];
         public string? ComparisonJudgeTaskId { get; set; }
         public ComparisonVerdict? ComparisonVerdict { get; set; }
+        public IReadOnlyList<ReferenceDocument> ComparisonSources { get; set; } = [];
+        public int ComparisonGroundingTokens { get; set; }
+        public bool ComparisonGroundingStarted { get; set; }
         public string? ComparisonError { get; set; }
 
         public string RoundTripStatus { get; set; } = "not-started";
@@ -2262,6 +3026,53 @@ public sealed class TrainingSessionStore
         public string? SupportSynthesisModel { get; set; }
         public string? SupportError { get; set; }
 
+        public string CurveStatus { get; set; } = "not-started";
+        public Dictionary<(int Rung, int Attempt), CurveRunState> CurveRuns { get; } = [];
+        public Dictionary<string, (int Rung, int Attempt)> CurveTaskKey { get; } = [];
+        public Dictionary<int, int> CurveRungTokens { get; } = [];
+        public TierDegradation? CurveAnalysis { get; set; }
+        public CurveJudgeVerdict? CurveVerdict { get; set; }
+        public string? CurveJudgeModel { get; set; }
+        public string? CurveJudgeTaskId { get; set; }
+        public bool CurveTokensExact { get; set; }
+        public string? CurveError { get; set; }
+
+        public string FramingStatus { get; set; } = "not-started";
+        public string? FramingQuestion { get; set; }
+        public Dictionary<string, FramingArmState> FramingArms { get; } = [];
+        public Dictionary<string, string> FramingTaskArm { get; } = [];
+        public string? FramingJudgeTaskId { get; set; }
+        public FramingVerdict? FramingVerdict { get; set; }
+        public string? FramingJudgeModel { get; set; }
+        public string? FramingError { get; set; }
+
+        public string EphemeralStatus { get; set; } = "not-started";
+        public string? EphemeralRaw { get; set; }
+        public DataTierAssessment? EphemeralGate { get; set; }
+        public EphemeralRecord? EphemeralRecord { get; set; }
+        public string? EphemeralPlan { get; set; }
+        public string? EphemeralModel { get; set; }
+        public string? EphemeralError { get; set; }
+
+        // A 31B model cannot reliably emit a whole multi-file library inside one JSON string, so the
+        // build is split one task per module and the code comes back as plain text.
+        public string ConsolidationStatus { get; set; } = "not-started";
+        public ConsolidationDesign? ConsolidationDesign { get; set; }
+        public string? ConsolidationDesignModel { get; set; }
+        public string? ConsolidationBuildModel { get; set; }
+        public List<ConsolidationFile> ConsolidationFiles { get; } = [];
+        public List<string> ConsolidationAssumptions { get; } = [];
+        public List<string> ConsolidationFailedModules { get; } = [];
+        public Dictionary<string, string> ConsolidationTaskModule { get; } = [];
+        public int ConsolidationModulesTotal { get; set; }
+        public int ConsolidationDesignPromptTokens { get; set; }
+        public int ConsolidationDesignOutputTokens { get; set; }
+        public int ConsolidationBuildPromptTokens { get; set; }
+        public int ConsolidationBuildOutputTokens { get; set; }
+        public int ConsolidationCorpusTokens { get; set; }
+        public bool ConsolidationTokensExact { get; set; }
+        public string? ConsolidationError { get; set; }
+
         public TrainingSession Snapshot() => new(
             SessionId,
             BridgeToken,
@@ -2292,9 +3103,13 @@ public sealed class TrainingSessionStore
                         slot.Content,
                         slot.DurationMs,
                         slot.MatchedKeywords.ToArray(),
-                        slot.KeywordCoverage))
+                        slot.KeywordCoverage,
+                        slot.Error,
+                        slot.ErrorCode))
                     .ToArray(),
                 ComparisonVerdict,
+                ComparisonSources,
+                ComparisonGroundingTokens,
                 ComparisonError),
             new RoundTripState(
                 RoundTripStatus,
@@ -2439,7 +3254,92 @@ public sealed class TrainingSessionStore
                 SupportAdviceModel,
                 SupportSynthesis,
                 SupportSynthesisModel,
-                SupportError));
+                SupportError),
+            new ContextCurveState(
+                CurveStatus,
+                CurveRunsPerTier,
+                BuildCurveTiers(this),
+                CurveAnalysis,
+                CurveVerdict,
+                CurveJudgeModel,
+                CurveTokensExact || TokensAreExact,
+                CurveError),
+            new FramingState(
+                FramingStatus,
+                FramingQuestion,
+                FramingArms.Values
+                    .OrderBy(arm => Array.FindIndex(FramingArms.Keys.ToArray(), key => key == arm.Id))
+                    .Select(arm => new FramingArm(
+                        arm.Id,
+                        arm.Label,
+                        arm.Framing,
+                        arm.Status,
+                        arm.Answer,
+                        arm.ModelUsed,
+                        arm.PromptTokens,
+                        arm.SimilarityToNeutral,
+                        arm.Error))
+                    .ToArray(),
+                FramingVerdict,
+                FramingJudgeModel,
+                FramingError),
+            new EphemeralState(
+                EphemeralStatus,
+                EphemeralRaw,
+                EphemeralGate,
+                EphemeralRecord,
+                EphemeralPlan,
+                EphemeralModel,
+                EphemeralError),
+            new ConsolidationState(
+                ConsolidationStatus,
+                ConsolidationDesign,
+                ConsolidationDesignModel,
+                ConsolidationModulesTotal == 0
+                    ? null
+                    : new ConsolidationBuild(
+                        ConsolidationFiles.ToArray(),
+                        ConsolidationAssumptions.ToArray(),
+                        ConsolidationModulesTotal,
+                        ConsolidationFiles.Count + ConsolidationFailedModules.Count,
+                        ConsolidationFailedModules.ToArray()),
+                ConsolidationBuildModel,
+                ConsolidationDesign is null
+                    ? null
+                    : new ConsolidationTokens(
+                        ConsolidationDesignPromptTokens,
+                        ConsolidationDesignOutputTokens,
+                        ConsolidationBuildPromptTokens,
+                        ConsolidationBuildOutputTokens,
+                        ConsolidationCorpusTokens,
+                        ConsolidationTokensExact),
+                ConsolidationError));
+    }
+
+    private sealed class CurveRunState(int rung, int attempt)
+    {
+        public int Rung { get; } = rung;
+        public int Attempt { get; } = attempt;
+        public string Status { get; set; } = "pending";
+        public int Score { get; set; }
+        public List<string> Met { get; set; } = [];
+        public List<string> Missed { get; set; } = [];
+        public string? Plan { get; set; }
+        public string? ModelUsed { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private sealed class FramingArmState(string id, string label, string framing)
+    {
+        public string Id { get; } = id;
+        public string Label { get; } = label;
+        public string Framing { get; } = framing;
+        public string Status { get; set; } = "pending";
+        public string? Answer { get; set; }
+        public string? ModelUsed { get; set; }
+        public int PromptTokens { get; set; }
+        public double SimilarityToNeutral { get; set; }
+        public string? Error { get; set; }
     }
 
     private sealed class ComparisonSlotState(string slot, string requestedModel)
@@ -2454,11 +3354,13 @@ public sealed class TrainingSessionStore
         public long DurationMs { get; set; }
         public List<string> MatchedKeywords { get; } = [];
         public int KeywordCoverage { get; set; }
+        public string? Error { get; set; }
+        public string? ErrorCode { get; set; }
     }
 
-    private sealed record JudgeDto(List<JudgeScoreDto>? Scores, List<string>? Ranking, string? Rationale);
+    private sealed record JudgeDto(List<JudgeScoreDto>? Scores, List<string>? Ranking, string? Rationale, string? CoverageNote);
 
-    private sealed record JudgeScoreDto(string? Slot, int Factuality, int Completeness, int Conciseness, string? Notes);
+    private sealed record JudgeScoreDto(string? Slot, int Factuality, int Completeness, int Conciseness, string? Notes, List<string>? Evidence, List<string>? Unsupported);
 
     private sealed record RoundTripQaDto(int Fidelity, string? Summary, List<string>? Preserved, List<string>? Gaps, List<string>? Risks, string? Recommendation);
 
@@ -2474,7 +3376,29 @@ public sealed class TrainingSessionStore
 
     private sealed record GeminiAdviceDto(string? Overview, List<string>? Services, List<string>? Constraints, List<string>? Citations);
 
+    private sealed record TierJudgementDto(string? Tier, int Correctness, int Grounding, string? Assessment, List<string>? Errors);
+
+    private sealed record CurveJudgeDto(
+        string? Summary,
+        List<TierJudgementDto>? Tiers,
+        List<string>? DegradationEvidence,
+        string? MinimumViableContext,
+        string? Caveat);
+
+    private sealed record ConsolidationModuleDto(string? Name, string? Responsibility, string? PublicApi, List<string>? Replaces);
+
+    private sealed record ConsolidationDesignDto(
+        string? LibraryName,
+        string? Summary,
+        List<ConsolidationModuleDto>? Modules,
+        List<string>? MigrationSteps,
+        List<string>? Risks,
+        List<string>? OutOfScope,
+        string? ImplementationSpec);
+
     private sealed record SupportStepDto(string? Step, string? Detail, string? Source);
+
+    private sealed record FramingVerdictDto(bool SubstanceChanged, string? Summary, List<string>? Differences, string? Recommendation);
 
     private sealed record SupportSynthesisDto(
         List<string>? AlreadyKnew,
@@ -2591,13 +3515,30 @@ public sealed class TrainingSessionStore
             Return prose only; do not add a preamble such as "Sure" or "As an AI".
             """;
 
+        // The documentation in the prompt was actually retrieved over the network, so the judge can be held
+        // to it. Telling a model it has sources it cannot read is what produced confident scoring from memory.
         public const string JudgeSystem = """
-            You are an impartial evaluator comparing anonymized answers (A, B, C) to one technical
-            Google Cloud question. Score each answer only against the reference checklist and general
-            correctness — never reward length or style. Penalize hallucinated facts heavily under factuality.
-            Judge only the answers provided; do not add your own answer.
+            You are an impartial evaluator comparing anonymized answers (A, B, C) to one technical Google Cloud
+            question. The candidate models answered from their own knowledge with no documentation supplied.
+
+            You have been given the actual text of the official Google Cloud documentation, retrieved at judging
+            time. That text is your ONLY source of ground truth. Do not score from your own recollection of
+            Google Cloud, and do not add your own answer.
+
+            For every factuality judgement, quote the specific sentence or phrase from the supplied
+            documentation that supports it. If a claim in an answer is not addressed by the supplied
+            documentation, do NOT mark it wrong and do NOT mark it right — record it under "unsupported".
+            An answer that is correct but unverifiable from these documents is not the same as one that
+            contradicts them, and you must keep the two apart.
+
+            Penalise heavily any statement that the documentation contradicts. Never reward length or style.
+
             Return JSON only, no Markdown fences, in exactly this shape:
-            {"scores":[{"slot":"A","factuality":1,"completeness":1,"conciseness":1,"notes":"short"}],"ranking":["A","B","C"],"rationale":"2-3 sentences"}
+            {"scores":[{"slot":"A","factuality":1,"completeness":1,"conciseness":1,
+                        "notes":"short","evidence":["quoted doc text supporting the score"],
+                        "unsupported":["claim the docs neither confirm nor deny"]}],
+             "ranking":["A","B","C"],"rationale":"2-3 sentences",
+             "coverageNote":"what the supplied documentation did not cover, limiting this evaluation"}
             Each dimension is an integer from 1 (poor) to 5 (excellent). ranking lists slots best-first.
             """;
 
@@ -2729,6 +3670,84 @@ public sealed class TrainingSessionStore
             Coaching commentary, not a validated grade.
             """;
 
+        // Identical for every tier. The only thing that varies between runs is the repository material,
+        // so any difference in the plans is attributable to context.
+        public const string ContextTierSystem = """
+            You are a senior engineer picking up a ticket on a repository you have been given material about.
+            Do NOT write code. Produce a markdown implementation plan describing the change you would make.
+
+            Work only from the ticket and the repository material supplied. Do not assume the repository
+            contains anything you were not shown. If a fact you need is missing, say so plainly and list it
+            as an open question — never invent a file name, an attribute name, a formula, or a rule.
+
+            Structure the answer with these markdown headings:
+            ## Change
+            Numbered steps: the file, the method, and precisely what you would change and why.
+            ## Rules applied
+            Every business or regulatory rule your change depends on, and where in the supplied material you
+            found it. If you are relying on general knowledge rather than the material, say so explicitly.
+            ## Impact
+            What else this touches, and what must stay unchanged.
+            ## Tests
+            The specific cases that would prove the change.
+            ## Open questions
+            Anything you could not determine from the material supplied.
+
+            Keep it under 600 words.
+            """;
+
+        // The scores are already computed deterministically. The judge supplies reasoning, not the number.
+        public const string CurveJudgeSystem = """
+            You are a principal engineer reviewing several implementation plans for the same ticket on the
+            same codebase. Each plan was produced by the SAME model with the SAME prompt; only the repository
+            documentation supplied to it differed. You are given the ground truth for the defect.
+
+            A deterministic keyword score accompanies each plan. That score is not yours and you must not
+            restate it as your finding — judge the engineering substance yourself, and say so if your reading
+            disagrees with the score.
+
+            Be specific about harm: a plan that confidently states a WRONG formula is worse than one that
+            admits it does not know, even if both score similarly. Call that out.
+
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"summary":"...",
+             "tiers":[{"tier":"documented|partial|undocumented","correctness":0,"grounding":0,
+                       "assessment":"...","errors":["..."]}],
+             "degradationEvidence":["..."],"minimumViableContext":"...","caveat":"..."}
+
+            correctness: 0-5, how close the plan is to the ground-truth fix.
+            grounding: 0-5, how well claims are tied to supplied material rather than asserted.
+            errors: concrete factual mistakes or inventions in that plan, quoted where possible.
+            degradationEvidence: what specifically was lost between tiers, as observable differences.
+            minimumViableContext: the least documentation a team must maintain for this class of change.
+            caveat: what this single ticket on one repository does NOT establish.
+            """;
+
+        public const string FramingArmSystem = """
+            You are a senior engineer answering a colleague's technical question. Answer the question you are
+            actually asked, in under 250 words. Be direct about trade-offs and state your recommendation.
+            """;
+
+        public const string EphemeralTestSystem = """
+            You are reproducing a defect from an ephemeral test ticket. The ticket has already passed a data
+            gate, so sensitive values have been replaced with redaction markers such as [EMAIL_REDACTED].
+            Treat those markers as opaque placeholders: the reproduction must not depend on their real values,
+            and you must never ask for them. If a redacted value would genuinely change the outcome, say so
+            explicitly instead of guessing.
+            Return a short reproduction plan: the steps to run, what to observe, and what would prove the defect.
+            Keep it under 250 words and return prose only.
+            """;
+
+        public const string FramingJudgeSystem = """
+            You are an impartial reviewer. You are given one question and the same model's answers to three
+            differently-framed versions of it. Decide whether the framing changed the SUBSTANCE of the answer —
+            the recommendation, the risks named, or the caveats — as opposed to only its tone.
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"substanceChanged":true,"summary":"...","differences":["..."],"recommendation":"..."}
+            differences lists concrete substantive divergences between the framings. recommendation states how
+            an engineer should phrase such a question in future. Coaching commentary, not a validated grade.
+            """;
+
         public const string GeminiAdvisorSystem = """
             You are acting as a Google Cloud retrieval and gap-finding instrument, not as the designer.
             Your job is to surface the Google-specific services, platform constraints, quotas, and configuration
@@ -2759,6 +3778,51 @@ public sealed class TrainingSessionStore
             designSteps: the migration design; tag each step's source as own, gemini (advisory-sourced), or
             unverified (advisory-sourced and still unconfirmed).
             provenanceNote: one or two sentences on what a human must verify before this design is trusted.
+            """;
+
+        // The design stage is where the expensive model earns its rate: judgement about boundaries and
+        // migration risk. The spec it emits is the only thing the cheap model will ever see.
+        public const string ConsolidationDesignSystem = """
+            You are a principal engineer designing the consolidation of duplicated code across several
+            production services. You are given a similarity audit produced by an embedding model, not the
+            source code itself. Treat the clusters as evidence of duplication, not as proof the behaviours
+            are identical — say so where it matters.
+
+            Design a shared platform library that retires the duplication. Prioritise non-functional
+            (framework/plumbing) duplication: it has one correct answer and no business owner to negotiate
+            with. Be explicit about what you are deliberately NOT consolidating and why.
+
+            The implementationSpec field is the ONLY input a smaller, cheaper model will receive. It will not
+            see this audit, the repositories, or your other fields. It must therefore be completely
+            self-contained: name every type, method signature, parameter, return type and behaviour precisely
+            enough that a competent implementer needs no further context. Do not write the implementation
+            yourself — specify it.
+
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"libraryName":"...","summary":"...",
+             "modules":[{"name":"...","responsibility":"...","publicApi":"...","replaces":["repo/Class"]}],
+             "migrationSteps":["..."],"risks":["..."],"outOfScope":["..."],"implementationSpec":"..."}
+            """;
+
+        // Given a complete spec, code generation is mechanical. That is exactly the work that should not
+        // be billed at frontier rates. Plain text, not JSON — a source file inside a JSON string is where
+        // smaller models truncate or mis-escape.
+        public const string ConsolidationBuildSystem = """
+            You are implementing one module of a specification written by a senior engineer. You have NOT
+            seen the original repositories and must not pretend otherwise. Implement precisely what the
+            specification states for the module you are given, and nothing else.
+
+            Write idiomatic C# for .NET 8: nullable enabled, file-scoped namespace, async where the spec says
+            async. Do not add features, configuration options, or error handling the specification does not
+            call for.
+
+            Output the raw contents of exactly ONE C# file. No Markdown fences, no prose, no JSON.
+            Begin with a single line naming the file:
+            // FILE: Library/Folder/TypeName.cs
+
+            If the specification is ambiguous or omits something you need, do NOT invent a requirement.
+            Implement the most conservative reading and add a line of the form:
+            // ASSUMPTION: <what you had to assume and why>
             """;
 
         // Deliberately contains no COBOL semantics tuition. Telling every arm about implied decimals or

@@ -1,7 +1,15 @@
-﻿@page "/"
+@page "/"
 @implements IAsyncDisposable
 @inject TrainingSessionStore Store
 @inject ClaraBenchmark Benchmark
+@inject AgentRegistryService Registry
+@inject DataTierClassifier DataTier
+@inject ActionAuthorityService Authority
+@inject RegressionAdequacyService Regression
+@inject PortfolioContextService Portfolio
+@inject CommonCodeAuditService CommonCode
+@inject TokenEconomicsService Economics
+@inject PatternLibraryService Library
 @inject IJSRuntime JS
 
 <PageTitle>OKF Context Navigator</PageTitle>
@@ -37,8 +45,8 @@
 		<header class="stage-header">
 			<div><p class="eyebrow">SCENE @(_scene + 1) / @Scenes.Length</p><strong>@Scenes[_scene].Title</strong></div>
 			<div class="header-actions">
-				<button class="icon-button" type="button" title="Play narration" aria-label="Play narration" @onclick="Speak">▶</button>
-				<button class="icon-button" type="button" title="Stop narration" aria-label="Stop narration" @onclick="StopSpeaking">■</button>
+				<button class="icon-button" type="button" title="Play narration" aria-label="Play narration" @onclick="Speak">?</button>
+				<button class="icon-button" type="button" title="Stop narration" aria-label="Stop narration" @onclick="StopSpeaking">¦</button>
 			</div>
 		</header>
 
@@ -66,11 +74,11 @@
 							<p class="lede">A guided investigation from a JIRA story, through an OKF knowledge graph, to one defensible implementation path.</p>
 							@if (!_started)
 							{
-								<button class="primary-command" type="button" @onclick="StartLesson">Start the investigation <span>→</span></button>
+								<button class="primary-command" type="button" @onclick="StartLesson">Start the investigation <span>?</span></button>
 							}
 							else
 							{
-								<button class="primary-command" type="button" @onclick="Next">Continue <span>→</span></button>
+								<button class="primary-command" type="button" @onclick="Next">Continue <span>?</span></button>
 							}
 						</div>
 						<div class="path-visual" aria-label="JIRA story connects through OKF to code and tests">
@@ -120,12 +128,12 @@
 								<p><strong>Open Knowledge Format</strong> is a model-neutral directory of small Markdown concepts with YAML metadata and links that form a navigable knowledge graph.</p>
 								<ul class="okf-primer-list">
 									<li>Read the consumer guide, then start at <code>okf/index.md</code>.</li>
-									<li>Follow concept → boundary/decision → code map → current code/tests.</li>
+									<li>Follow concept ? boundary/decision ? code map ? current code/tests.</li>
 									<li>Check provenance, verification, lifecycle, and freshness.</li>
 									<li>Cite paths and surface missing knowledge instead of guessing.</li>
 								</ul>
 								<p class="trust-note">Structure improves inspectability; it does not guarantee truth or train model weights.</p>
-								<div class="source-chip">training-fixture/README.md → okf/index.md</div>
+								<div class="source-chip">training-fixture/README.md ? okf/index.md</div>
 							</div>
 						</div>
 					</section>
@@ -264,7 +272,7 @@
 						<ol class="animation-transcript">
 							<li>Read the story intent.</li><li>Enter through the OKF index.</li><li>Apply concept, boundary, and ADR evidence.</li><li>Inspect the mapped code and tests.</li>
 						</ol>
-						<button class="secondary-command replay-command" type="button" @onclick="ReplayAnimation">↻ Replay animation</button>
+						<button class="secondary-command replay-command" type="button" @onclick="ReplayAnimation">? Replay animation</button>
 					</section>
 					break;
 				case 5:
@@ -274,7 +282,7 @@
 						<div class="image-demo-layout">
 							<figure class="image-demo">
 								<img src="okf-artifact-structure.png" alt="Context navigation from JIRA story FUL-1842 through the OKF index and contextual decisions to DeliveryEstimateService code." />
-								<figcaption>Bitmap demonstration: intent → governed index → decision context → owned code.</figcaption>
+								<figcaption>Bitmap demonstration: intent ? governed index ? decision context ? owned code.</figcaption>
 							</figure>
 							<aside class="image-provenance">
 								<p class="eyebrow">ASSET RECORD</p>
@@ -378,7 +386,14 @@
 					<section>
 						<p class="kicker">CAPABILITY COMPARISON</p>
 						<h2 id="scene-title">Ask three models the same question</h2>
-						<p class="compare-intro">Pick a Google Cloud topic. Each model answers independently in its own column, then an impartial judge model blind-scores the anonymized answers (A / B / C) against a reference checklist. Programmatic keyword coverage is shown next to the judge's rubric scores. This is an illustrative harness — not a validated benchmark.</p>
+						<p class="compare-intro">This measures <strong>what the three models already know about Google Cloud</strong>. They are asked the question and given nothing else — no documentation, no hints, no retrieval. Then the official Google Cloud documentation is <strong>fetched over the network</strong> and handed to <strong>Claude Opus 4.8</strong>, which scores the anonymised answers against that retrieved text and must quote it to justify every factuality judgement.</p>
+
+						<div class="know-grid">
+							<div class="know-col unverified"><p class="eyebrow">1 · CLOSED BOOK</p><ul><li>Three models, same question, no context. Each answers from its own training alone, in its own column.</li></ul></div>
+							<div class="know-col own"><p class="eyebrow">2 · RETRIEVE</p><ul><li>The server fetches the real documentation pages listed below and converts them to text. Retrieval status is shown, so a dead link is visible rather than silent.</li></ul></div>
+							<div class="know-col learned"><p class="eyebrow">3 · GROUNDED JUDGE</p><ul><li>Claude Opus 4.8 sees the answers blinded as A / B / C and the retrieved text. It scores against that text only, and separates "contradicted" from "not covered".</li></ul></div>
+						</div>
+
 						<div class="compare-controls">
 							<select class="compare-select" @bind="_comparisonTopicId" disabled="@ComparisonBusy">
 								<option value="">Choose a topic…</option>
@@ -396,9 +411,11 @@
 						@if (SelectedTopic is not null)
 						{
 							<div class="compare-question">
-								<p class="eyebrow">QUESTION</p>
+								<p class="eyebrow">QUESTION PUT TO ALL THREE MODELS — AND NOTHING ELSE</p>
 								<p>@SelectedTopic.Question</p>
-								<div class="compare-refs">@foreach (var url in SelectedTopic.ReferenceUrls) { <span>@url</span> }</div>
+								<p class="eyebrow">AUTHORITATIVE DOCUMENTATION USED TO JUDGE THEM</p>
+								<div class="compare-refs">@foreach (var url in SelectedTopic.ReferenceUrls) { <span><a href="@url" target="_blank" rel="noopener noreferrer">@url</a></span> }</div>
+								<p class="ctx-method">The candidate models never see these pages. They are retrieved only after all three answers are in, and only the judge reads them.</p>
 							</div>
 						}
 
@@ -429,7 +446,15 @@
 												</div>
 												break;
 											case "failed":
-												<div class="answer-failed">No answer returned by @(answer.ModelUsed ?? answer.RequestedModel).</div>
+												<div class="answer-failed">
+													<strong>No answer from @(answer.ModelUsed ?? answer.RequestedModel).</strong>
+													<span>@(answer.Error ?? "The model returned no content and gave no reason.")</span>
+													@if (answer.ErrorCode is { Length: > 0 } failureCode)
+													{
+														<code>@failureCode</code>
+													}
+													<span class="answer-failed-hint">Check the <em>POC Interactive Training</em> output channel in VS Code for the full client-side error.</span>
+												</div>
 												break;
 											default:
 												<div class="answer-pending"><span></span>Waiting for @answer.RequestedModel…</div>
@@ -440,20 +465,54 @@
 							</div>
 						}
 
+						@if (_session?.Comparison.Answers.Count > 0 && _session.Comparison.Answers.Any(answer => answer.Status == "failed") && !ComparisonBusy)
+						{
+							<div class="compare-status failed" role="status">
+								<strong>This comparison is incomplete.</strong>
+								@(_session.Comparison.Answers.Count(answer => answer.Status == "completed")) of @_session.Comparison.Answers.Count models answered, so the ranking below covers only those. A model that fails to answer has not been shown to be worse than one that did — most often the model is simply not available or not signed in for this VS Code session. Treat the missing column as no data, not as a result.
+							</div>
+						}
+
 						@if (_session?.Comparison.Status == "judging")
 						{
-							<div class="compare-status" role="status">Answers collected. The judge model is blind-scoring A / B / C against the reference checklist…</div>
+							<div class="compare-status working" role="status" aria-live="polite"><span class="working-spinner" aria-hidden="true"></span><span>Answers collected. Claude Opus 4.8 is scoring A / B / C against the retrieved documentation<span class="working-dots"><i>.</i><i>.</i><i>.</i></span>@JudgeElapsed</span></div>
+						}
+						else if (_session?.Comparison.Status == "grounding")
+						{
+							<div class="compare-status working" role="status" aria-live="polite"><span class="working-spinner" aria-hidden="true"></span><span>Answers collected. Retrieving the official Google Cloud documentation to judge against<span class="working-dots"><i>.</i><i>.</i><i>.</i></span>@JudgeElapsed</span></div>
 						}
 						else if (_session?.Comparison.Status == "failed")
 						{
 							<div class="compare-status failed" role="alert">@(_session?.Comparison.Error ?? "The comparison did not complete.")</div>
 						}
 
+						@if (_session?.Comparison.Sources.Count > 0)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">D</span><div><strong>Documentation actually retrieved</strong><small>@_session.Comparison.Sources.Count(source => source.Retrieved) of @_session.Comparison.Sources.Count fetched · @_session.Comparison.GroundingTokens.ToString("N0") tokens in the judge prompt</small></div></header>
+								<table class="audit-table">
+									<thead><tr><th>Status</th><th>Page</th><th>Characters used</th><th>Retrieved at</th></tr></thead>
+									<tbody>
+										@foreach (var source in _session.Comparison.Sources)
+										{
+											<tr class="@(source.Retrieved ? "p0-opt" : "p0-req")">
+												<td>@(source.Retrieved ? (source.FromCache ? "cached" : "fetched") : "FAILED")</td>
+												<td><a href="@source.Url" target="_blank" rel="noopener noreferrer">@source.Title</a><br /><code>@source.Url</code></td>
+												<td>@(source.Retrieved ? source.Characters.ToString("N0") + (source.Truncated ? " (truncated)" : "") : "—")</td>
+												<td>@(source.Retrieved ? source.AttemptedAt.ToLocalTime().ToString("HH:mm:ss") : source.Error)</td>
+											</tr>
+										}
+									</tbody>
+								</table>
+								<p class="ctx-method">This is the text the judge read. Nothing else was supplied to it about Google Cloud, and the three candidate models never saw any of it.</p>
+							</section>
+						}
+
 						@if (_session?.Comparison.Verdict is { } verdict)
 						{
 							<aside class="compare-verdict">
-								<p class="eyebrow">INDEPENDENT JUDGE VERDICT</p>
-								<div class="coach-label">LLM-as-judge evaluation — blinded and rubric-based, not a validated grade.</div>
+								<p class="eyebrow">GROUNDED JUDGE VERDICT</p>
+								<div class="coach-label">Scored by @verdict.JudgeModel against documentation retrieved at judging time — blinded and rubric-based, still not a validated benchmark.</div>
 								@if (verdict.Ranking.Count > 0)
 								{
 									<ol class="verdict-ranking">
@@ -464,6 +523,27 @@
 									</ol>
 								}
 								<p class="verdict-rationale">@verdict.Rationale</p>
+
+								@foreach (var score in verdict.Scores.Where(item => item.Evidence.Count > 0 || item.Unsupported.Count > 0))
+								{
+									<h4>Answer @score.Slot — @ModelForSlot(score.Slot)</h4>
+									@if (score.Evidence.Count > 0)
+									{
+										<p class="eyebrow">DOCUMENTATION QUOTED IN SUPPORT</p>
+										<ul class="rt-list good">@foreach (var quote in score.Evidence) { <li>@quote</li> }</ul>
+									}
+									@if (score.Unsupported.Count > 0)
+									{
+										<p class="eyebrow">NOT COVERED BY THE RETRIEVED DOCS — NEITHER CONFIRMED NOR REFUTED</p>
+										<ul class="rt-list warn">@foreach (var claim in score.Unsupported) { <li>@claim</li> }</ul>
+									}
+								}
+
+								@if (!string.IsNullOrWhiteSpace(verdict.CoverageNote))
+								{
+									<h4>Limits of this evidence</h4>
+									<p class="verdict-caveat">@verdict.CoverageNote</p>
+								}
 								<dl class="verdict-meta"><dt>Judge</dt><dd>@verdict.JudgeModel</dd></dl>
 								@if (JudgeSharesCandidateModel)
 								{
@@ -473,6 +553,7 @@
 								{
 									<p class="verdict-caveat">Note: two or more columns resolved to the same underlying model. Sign in to additional model families in VS Code for a meaningful comparison.</p>
 								}
+								<p class="verdict-caveat">Keyword coverage beside each answer is a separate deterministic measure. It counts vocabulary, not correctness — a wrong answer using the right words still scores well on it, which is why the judge's grounded factuality score sits alongside it rather than being replaced by it.</p>
 							</aside>
 						}
 					</section>
@@ -600,7 +681,7 @@
 				case 10:
 					<section>
 						<p class="kicker">GROUNDING ROUND TRIP</p>
-						<h2 id="scene-title">Class → JIRA story → class</h2>
+						<h2 id="scene-title">Class ? JIRA story ? class</h2>
 						<p class="rt-intro">Gemma 4 reads a class and writes the JIRA story it satisfies, then rebuilds the class from <em>only that story</em>. Claude Opus 5.0 then reviews how much of the original behavior survived the round trip. This measures how well a generated artifact grounds a faithful reconstruction — it is coaching commentary, not a validated grade.</p>
 
 						<section class="rt-box rt-input-box">
@@ -1093,7 +1174,30 @@
 
 						<section class="rt-box">
 							<header class="rt-head"><span class="rt-step">4</span><div><strong>Is it practical?</strong><small>compiler conformance + measured cost against hand-written C#</small></div></header>
-							<p class="rt-intro">CLARA compiles to a .NET expression tree that is JIT-compiled to machine code, so a policy is a normal compiled function — not an interpreter walking a tree. This runs the language's conformance suite and then times the reference late-fee policy against the identical rules written by hand in C#, on this machine, right now.</p>
+							<p class="rt-intro">The usual objection to a business-rules language is that it will be slow, because most of them are <strong>interpreters</strong> — at runtime they walk a tree of nodes, asking "what kind of node is this?" over and over for every decision. CLARA does not do that. It is a real compiler: a policy ends up as <strong>machine code</strong>, reached by the same route your C# takes.</p>
+
+							<div class="pipeline-chain">
+								<span>CLARA source</span><span>tokens</span><span>AST</span><span>bound + typed</span><span>expression tree</span><span>CIL</span><span>machine code</span>
+							</div>
+
+							<table class="audit-table">
+								<thead><tr><th>#</th><th>Stage</th><th>What happens</th><th>Why it matters</th></tr></thead>
+								<tbody>
+									<tr><td>1</td><td>Lex</td><td>The policy text is split into tokens — keywords, names, numbers, operators — each carrying its line and column.</td><td>Positions survive the whole pipeline, which is why an error can point at a line rather than at "the policy".</td></tr>
+									<tr><td>2</td><td>Parse</td><td>Tokens become an <em>abstract syntax tree</em>: the nested shape of rules, conditions and arithmetic.</td><td>Structure is now known, but nothing has been checked for meaning yet.</td></tr>
+									<tr><td>3</td><td>Bind &amp; type-check</td><td>Names are resolved, types are verified, unreachable rules are found, constant arithmetic is folded, and every input, derive and output is assigned a fixed <strong>slot in a <code>decimal[]</code> array</strong>.</td><td>This is the stage most rule engines skip. It produces the <code>CLARA001–009</code> diagnostics, and the slot allocation is what removes dictionary lookups at runtime.</td></tr>
+									<tr><td>4</td><td>Lower</td><td>The checked tree is rewritten into a <strong>.NET expression tree</strong>: rules become a chain of <code>Expression.Condition</code>, assignments become writes into the array slots.</td><td>Now it is an ordinary .NET program description, not a CLARA-specific structure.</td></tr>
+									<tr><td>5</td><td>Emit</td><td><code>Expression.Lambda&lt;Func&lt;decimal[], int&gt;&gt;(…).Compile()</code> emits <strong>CIL</strong> — the .NET intermediate language — into a dynamic method.</td><td>This is the "codegen" step. The output is the same bytecode a C# compiler would produce.</td></tr>
+									<tr><td>6</td><td>JIT</td><td>On first call, the runtime's just-in-time compiler turns that CIL into native <strong>machine code</strong> for this CPU.</td><td>Identical treatment to hand-written C#. Nothing about the code's origin is visible to the JIT.</td></tr>
+									<tr><td>7</td><td>Run</td><td>What is left is a <code>Func&lt;decimal[], int&gt;</code> delegate: pass the inputs in the array, get back the index of the rule that fired, read the outputs from their slots.</td><td>A policy call is a normal function call, not a tree walk.</td></tr>
+								</tbody>
+							</table>
+
+							<p class="rt-reco">The step people usually leave out when sketching this is <strong>3</strong>. It is tempting to read the chain as "AST → intermediate language → machine code", but bind-and-type-check sits in the middle, and it is where every safety guarantee is actually enforced — a policy that fails there never reaches codegen at all. The other common slip is the word "intermediate language": that means <strong>CIL</strong>, which is emitted at step 5, and it is still not machine code until step 6.</p>
+
+							<p class="ctx-method">Two honest limits. First, this holds only on a runtime with a JIT; under NativeAOT or on platforms that forbid runtime code generation, <code>.Compile()</code> falls back to an interpreter and these numbers would not survive. Second, arithmetic is <code>decimal</code> throughout, because money must not be held in binary floating point — that choice sets the performance floor, and hand-written C# pays exactly the same cost, which is what makes the comparison below fair.</p>
+
+							<p class="rt-intro">The button runs the compiler's own conformance suite, then times the reference late-fee policy against the identical rules written by hand in C# — on this machine, right now.</p>
 							<div class="rt-actions">
 								<small>@(_benchmark is null ? "not measured yet" : _benchmark.Runtime)</small>
 								<button class="primary-command compact" type="button" disabled="@_benchmarkRunning" @onclick="RunBenchmark">@(_benchmarkRunning ? "Measuring…" : "Run conformance + benchmark")</button>
@@ -1408,7 +1512,7 @@ cobol85  -&gt; 000000</pre>
 							@if (migration.Status == "completed" && migration.Arms.Count == 3)
 							{
 								<section class="rt-qa">
-									<header class="rt-head"><span class="rt-step">✓</span><div><strong>Verdict</strong><small>decided by execution, not by a model</small></div></header>
+									<header class="rt-head"><span class="rt-step">?</span><div><strong>Verdict</strong><small>decided by execution, not by a model</small></div></header>
 									<table class="audit-table">
 										<thead><tr><th>Arm</th><th>Grounding</th><th>Cases passed</th><th>Prompt tokens</th></tr></thead>
 										<tbody>
@@ -1685,13 +1789,1067 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
+				case 20:
+					<section>
+						<p class="kicker">PHASE 0 — BEFORE ANY OF THIS IS SAFE</p>
+						<h2 id="scene-title">Name it, tier it, and gate what it sees</h2>
+						<p class="rt-intro">You cannot monitor a population you have not enumerated, and "not checked in" does not mean "not sent to a model". These three controls are prerequisites, not follow-ups — so they are <strong>fully deterministic and run with no model at all</strong>. If the bridge is down, the gate still holds.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Register the agent</strong><small>risk tier derived from blast radius × autonomy × data tier</small></div></header>
+							<div class="p0-form">
+								<label>Name<input type="text" @bind="_agent.Name" /></label>
+								<label>Owner<input type="text" @bind="_agent.Owner" /></label>
+								<label>Release id<input type="text" @bind="_agent.ReleaseId" /></label>
+								<label>Model (pinned)<input type="text" @bind="_agent.Model" /></label>
+								<label>Blast radius<select @bind="_agent.BlastRadius">@foreach (var level in AgentRegistryService.BlastRadiusLevels) { <option value="@level">@level</option> }</select></label>
+								<label>Autonomy<select @bind="_agent.Autonomy">@foreach (var level in AgentRegistryService.AutonomyLevels) { <option value="@level">@level</option> }</select></label>
+								<label>Data tier<select @bind="_agent.DataTier">@foreach (var level in AgentRegistryService.DataTiers) { <option value="@level">@level</option> }</select></label>
+								<label>Status<select @bind="_agent.AgentStatus">@foreach (var level in AgentRegistryService.AgentStatuses) { <option value="@level">@level</option> }</select></label>
+								<label class="p0-check"><input type="checkbox" @bind="_agent.ToolEnabled" /> Tool-enabled (can take actions)</label>
+								@if (_agent.ToolEnabled)
+								{
+									<label>Runtime identity<input type="text" @bind="_agent.RuntimeIdentity" /></label>
+									<label>Action policy<input type="text" @bind="_agent.ActionPolicy" /></label>
+									<label>Approval mode<input type="text" @bind="_agent.ApprovalMode" /></label>
+								}
+							</div>
+							<div class="rt-actions">
+								<small>Deterministic — no model call.</small>
+								<button class="primary-command compact" type="button" @onclick="RunTiering">Tier this agent</button>
+							</div>
+						</section>
+
+						@if (_tier is { } tier)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Risk tier &amp; controls owed</strong><small>10 §4–5 · proportionate, read as a budget</small></div></header>
+								<div class="audit-body">
+									<div class="audit-scoreline">
+										<span class="ctx-label tier-r@tier.Tier">R@tier.Tier</span>
+										<div><strong>@tier.TierName</strong><small>review cadence: @tier.ReviewCadence</small></div>
+									</div>
+									@if (!tier.Registrable)
+									{
+										<div class="compare-status failed" role="alert"><strong>Not registrable.</strong> Missing non-negotiable fields: @string.Join(", ", tier.MissingFields). Without these you cannot reproduce, tier, authorize, or stop this release.</div>
+									}
+									<h4>Why this tier</h4>
+									<ul class="rt-list warn">@foreach (var reason in tier.Reasons) { <li>@reason</li> }</ul>
+									<h4>Controls owed</h4>
+									<table class="audit-table">
+										<thead><tr><th>Control</th><th>This agent</th></tr></thead>
+										<tbody>
+											@foreach (var control in tier.Controls)
+											{
+												<tr class="@(control.Required ? "p0-req" : "p0-opt")"><td>@control.Control</td><td>@control.Requirement</td></tr>
+											}
+										</tbody>
+									</table>
+									<p class="ctx-method">R3 is a risk label, not permission to run autonomously.</p>
+								</div>
+							</section>
+						}
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Data-tier gate</strong><small>correction C4 · what may leave the boundary</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="12000" @bind="_testPayload" @bind:event="oninput" aria-label="Ephemeral test payload"></textarea>
+							<div class="rt-actions">
+								<small>@_testPayload.Length / 12000 · deterministic scan</small>
+								<button class="primary-command compact" type="button" @onclick="RunDataTier">Classify before sending</button>
+							</div>
+						</section>
+
+						@if (_assessment is { } assessment)
+						{
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">4</span><div><strong>Decision &amp; incident path</strong><small>severity, containment, owner, SLA</small></div></header>
+								<div class="audit-scoreline">
+									<span class="ctx-label decision-@assessment.Decision.ToLowerInvariant().Replace("-", "")">@assessment.Decision</span>
+									<div><strong>@assessment.TierName</strong><small>highest tier detected</small></div>
+									<p>@assessment.Rationale</p>
+								</div>
+
+								@if (assessment.Findings.Count > 0)
+								{
+									<h4>Findings</h4>
+									<table class="audit-table">
+										<thead><tr><th>Pattern</th><th>Category</th><th>Count</th><th>Sample</th></tr></thead>
+										<tbody>
+											@foreach (var finding in assessment.Findings)
+											{
+												<tr><td>@finding.Label</td><td>@finding.Category</td><td>@finding.Count</td><td><code>@finding.Sample</code></td></tr>
+											}
+										</tbody>
+									</table>
+								}
+
+								@if (assessment.Decision == "BLOCK")
+								{
+									<div class="compare-status failed" role="alert">Scrubbed output withheld deliberately. Restricted content is not made safe by redaction — the owner must authorise handling first.</div>
+								}
+								else if (!string.IsNullOrWhiteSpace(assessment.Scrubbed))
+								{
+									<h4>Scrubbed copy (safe to send)</h4>
+									<pre class="rt-code">@assessment.Scrubbed</pre>
+								}
+
+								<h4>Incident path — @assessment.Incident.Severity</h4>
+								<p class="rt-reco">@assessment.Incident.Summary</p>
+								@if (assessment.Incident.Steps.Count > 0)
+								{
+									<ol class="rt-list warn">@foreach (var step in assessment.Incident.Steps) { <li>@step</li> }</ol>
+									<dl class="verdict-meta"><dt>Owner</dt><dd>@assessment.Incident.Owner</dd><dt>SLA</dt><dd>@assessment.Incident.Sla</dd></dl>
+								}
+							</section>
+						}
+					</section>
+					break;
+				case 21:
+					<section>
+						<p class="kicker">HOW MUCH CONTEXT DOES THE CHEAP MODEL NEED?</p>
+						<h2 id="scene-title">Same ticket, same code, three levels of documentation</h2>
+						<p class="rt-intro">A real defect in <strong>@ContextTierSamples.RepoName</strong>: short puts are margined with the call formula. <strong>Gemma 4</strong> writes an implementation plan for it three times. The ticket, the prompt, the model and the <em>source code are byte-identical</em> every time — only the documentation around the code changes. Any difference in the plans is therefore attributable to context and nothing else.</p>
+
+						@if (_session?.ContextCurve is { } curve)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>The ticket</strong><small>a real change, hard enough to need the rules</small></div></header>
+								<div class="audit-body">
+									<pre class="rt-code">@ContextTierSamples.Ticket</pre>
+									<p class="ctx-method">Gemma is told to produce a markdown plan, never code. Planning is where missing context shows up as confident invention rather than a compiler error — which is exactly the failure teams do not catch.</p>
+								</div>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Three variants of the same repository</strong><small>identical source, different knowledge</small></div></header>
+								<div class="repo-grid">
+									@foreach (var variant in ContextTierSamples.Tiers)
+									{
+										var measured = curve.Tiers.FirstOrDefault(item => item.Id == variant.Id);
+										<article class="repo-card">
+											<h3>@variant.Label</h3>
+											<p class="repo-diverge">@variant.Description</p>
+											@if (measured is not null && measured.PromptTokens > 0)
+											{
+												<p class="repo-stats">@measured.PromptTokens.ToString("N0") prompt tokens</p>
+											}
+										</article>
+									}
+								</div>
+								<div class="rt-actions">
+									<small>@ContextTierSamples.Tiers.Count variants × @curve.RunsPerTier runs, then one comparative review. @(curve.TokensExact ? "Tokens counted with the Gemma tokenizer." : "Tokens estimated.")</small>
+									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || CurveBusy)" @onclick="RunCurve">@(!_bridgeConnected ? "Connect VSIX to run" : CurveBusy ? "Running…" : "Run all three")</button>
+								</div>
+								@if (!_bridgeConnected)
+								{
+									<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running.</p>
+								}
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>What Gemma produced</strong><small>median of @curve.RunsPerTier runs · scored against sealed criteria it never sees</small></div></header>
+								<div class="audit-body">
+									<table class="audit-table">
+										<thead><tr><th>Variant</th><th>Prompt tokens</th><th>Median</th><th>Range</th><th>Criteria met</th><th>Progress</th></tr></thead>
+										<tbody>
+											@foreach (var tierRow in curve.Tiers)
+											{
+												var done = tierRow.Runs.Count(run => run.Status is "completed" or "failed");
+												<tr class="@(curve.Degradation is { } d && tierRow.Id == d.BestTier ? "curve-plateau" : null)">
+													<td>@tierRow.Label</td>
+													<td>@tierRow.PromptTokens.ToString("N0")</td>
+													<td><strong>@tierRow.MedianScore</strong></td>
+													<td>@(done > 0 ? $"{tierRow.WorstScore}–{tierRow.BestScore}" : "—")</td>
+													<td>@tierRow.MedianMet.Count / @ContextTierSamples.Criteria.Count</td>
+													<td><div class="audit-bar"><i style="width:@tierRow.MedianScore%"></i></div><small>@done / @curve.RunsPerTier runs</small></td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									@if (CurveBusy)
+									{
+										<div class="rt-pending"><span></span>Running every variant. The repetition is deliberate — one score on a stochastic system is a reading, not a direction.</div>
+									}
+								</div>
+							</section>
+
+							@foreach (var tierDetail in curve.Tiers.Where(item => item.Runs.Any(run => run.Status == "completed")))
+							{
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">·</span><div><strong>@tierDetail.Label</strong><small>@tierDetail.MedianScore / 100 · @tierDetail.PromptTokens.ToString("N0") tokens</small></div></header>
+									<div class="audit-body">
+										@if (tierDetail.MedianMissed.Count > 0)
+										{
+											<h4>Missed at this tier</h4>
+											<ul class="rt-list warn">@foreach (var name in tierDetail.MedianMissed) { <li>@name</li> }</ul>
+										}
+										@{
+											var shown = tierDetail.Runs.FirstOrDefault(run => run.Status == "completed" && run.Score == tierDetail.MedianScore)
+														?? tierDetail.Runs.First(run => run.Status == "completed");
+										}
+										<h4>Gemma's plan</h4>
+										<pre class="rt-code">@shown.Plan</pre>
+									</div>
+								</section>
+							}
+
+							@if (curve.Degradation is { } degradation)
+							{
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">4</span><div><strong>The degradation</strong><small>deterministic · no model produced these numbers</small></div></header>
+									<div class="know-grid">
+										<div class="know-col learned"><p class="eyebrow">BEST</p><ul><li>@degradation.BestTier</li></ul></div>
+										<div class="know-col unverified"><p class="eyebrow">WORST</p><ul><li>@degradation.WorstTier — @degradation.Drop points lower</li></ul></div>
+										<div class="know-col own"><p class="eyebrow">FLOOR</p><ul><li>@degradation.FloorTier is the weakest variant still within 80% of the best. Below it, do not run the cheap model unattended.</li></ul></div>
+									</div>
+									<p class="rt-reco">@degradation.Note</p>
+									@if (degradation.LostCriteria.Count > 0)
+									{
+										<h4>Lost when the documentation was removed</h4>
+										<ul class="rt-list warn">@foreach (var name in degradation.LostCriteria) { <li>@name</li> }</ul>
+									}
+									<h4>Sealed criteria</h4>
+									<ul class="rt-list good">@foreach (var criterion in ContextTierSamples.Criteria) { <li><strong>@criterion.Name</strong> — @criterion.Description <em>(derivable from @ContextTierSamples.Tiers[criterion.UnlockedAtTier].Label onwards)</em></li> }</ul>
+									<p class="ctx-method">Scored by keyword detection against criteria the planning model never sees. It is reproducible and trendable, but it rewards saying the right words — which is why a judgement layer follows rather than replaces it.</p>
+								</section>
+							}
+
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">@(curve.Degradation is null ? "4" : "5")</span><div><strong>Claude Opus 4.8 reviews all three</strong><small>@(curve.JudgeModel ?? "Claude Opus 4.8") · engineering substance, not keywords</small></div></header>
+								@if (curve.Verdict is { } curveVerdict)
+								{
+									<p class="rt-reco">@curveVerdict.Summary</p>
+									<table class="audit-table">
+										<thead><tr><th>Variant</th><th>Correctness</th><th>Grounding</th><th>Assessment</th></tr></thead>
+										<tbody>
+											@foreach (var judged in curveVerdict.Tiers)
+											{
+												<tr>
+													<td>@judged.Tier</td>
+													<td>@judged.Correctness/5</td>
+													<td>@judged.Grounding/5</td>
+													<td>@judged.Assessment</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									@foreach (var judged in curveVerdict.Tiers.Where(item => item.Errors.Count > 0))
+									{
+										<h4>Factual errors in @judged.Tier</h4>
+										<ul class="rt-list warn">@foreach (var error in judged.Errors) { <li>@error</li> }</ul>
+									}
+									@if (curveVerdict.DegradationEvidence.Count > 0)
+									{
+										<h4>What was actually lost</h4>
+										<ul class="rt-list warn">@foreach (var item in curveVerdict.DegradationEvidence) { <li>@item</li> }</ul>
+									}
+									@if (!string.IsNullOrWhiteSpace(curveVerdict.MinimumViableContext))
+									{
+										<h4>Minimum context a team must maintain</h4>
+										<p class="rt-reco">@curveVerdict.MinimumViableContext</p>
+									}
+									@if (!string.IsNullOrWhiteSpace(curveVerdict.Caveat))
+									{
+										<h4>What this does not establish</h4>
+										<p class="ctx-method">@curveVerdict.Caveat</p>
+									}
+								}
+								else if (curve.Status == "judging")
+								{
+									<div class="rt-pending"><span></span>Claude is comparing the three plans against the ground truth…</div>
+								}
+								else if (curve.Error is { } curveError)
+								{
+									<div class="compare-status failed" role="alert">@curveError</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">The comparative review will appear here once all three variants have run.</div>
+								}
+								<h4>Read this carefully</h4>
+								<ul class="rt-list warn">
+									<li>One ticket on one repository. This shows the shape of the effect, not its size across your estate — measure your own before quoting a number.</li>
+									<li>The deterministic score rewards vocabulary. Claude's correctness rating is the check on that, and it is a model's opinion, not a validated grade.</li>
+									<li>The undocumented variant is not empty — it is <em>wrong</em>. Stale documentation is the expensive failure mode, because the model has no way to know it is stale.</li>
+								</ul>
+							</section>
+						}
+					</section>
+					break;
+				case 22:
+					<section>
+						<p class="kicker">AUTHORITY IS PER ACTION, NOT PER AGENT</p>
+						<h2 id="scene-title">"Approve deploy" is not approval</h2>
+						<p class="rt-intro">An autonomous agent may proceed without per-call approval <em>only</em> on reversible actions inside its registered envelope. Everything else stops for a verified human decision. This uses the same registration you tiered in Phase 0 — change the agent there and the answers here change with it.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Proposed action</strong><small>agent: @_agent.Name · autonomy: @_agent.Autonomy</small></div></header>
+							<div class="p0-form">
+								<label>Action<select @bind="_selectedActionId">@foreach (var action in ActionAuthorityService.Catalog) { <option value="@action.Id">@action.Description</option> }</select></label>
+							</div>
+							<div class="rt-actions">
+								<small>Deterministic — no model call.</small>
+								<button class="primary-command compact" type="button" @onclick="RunAuthority">Decide authority</button>
+							</div>
+						</section>
+
+						@if (_decision is { } decision)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Decision</strong><small>09 §3.4 · 10 §5</small></div></header>
+								<div class="audit-body">
+									<div class="audit-scoreline">
+										<span class="ctx-label verdict-@decision.Verdict.ToLowerInvariant()">@decision.Verdict</span>
+										<div><strong>@decision.VerdictLabel</strong><small>@decision.Description</small></div>
+									</div>
+									<h4>Why</h4>
+									<ul class="rt-list warn">@foreach (var reason in decision.Reasons) { <li>@reason</li> }</ul>
+									<h4>Exact-action checks the approver must make</h4>
+									<ol class="rt-list good">@foreach (var check in decision.ExactActionChecks) { <li>@check</li> }</ol>
+								</div>
+							</section>
+
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>Intervention path</strong><small>@decision.Intervention.Severity</small></div></header>
+								<p class="rt-reco">@decision.Intervention.Summary</p>
+								@if (decision.Intervention.Steps.Count > 0)
+								{
+									<ol class="rt-list warn">@foreach (var step in decision.Intervention.Steps) { <li>@step</li> }</ol>
+									<dl class="verdict-meta"><dt>Owner</dt><dd>@decision.Intervention.Owner</dd><dt>SLA</dt><dd>@decision.Intervention.Sla</dd></dl>
+								}
+								<p class="ctx-method">The client enforces this too: set <code>pocTraining.requireApproval</code> to make every task stop at this gate.</p>
+							</section>
+						}
+					</section>
+					break;
+				case 23:
+					<section>
+						<p class="kicker">THE BIAS YOU BRING</p>
+						<h2 id="scene-title">The same question, asked three ways</h2>
+						<p class="rt-intro">Engineers police what the model gets wrong and rarely notice how their own framing manufactured the answer. One question goes to one model three times — <strong>leading</strong>, <strong>neutral</strong>, and <strong>dissent-demanded</strong>. Divergence from the neutral answer is measured with embeddings <em>before</em> any model offers an opinion about it.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Your question</strong><small>asked identically except for the framing</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="4000" @bind="_framingQuestion" @bind:event="oninput" disabled="@FramingBusy" aria-label="Question"></textarea>
+							<div class="rt-actions">
+								<small>@_framingQuestion.Length / 4000</small>
+								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _framingQuestion.Trim().Length < 10 || FramingBusy)" @onclick="RunFraming">@(!_bridgeConnected ? "Connect VSIX to run" : FramingBusy ? "Asking…" : "Ask all three ways")</button>
+							</div>
+							@if (!_bridgeConnected)
+							{
+								<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running.</p>
+							}
+						</section>
+
+						@if (_session?.Framing.Arms.Count > 0)
+						{
+							<div class="compare-columns">
+								@foreach (var arm in _session.Framing.Arms)
+								{
+									<article class="compare-col @(arm.Id == "neutral" ? "winner" : null)">
+										<header class="compare-col-head">
+											<span class="slot-badge">@arm.Label</span>
+											<strong>@(arm.ModelUsed ?? "Claude")</strong>
+											<small>@arm.Framing</small>
+										</header>
+										@if (arm.Status == "completed")
+										{
+											<div class="answer-body">@arm.Answer</div>
+											<div class="answer-metrics">
+												<span class="coverage">@(arm.Id == "neutral" ? "baseline" : $"similarity to neutral {arm.SimilarityToNeutral:0.00}")</span>
+											</div>
+										}
+										else if (arm.Status == "failed")
+										{
+											<div class="answer-failed">@arm.Error</div>
+										}
+										else
+										{
+											<div class="answer-pending"><span></span>Asking…</div>
+										}
+									</article>
+								}
+							</div>
+						}
+
+						@if (_session?.Framing.Verdict is { } framingVerdict)
+						{
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Did the framing change the substance?</strong><small>reviewed by @_session.Framing.JudgeModel</small></div></header>
+								<div class="audit-scoreline">
+									<span class="ctx-label @(framingVerdict.SubstanceChanged ? "ctx-poor" : "ctx-rich")">@(framingVerdict.SubstanceChanged ? "CHANGED" : "HELD")</span>
+									<p>@framingVerdict.Summary</p>
+								</div>
+								@if (framingVerdict.Differences.Count > 0)
+								{
+									<h4>Substantive divergences</h4><ul class="rt-list warn">@foreach (var difference in framingVerdict.Differences) { <li>@difference</li> }</ul>
+								}
+								@if (!string.IsNullOrWhiteSpace(framingVerdict.Recommendation))
+								{
+									<h4>How to ask next time</h4><p class="rt-reco">@framingVerdict.Recommendation</p>
+								}
+							</section>
+						}
+						else if (FramingBusy)
+						{
+							<div class="rt-pending"><span></span>Collecting all three answers before comparing them…</div>
+						}
+						@if (_session?.Framing.Status == "failed")
+						{
+							<div class="compare-status failed" role="alert">@(_session?.Framing.Error ?? "The framing lab did not complete.")</div>
+						}
+					</section>
+					break;
+				case 24:
+					<section>
+						<p class="kicker">GREEN TESTS ARE NOT COVERAGE</p>
+						<h2 id="scene-title">Does the suite cover the risk this change adds?</h2>
+						<p class="rt-intro">The fixture is <strong>compiled and executed</strong>, then one deliberate defect is injected at a time and the tests are run again. A defect the tests fail to notice is a defect the suite would have shipped. No model is involved in the verdict — this is executed evidence, like the COBOL oracle.</p>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>The enhancement</strong><small>what the change is meant to add</small></div></header>
+							<div class="audit-body"><pre class="rt-code">@RegressionSamples.Enhancement</pre></div>
+						</section>
+
+						<div class="rt-flow">
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Code under test</strong><small>editable</small></div></header>
+								<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_regressionSource" @bind:event="oninput" disabled="@_mutationRunning" aria-label="Source"></textarea>
+							</section>
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>Existing test suite</strong><small>currently passing</small></div></header>
+								<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_regressionTests" @bind:event="oninput" disabled="@_mutationRunning" aria-label="Tests"></textarea>
+							</section>
+						</div>
+
+						<div class="rt-actions">
+							<small>Deterministic — compiles and runs in-process, no model call.</small>
+							<button class="primary-command compact" type="button" disabled="@_mutationRunning" @onclick="RunMutation">@(_mutationRunning ? "Running mutants…" : "Run mutation test")</button>
+						</div>
+
+						@if (_mutation is { } mutation)
+						{
+							@if (!mutation.Ran)
+							{
+								<div class="compare-status failed" role="alert">@mutation.Error</div>
+							}
+							else
+							{
+								<section class="rt-qa">
+									<header class="rt-head"><span class="rt-step">4</span><div><strong>Result</strong><small>@mutation.KilledMutants of @mutation.TotalMutants defects caught</small></div></header>
+									<div class="audit-scoreline">
+										<span class="ctx-label @(mutation.MutationScore >= 80 ? "ctx-rich" : mutation.MutationScore >= 50 ? "ctx-adequate" : "ctx-poor")">@mutation.MutationScore%</span>
+										<div><strong>Mutation score</strong><small>baseline suite: @string.Join(", ", mutation.BaselineTests)</small></div>
+										<p>@mutation.Verdict</p>
+									</div>
+									<table class="audit-table">
+										<thead><tr><th>Line</th><th>Injected defect</th><th>Change</th><th>Outcome</th></tr></thead>
+										<tbody>
+											@foreach (var mutant in mutation.Mutants)
+											{
+												<tr class="@(mutant.Killed ? "p0-opt" : "p0-req")">
+													<td>@mutant.Line</td>
+													<td>@mutant.Description</td>
+													<td><code>@mutant.Original</code> ? <code>@mutant.Mutated</code></td>
+													<td>@(mutant.Killed ? $"caught by {mutant.Detail}" : "SURVIVED — no test failed")</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="ctx-method">Every surviving row is a real behaviour change the suite accepted. Add a test until the rows that matter go away.</p>
+								</section>
+							}
+						}
+					</section>
+					break;
+				case 25:
+					<section>
+						<p class="kicker">REAL DATA, NEVER COMMITTED</p>
+						<h2 id="scene-title">The best test data is also the worst leak</h2>
+						<p class="rt-intro">A test ticket built from real data reproduces the defect properly — and is a data-exfiltration path if it goes straight to a model. <strong>Not checked in is not the same as not sent.</strong> The gate runs first, the model sees only the scrubbed copy, and the audit record keeps references rather than payloads.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Ephemeral test ticket</strong><small>real repro data · in-memory only</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="12000" @bind="_ephemeralTicket" @bind:event="oninput" disabled="@EphemeralBusy" aria-label="Ephemeral ticket"></textarea>
+							<div class="rt-actions">
+								<small>@_ephemeralTicket.Length / 12000</small>
+								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _ephemeralTicket.Trim().Length < 20 || EphemeralBusy)" @onclick="RunEphemeral">@(!_bridgeConnected ? "Connect VSIX to run" : EphemeralBusy ? "Running…" : "Gate, then run")</button>
+							</div>
+							@if (!_bridgeConnected)
+							{
+								<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running.</p>
+							}
+						</section>
+
+						@if (_session?.Ephemeral.Gate is { } dataGate)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Pre-flight gate</strong><small>runs before anything leaves the boundary</small></div></header>
+								<div class="audit-body">
+									<div class="audit-scoreline">
+										<span class="ctx-label decision-@dataGate.Decision.ToLowerInvariant().Replace("-", "")">@dataGate.Decision</span>
+										<div><strong>@dataGate.TierName</strong><small>@dataGate.Findings.Count finding type(s)</small></div>
+										<p>@dataGate.Rationale</p>
+									</div>
+									@if (_session.Ephemeral.Record is { } record)
+									{
+										<h4>Ephemeral record</h4>
+										<table class="audit-table">
+											<tbody>
+												<tr><td>Ticket id</td><td>@record.TicketId</td></tr>
+												<tr><td>Owner</td><td>@record.Owner</td></tr>
+												<tr><td>Storage</td><td>@record.Storage</td></tr>
+												<tr><td>Retention</td><td>@record.Ttl</td></tr>
+												<tr><td>Logging</td><td>@record.LogPolicy</td></tr>
+												<tr><td>Payload digest</td><td><code>@record.PayloadDigest</code></td></tr>
+											</tbody>
+										</table>
+										@if (record.Purged.Count > 0)
+										{
+											<h4>Removed before the model saw it</h4>
+											<ul class="rt-list warn">@foreach (var item in record.Purged) { <li>@item</li> }</ul>
+										}
+									}
+								</div>
+							</section>
+
+							@if (_session.Ephemeral.Status == "blocked")
+							{
+								<div class="compare-status failed" role="alert"><strong>Blocked.</strong> Restricted content was found, so nothing was sent to a model. Redaction does not make credentials safe — the owner authorises handling first. This is the gate working, not a failure.</div>
+							}
+							else
+							{
+								<div class="rt-flow">
+									<section class="rt-box">
+										<header class="rt-head"><span class="rt-step">3</span><div><strong>What the model actually received</strong><small>scrubbed copy</small></div></header>
+										<pre class="rt-code">@dataGate.Scrubbed</pre>
+									</section>
+									<section class="rt-box">
+										<header class="rt-head"><span class="rt-step">4</span><div><strong>Reproduction plan</strong><small>@(_session.Ephemeral.AgentModel ?? "Gemma")</small></div></header>
+										@if (!string.IsNullOrEmpty(_session.Ephemeral.AgentPlan))
+										{
+											<div class="rt-story">@_session.Ephemeral.AgentPlan</div>
+										}
+										else if (EphemeralBusy)
+										{
+											<div class="rt-pending"><span></span>Running the test against the scrubbed ticket…</div>
+										}
+										else
+										{
+											<div class="rt-placeholder">The plan will appear here — proving the test still works after scrubbing.</div>
+										}
+									</section>
+								</div>
+							}
+						}
+						@if (_session?.Ephemeral.Status == "failed")
+						{
+							<div class="compare-status failed" role="alert">@(_session?.Ephemeral.Error ?? "The ephemeral run did not complete.")</div>
+						}
+					</section>
+					break;
+				case 26:
+					<section>
+						<p class="kicker">THREE TIERS, ONE SOURCE OF TRUTH</p>
+						<h2 id="scene-title">Cortex routes. The repo decides.</h2>
+						<p class="rt-intro">A tier hierarchy only earns its keep when you can say what happens if the tiers <strong>disagree</strong>. The rule: Tier 3 is closest to the code and is authoritative on specifics; Tier 1 exists for routing. And freshness never cascades downward — a parent that looks current says nothing about its children.</p>
+
+						<div class="rt-actions">
+							<small>Deterministic — no model call, works without the bridge.</small>
+							<button class="primary-command compact" type="button" @onclick="RunPortfolio">Map the portfolio</button>
+						</div>
+
+						@if (_portfolio is { } portfolio)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>Tier 1 — @portfolio.CortexName</strong><small>routing only</small></div></header>
+								<div class="audit-body">
+									<div class="audit-scoreline">
+										<span class="ctx-label @(portfolio.PortfolioScore >= 70 ? "ctx-rich" : portfolio.PortfolioScore >= 45 ? "ctx-adequate" : "ctx-poor")">@portfolio.PortfolioScore</span>
+										<div><strong>Portfolio average</strong><small>weakest repo: @portfolio.WeakestRepo at @portfolio.WeakestScore</small></div>
+										<p>An agent routed to the weakest repo gets the weakest experience. The average is the headline; the minimum is the risk.</p>
+									</div>
+									@if (portfolio.CortexStale)
+									{
+										<div class="compare-status failed" role="alert">The Cortex tier itself expired on @portfolio.CortexStaleAfter. Portfolio routing is running on unverified knowledge.</div>
+									}
+								</div>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Tier 2 — AMP groups</strong><small>convention and ownership · select to drill down</small></div></header>
+								<div class="audit-body">
+									<table class="audit-table">
+										<thead><tr><th>AMP ID</th><th>Group</th><th>Convention</th><th>Average</th><th>Weakest</th><th>Stale repos</th></tr></thead>
+										<tbody>
+											@foreach (var amp in portfolio.Amps)
+											{
+												var ampId = amp.AmpId;
+												<tr class="p0-clickable @(_expandedAmp == ampId ? "curve-plateau" : null)" @onclick="() => ToggleAmp(ampId)">
+													<td>@amp.AmpId</td>
+													<td>@amp.Name</td>
+													<td>@amp.Convention</td>
+													<td>@amp.AverageScore</td>
+													<td>@amp.WeakestScore</td>
+													<td>@amp.StaleRepos / @amp.RepoCount@(amp.Stale ? " · tier stale" : string.Empty)</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+								</div>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>Tier 3 — repos</strong><small>authoritative on specifics@(_expandedAmp is null ? "" : $" · filtered to {_expandedAmp}")</small></div></header>
+								<div class="audit-body">
+									<table class="audit-table">
+										<thead><tr><th>Repo</th><th>AMP</th><th>Score</th><th>Present</th><th>Missing</th><th>Freshness</th></tr></thead>
+										<tbody>
+											@foreach (var repo in portfolio.Repos.Where(repo => _expandedAmp is null || repo.AmpId == _expandedAmp))
+											{
+												<tr class="@(repo.Stale ? "p0-req" : "p0-opt")">
+													<td>@repo.Name</td>
+													<td>@repo.AmpId</td>
+													<td><strong>@repo.Score</strong></td>
+													<td>@string.Join(", ", repo.Present)</td>
+													<td>@(repo.Missing.Count > 0 ? string.Join(", ", repo.Missing) : "—")</td>
+													<td>@(repo.Stale ? $"STALE since {repo.StaleAfter}" : $"fresh to {repo.StaleAfter}")</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+								</div>
+							</section>
+
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">4</span><div><strong>Where the tiers disagree</strong><small>precedence rule R4</small></div></header>
+								@if (portfolio.Conflicts.Count > 0)
+								{
+									<table class="audit-table">
+										<thead><tr><th>Repo</th><th>Field</th><th>Cortex says</th><th>Repo says</th><th>Resolution</th></tr></thead>
+										<tbody>
+											@foreach (var conflict in portfolio.Conflicts)
+											{
+												<tr><td>@conflict.Repo</td><td>@conflict.Field</td><td>@conflict.CortexSays</td><td><strong>@conflict.RepoSays</strong></td><td>@conflict.Resolution</td></tr>
+											}
+										</tbody>
+									</table>
+								}
+								else
+								{
+									<p class="rt-reco">No disagreements found between the portfolio record and the repos.</p>
+								}
+
+								@if (portfolio.StalenessCascades.Count > 0)
+								{
+									<h4>Staleness does not cascade</h4>
+									<ul class="rt-list warn">@foreach (var cascade in portfolio.StalenessCascades) { <li>@cascade</li> }</ul>
+								}
+								<p class="ctx-method">Publish the precedence rule before the hierarchy is used for routing — hierarchies fail when tiers conflict and nobody said who wins.</p>
+							</section>
+						}
+					</section>
+					break;
+				case 27:
+					<section>
+						<p class="kicker">THREE REAL SERVICES, ONE SHARED SPINE</p>
+						<h2 id="scene-title">Find the duplication by meaning, then let the right model do each job</h2>
+						<p class="rt-intro">Three production broker-dealer services are read from disk. They share an identical framework spine and diverge completely in their trading logic. <strong>embeddinggemma</strong> finds the duplication by meaning, <strong>Claude Opus 5</strong> designs the consolidation, and <strong>Gemma 4</strong> writes the code from that design — the expensive model is billed for judgement, not for typing.</p>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>The corpus</strong><small>real repositories, not a fixture</small></div></header>
+							<div class="repo-grid">
+								@foreach (var repo in TradingCorpus.Repos)
+								{
+									var loaded = _commonCode?.Repos.FirstOrDefault(item => item.Name == repo.Name);
+									<article class="repo-card">
+										<h3>@repo.Name</h3>
+										<p class="repo-asset">@repo.AssetClass</p>
+										<p class="repo-diverge">@repo.Divergence</p>
+										<dl class="verdict-meta"><dt>OKF quality</dt><dd>@repo.OkfQuality</dd></dl>
+										@if (loaded is not null)
+										{
+											<p class="repo-stats">@loaded.Files files · @loaded.Lines lines · @loaded.NonFunctionalFiles framework / @loaded.FunctionalFiles trading</p>
+										}
+									</article>
+								}
+							</div>
+							<div class="rt-actions">
+								<small>Deterministic — embeddings only, no bridge needed.</small>
+								<button class="primary-command compact" type="button" disabled="@_commonCodeRunning" @onclick="RunCommonCode">@(_commonCodeRunning ? "Embedding…" : "Run the audit")</button>
+							</div>
+						</section>
+
+						@if (_commonCode is { } codeAudit)
+						{
+							@if (!codeAudit.CorpusAvailable)
+							{
+								<div class="rt-error" role="alert">@codeAudit.CorpusStatus</div>
+							}
+							else
+							{
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">2</span><div><strong>Did it actually separate them?</strong><small>scored against the source tree, not asserted</small></div></header>
+									<div class="audit-body">
+										<div class="know-grid">
+											<div class="know-col learned"><p class="eyebrow">KNOWN DUPLICATES</p><ul><li>mean @codeAudit.Separation.DuplicateMean.ToString("0.000"), weakest @codeAudit.Separation.DuplicateMin.ToString("0.000")</li></ul></div>
+											<div class="know-col unverified"><p class="eyebrow">EVERYTHING ELSE</p><ul><li>mean @codeAudit.Separation.UnrelatedMean.ToString("0.000"), strongest @codeAudit.Separation.UnrelatedMax.ToString("0.000")</li></ul></div>
+											<div class="know-col own"><p class="eyebrow">MARGIN</p><ul><li>@codeAudit.Separation.Margin.ToString("0.000") — @codeAudit.Separation.NearestNeighbourHits/@codeAudit.Separation.NearestNeighbourTotal framework files whose nearest cross-repo neighbour is the same class</li></ul></div>
+										</div>
+										<p class="ctx-method">@codeAudit.CorpusStatus Method: @(codeAudit.UsedEmbeddings ? "embeddinggemma-300m int8, windowed mean-pooling over whole files" : "token-overlap fallback") at cosine ≥ @codeAudit.Threshold.ToString("0.000"). @(codeAudit.Separation.Margin > 0 ? $"The two populations do not overlap, but the margin is only {codeAudit.Separation.Margin:0.000} wide — a single threshold works here and would not survive a noisier estate." : "The populations overlap: no single threshold separates them cleanly, so treat the clusters as candidates for review rather than findings.")</p>
+									</div>
+								</section>
+
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">3</span><div><strong>The prize</strong><small>@codeAudit.DuplicatedClusters duplicated cluster(s) across @codeAudit.UnitCount files</small></div></header>
+									<div class="audit-body">
+										<div class="know-grid">
+											<div class="know-col learned"><p class="eyebrow">NON-FUNCTIONAL DUPLICATION</p><ul><li>@codeAudit.NonFunctionalPrize lines — framework code with one correct answer. Start here.</li></ul></div>
+											<div class="know-col unverified"><p class="eyebrow">FUNCTIONAL DUPLICATION</p><ul><li>@(codeAudit.FunctionalPrize == 0 ? "None found. The trading logic genuinely diverges by asset class — which is also evidence the audit is not simply clustering everything that looks like C#." : $"{codeAudit.FunctionalPrize} lines — business rules encoded more than once. Higher prize, higher risk.")</li></ul></div>
+										</div>
+										<table class="audit-table">
+											<thead><tr><th>Kind</th><th>Members</th><th>Repos</th><th>Duplicate lines</th><th>Recommendation</th></tr></thead>
+											<tbody>
+												@foreach (var cluster in codeAudit.Clusters.Where(cluster => cluster.IsDuplication))
+												{
+													<tr class="p0-req">
+														<td>@cluster.Kind</td>
+														<td>@string.Join(", ", cluster.Members.Select(member => $"{member.Repo}/{member.Name}"))</td>
+														<td>@cluster.Repos.Count</td>
+														<td>@cluster.DuplicateLines</td>
+														<td>@cluster.Recommendation</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+										<ol class="rt-list warn">@foreach (var step in codeAudit.Strategy) { <li>@step</li> }</ol>
+									</div>
+								</section>
+
+								@if (codeAudit.TopPairs.Count > 0)
+								{
+									<section class="rt-box">
+										<header class="rt-head"><span class="rt-step">4</span><div><strong>How the threshold was chosen</strong><small>measured, not guessed</small></div></header>
+										<div class="audit-body">
+											<table class="audit-table">
+												<thead><tr><th>Similarity</th><th>Pair</th><th>Cross-repo</th><th>Clustered</th></tr></thead>
+												<tbody>
+													@foreach (var pair in codeAudit.TopPairs)
+													{
+														<tr class="@(pair.Similarity >= codeAudit.Threshold ? "p0-req" : "p0-opt")">
+															<td>@pair.Similarity.ToString("0.000")</td>
+															<td>@pair.Left ~ @pair.Right</td>
+															<td>@(pair.CrossRepo ? "yes" : "no")</td>
+															<td>@(pair.Similarity >= codeAudit.Threshold ? "yes" : "below threshold")</td>
+														</tr>
+													}
+												</tbody>
+											</table>
+											<p class="ctx-method">These are the pairs either side of the cut, not the obvious top of the list. The threshold sits in the measured gap between the weakest true duplicate and the strongest unrelated pair — here that gap is narrow, and the nearest miss is a genuine near-relative rather than noise. Re-measure with <code>--calibrate-corpus</code> before pointing this at a different estate.</p>
+										</div>
+									</section>
+								}
+
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">5</span><div><strong>Claude Opus 5 designs the consolidation</strong><small>judgement, not typing</small></div></header>
+									<div class="rt-actions">
+										<small>Claude sees the audit; the implementation spec it writes is the only thing Gemma will see.</small>
+										<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || codeAudit.DuplicatedClusters == 0 || ConsolidationBusy)" @onclick="RunConsolidation">@ConsolidationButtonText</button>
+									</div>
+									@if (!_bridgeConnected)
+									{
+										<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running.</p>
+									}
+									@if (_session?.Consolidation.Error is { } consolidationError)
+									{
+										<div class="rt-error" role="alert">@consolidationError</div>
+									}
+									@if (_session?.Consolidation.Design is { } sharedDesign)
+									{
+										<div class="audit-body">
+											<div class="coach-label">Designed by @_session.Consolidation.DesignModel</div>
+											<h4>@sharedDesign.LibraryName</h4>
+											<p class="rt-reco">@sharedDesign.Summary</p>
+											@if (sharedDesign.Modules.Count > 0)
+											{
+												<table class="audit-table">
+													<thead><tr><th>Module</th><th>Responsibility</th><th>Public API</th><th>Replaces</th></tr></thead>
+													<tbody>
+														@foreach (var module in sharedDesign.Modules)
+														{
+															<tr><td>@module.Name</td><td>@module.Responsibility</td><td><code>@module.PublicApi</code></td><td>@string.Join(", ", module.Replaces)</td></tr>
+														}
+													</tbody>
+												</table>
+											}
+											@if (sharedDesign.MigrationSteps.Count > 0)
+											{
+												<h4>Migration</h4><ol class="rt-list good">@foreach (var step in sharedDesign.MigrationSteps) { <li>@step</li> }</ol>
+											}
+											@if (sharedDesign.Risks.Count > 0)
+											{
+												<h4>Risks</h4><ul class="rt-list warn">@foreach (var risk in sharedDesign.Risks) { <li>@risk</li> }</ul>
+											}
+											@if (sharedDesign.OutOfScope.Count > 0)
+											{
+												<h4>Deliberately not consolidated</h4><ul class="rt-list">@foreach (var item in sharedDesign.OutOfScope) { <li>@item</li> }</ul>
+											}
+											<h4>Implementation spec handed to Gemma</h4>
+											<pre class="rt-code">@sharedDesign.ImplementationSpec</pre>
+										</div>
+									}
+									else if (_session?.Consolidation.Status == "designing")
+									{
+										<div class="rt-pending"><span></span>Claude is designing the shared library from the audit…</div>
+									}
+									else
+									{
+										<div class="rt-placeholder">Claude's consolidation design will appear here.</div>
+									}
+								</section>
+
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">6</span><div><strong>Gemma 4 implements the design</strong><small>one task per module, spec in, code out — no repository access</small></div></header>
+									@if (_session?.Consolidation.Build is { } build)
+									{
+										<div class="audit-body">
+											<div class="coach-label">@(build.ModulesCompleted)/@(build.ModulesTotal) modules · implemented by @(_session.Consolidation.BuildModel ?? "Gemma") from the spec alone — it never saw the three repositories.</div>
+											@if (build.FailedModules.Count > 0)
+											{
+												<h4>Modules that failed</h4><ul class="rt-list warn">@foreach (var failure in build.FailedModules) { <li>@failure</li> }</ul>
+											}
+											@if (build.Assumptions.Count > 0)
+											{
+												<h4>Gaps the spec left open</h4><ul class="rt-list warn">@foreach (var assumption in build.Assumptions) { <li>@assumption</li> }</ul>
+											}
+											@foreach (var file in build.Files)
+											{
+												<h4>@file.Path</h4>
+												<p class="repo-diverge">@file.Purpose</p>
+												<pre class="rt-code">@file.Source</pre>
+											}
+											@if (build.ModulesCompleted < build.ModulesTotal)
+											{
+												<div class="rt-pending"><span></span>Building module @(build.ModulesCompleted + 1) of @build.ModulesTotal…</div>
+											}
+										</div>
+									}
+									else if (_session?.Consolidation.Status is "designing" or "building")
+									{
+										<div class="rt-pending"><span></span>Waiting for the design before the modules can be built…</div>
+									}
+									else
+									{
+										<div class="rt-placeholder">Gemma's implementation will appear here.</div>
+									}
+								</section>
+
+								@if (_session?.Consolidation.Tokens is { } spend)
+								{
+									<section class="rt-qa">
+										<header class="rt-head"><span class="rt-step">!</span><div><strong>Where the tokens went</strong><small>@(spend.Exact ? "exact Gemma tokenizer counts" : "estimated")</small></div></header>
+										<table class="audit-table">
+											<thead><tr><th>Stage</th><th>Model</th><th>Prompt tokens</th><th>Output tokens</th><th>What it bought</th></tr></thead>
+											<tbody>
+												<tr><td>Design</td><td>@(_session.Consolidation.DesignModel ?? "Claude Opus 5")</td><td>@spend.DesignPromptTokens.ToString("N0")</td><td>@spend.DesignOutputTokens.ToString("N0")</td><td>Boundaries, migration sequence, risk — the part that needs judgement.</td></tr>
+												<tr><td>Build</td><td>@(_session.Consolidation.BuildModel ?? "Gemma 4")</td><td>@spend.BuildPromptTokens.ToString("N0")</td><td>@spend.BuildOutputTokens.ToString("N0")</td><td>Volume code from a closed specification — mechanical.</td></tr>
+											</tbody>
+										</table>
+										<ul class="rt-list good">
+											<li>The frontier model never received the corpus. Sending all @spend.CorpusTokens.ToString("N0") tokens of source to Claude would have cost roughly @((spend.CorpusTokens / (double)Math.Max(spend.DesignPromptTokens, 1)).ToString("0.0"))× the design prompt, before it wrote a line.</li>
+											<li>@(spend.BuildOutputTokens > spend.DesignOutputTokens ? "Most of the generated volume came from the cheaper model, which is the intended split." : "The design was larger than the implementation here — on a bigger consolidation the ratio inverts.")</li>
+											<li>This only holds if the spec is genuinely self-contained. If Gemma has to guess, the retry cost lands back on the expensive model — see the token economics scene for cost per successful outcome.</li>
+										</ul>
+									</section>
+								}
+							}
+						}
+					</section>
+					break;
+				case 28:
+					<section>
+						<p class="kicker">FREE IS THE WRONG WORD</p>
+						<h2 id="scene-title">Budget in cost per outcome, not cost per token</h2>
+						<p class="rt-intro">An open-weight model has <strong>no per-token vendor invoice</strong> — it does not have zero cost. And a model that fails a third of the time is billed for every failure. The only unit that survives contact with Finance is <strong>cost per successful outcome</strong>.</p>
+
+						<div class="rt-actions">
+							<small>Deterministic — illustrative rates, no model call.</small>
+							<button class="primary-command compact" type="button" @onclick="RunEconomics">Compute the economics</button>
+						</div>
+
+						@if (_economics is { } econ)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>The escalation ladder</strong><small>@econ.PromptTokens.ToString("N0") prompt + @econ.OutputTokens.ToString("N0") output tokens per attempt</small></div></header>
+								<div class="audit-body">
+									<table class="audit-table">
+										<thead><tr><th>Rung</th><th>Model</th><th>Billing</th><th>Success</th><th>Cost / attempt</th><th>Attempts / success</th><th>Cost / success</th></tr></thead>
+										<tbody>
+											@foreach (var row in econ.Rows)
+											{
+												<tr class="@(row.Rung == econ.CheapestPerSuccess ? "econ-best" : null)">
+													<td>@row.Rung</td>
+													<td>@row.Model</td>
+													<td>@row.Kind</td>
+													<td>@row.SuccessPercent%</td>
+													<td>@row.CostPerAttempt.ToString("C4")</td>
+													<td>@row.AttemptsPerSuccess</td>
+													<td><strong>@row.CostPerSuccess.ToString("C4")</strong></td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<ul class="rt-list good">@foreach (var row in econ.Rows) { <li><strong>@row.Model:</strong> @row.Note</li> }</ul>
+								</div>
+							</section>
+
+							@if (econ.RateCardMisleads)
+							{
+								<div class="compare-status" role="status"><strong>The rate card would pick the wrong model.</strong> Cheapest per attempt is <em>@econ.CheapestPerAttempt</em>; cheapest per success is <em>@econ.CheapestPerSuccess</em>. Routing on price alone buys more retries, not more outcomes.</div>
+							}
+
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Routing policy</strong><small>what to tell the teams</small></div></header>
+								<ol class="rt-list warn">@foreach (var line in econ.Policy) { <li>@line</li> }</ol>
+							</section>
+						}
+					</section>
+					break;
+				case 29:
+					<section>
+						<p class="kicker">A LIBRARY THAT SCALES WHAT WORKS</p>
+						<h2 id="scene-title">Contributions are admitted on evidence</h2>
+						<p class="rt-intro">A shared prompt library scales whatever you put in it — including the mistakes. So this has an <strong>entry gate</strong>, not an upload button: every contribution must carry its outcome evidence, the context it depends on, and at least one known way it fails.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Contribute a pattern</strong><small>all six fields are required</small></div></header>
+							<div class="p0-form">
+								<label>Title<input type="text" @bind="_submission.Title" /></label>
+								<label>Problem it solves<input type="text" @bind="_submission.Problem" /></label>
+								<label>The prompt or approach<input type="text" @bind="_submission.Approach" /></label>
+								<label>Evidence of outcome (include a number)<input type="text" @bind="_submission.Evidence" /></label>
+								<label>Context it depends on<input type="text" @bind="_submission.ContextNeeded" /></label>
+								<label>Known failure modes<input type="text" @bind="_submission.FailureModes" /></label>
+							</div>
+							<div class="rt-actions">
+								<small>Deterministic curation gate — no model call.</small>
+								<button class="primary-command compact" type="button" @onclick="SubmitPattern">Submit to the library</button>
+							</div>
+						</section>
+
+						@if (_libraryReview is { } curation)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Curation gate</strong><small>@curation.Score% of checks passed</small></div></header>
+								<div class="audit-body">
+									<div class="audit-scoreline">
+										<span class="ctx-label @(curation.Admitted ? "ctx-rich" : "ctx-poor")">@(curation.Admitted ? "ADMITTED" : "HELD")</span>
+										<p>@curation.Verdict</p>
+									</div>
+									<table class="audit-table">
+										<thead><tr><th>Check</th><th>Requirement</th><th>Why it is required</th><th>Result</th></tr></thead>
+										<tbody>
+											@foreach (var check in curation.Checks)
+											{
+												<tr class="@(check.Passed ? "p0-opt" : "p0-req")"><td>@check.Name</td><td>@check.Requirement</td><td>@check.Why</td><td>@(check.Passed ? "pass" : "FAIL")</td></tr>
+											}
+										</tbody>
+									</table>
+								</div>
+							</section>
+						}
+
+						<section class="rt-qa">
+							<header class="rt-head"><span class="rt-step">@(_libraryReview is null ? "2" : "3")</span><div><strong>The library</strong><small>@Library.Entries.Count admitted pattern(s)</small></div></header>
+							@foreach (var entry in Library.Entries)
+							{
+								<div class="lib-entry">
+									<strong>@entry.Title</strong>
+									<p><em>Problem:</em> @entry.Problem</p>
+									<p><em>Approach:</em> @entry.Approach</p>
+									<p><em>Evidence:</em> @entry.Evidence</p>
+									<p><em>Needs:</em> @entry.ContextNeeded</p>
+									<p class="lib-fail"><em>Fails when:</em> @entry.FailureModes</p>
+								</div>
+							}
+						</section>
+					</section>
+					break;
+				case 30:
+					<section>
+						<p class="kicker">PLAN BEFORE CODE</p>
+						<h2 id="scene-title">A summary leadership reads, a diagram engineers check</h2>
+						<p class="rt-intro">Demanding a plan with an executive summary and a diagram is a <strong>graded skill</strong>, not a nicety. The hardest check is the last one: producing an implementation before the plan is reviewed is exactly the habit this gate exists to break.</p>
+
+						<section class="rt-box rt-input-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>The plan under review</strong><small>edit it to see the gate react</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_planText" @bind:event="oninput" aria-label="Plan"></textarea>
+							<div class="rt-actions">
+								<small>Deterministic structural check — no model call.</small>
+								<button class="primary-command compact" type="button" @onclick="ReviewPlan">Review the plan</button>
+							</div>
+						</section>
+
+						@if (_planReview is { } plan)
+						{
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Result</strong><small>executive summary: @plan.SummaryWords words</small></div></header>
+								<div class="audit-scoreline">
+									<span class="ctx-label @(plan.Score == 100 ? "ctx-rich" : plan.Score >= 60 ? "ctx-adequate" : "ctx-poor")">@plan.Score%</span>
+									<p>@plan.Verdict</p>
+								</div>
+								<table class="audit-table">
+									<thead><tr><th>Check</th><th>Requirement</th><th>Result</th></tr></thead>
+									<tbody>
+										@foreach (var check in plan.Checks)
+										{
+											<tr class="@(check.Passed ? "p0-opt" : "p0-req")"><td>@check.Name</td><td>@check.Requirement</td><td>@(check.Passed ? "pass" : "FAIL")</td></tr>
+										}
+									</tbody>
+								</table>
+							</section>
+						}
+					</section>
+					break;
+				case 31:
+					<section>
+						<p class="kicker">THE ORDER TO WALK IT IN</p>
+						<h2 id="scene-title">Six acts, each ending in a number</h2>
+						<p class="rt-intro">This is the sequence for leadership, not the order the platform was built in. Each act answers a question executives actually ask, demonstrates one control, and produces one metric. Select an act to jump to its representative scene.</p>
+
+						<div class="act-grid">
+							@foreach (var act in Acts)
+							{
+								var target = act.SceneIndex;
+								<article class="act-card">
+									<p class="eyebrow">@act.Act</p>
+									<h3>“@act.Question”</h3>
+									<p class="act-summary">@act.Summary</p>
+									<dl class="verdict-meta"><dt>Control</dt><dd>@act.Control</dd></dl>
+									<dl class="verdict-meta"><dt>Metric</dt><dd>@act.Metric</dd></dl>
+									<button class="secondary-command" type="button" @onclick="() => GoTo(target)">Open: @act.SceneName →</button>
+								</article>
+							}
+						</div>
+
+						<section class="rt-qa">
+							<header class="rt-head"><span class="rt-step">!</span><div><strong>How to present this</strong><small>the part that survives the meeting</small></div></header>
+							<ul class="rt-list good">
+								<li>Lead with the thesis, not the tooling: the AI, the human input, and drift are three separate failure modes, and most programmes measure only the first.</li>
+								<li>Show one act per meeting if you have to. Each is self-contained and each ends in a number.</li>
+								<li>Every figure in this platform is illustrative until it is measured on CES repos. Say so before someone else does.</li>
+								<li>The controls that matter most are the boring ones — inventory, tiering, and the data gate. They are prerequisites, not achievements.</li>
+							</ul>
+						</section>
+					</section>
+					break;
 			}
 		</article>
 
 		<footer class="stage-footer">
-			<button class="secondary-command" type="button" disabled="@(_scene == 0)" @onclick="Previous">← Previous</button>
+			<button class="secondary-command" type="button" disabled="@(_scene == 0)" @onclick="Previous">? Previous</button>
 			<div class="narration-text"><span>Narration transcript</span><p>@CurrentNarration</p></div>
-			<button class="secondary-command" type="button" disabled="@(_scene == Scenes.Length - 1)" @onclick="Next">Next →</button>
+			<button class="secondary-command" type="button" disabled="@(_scene == Scenes.Length - 1)" @onclick="Next">Next ?</button>
 		</footer>
 	</section>
 
@@ -1711,7 +2869,7 @@ cobol85  -&gt; 000000</pre>
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard")];
+	private static readonly (string Id, string Title)[] Scenes = [("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -1748,13 +2906,31 @@ cobol85  -&gt; 000000</pre>
 		"Three migrations of the same COBOL program, with increasing amounts of grounding — none, static analysis, and facts resolved by the COBOL compiler itself. Every answer is compiled and executed against outputs captured from the real legacy program. Nothing here is graded by a model.",
 		"Most agent failures are underspecified tickets, not weak models. A deterministic pre-check scores the ticket before any model sees it, then Claude grades it against the rubric and rewrites it so it would pass.",
 		"A proposed cloud sandbox with defects planted in it. Gemma audits the design against the five-pillar checklist, and Claude grades the audit against the sealed list of what was actually planted.",
-		"One golden case: a frozen commit, the ticket, and the patch a human wrote. A candidate patch is scored across three layers — functional, structural and semantic. The first two are deterministic; only the last asks a model."
+		"One golden case: a frozen commit, the ticket, and the patch a human wrote. A candidate patch is scored across three layers — functional, structural and semantic. The first two are deterministic; only the last asks a model.",
+		"Before any of this is safe: enumerate and tier every agent, and gate what leaves the boundary. Both controls are deterministic and run with no model at all, because a prerequisite that depends on a model is not a prerequisite.",
+		"The same task, the same model, a cumulative ladder of context, repeated runs. Quality is scored against sealed criteria, so the floor and the plateau are measured rather than argued. The plateau is the token budget.",
+		"Approving 'deploy' is not approval. Authority is decided per exact action against the agent's registered envelope: reversible work inside the envelope may run, everything else stops for a verified human decision.",
+		"One question, three framings, one model. The divergence from the neutral answer is measured before anyone offers an opinion about it, because the most expensive bias is the one the asker introduced.",
+		"Green tests are not coverage. The fixture is compiled and executed, then one deliberate defect is injected at a time and the tests are run again. A defect that survives is a defect the suite would have shipped.",
+		"Real data makes the best test and the worst leak. The ticket is gated before it leaves the boundary, the model sees only the scrubbed copy, and the audit record keeps references rather than payloads.",
+		"Three tiers of context: the portfolio for routing, the department for convention, the repo for truth. When they disagree the repo wins, and freshness never cascades downward from a parent that merely looks current.",
+		"Three real trading services share an identical framework spine and diverge completely in their business logic. Embeddinggemma finds the duplication by meaning, Claude designs the consolidation, and Gemma writes the code from that design — the expensive model is billed for judgement, not for typing.",
+		"Free is the wrong word and cost per token is the wrong unit. An open model has fixed infrastructure cost, and a model that fails a third of the time is billed for every failure. Budget in cost per successful outcome.",
+		"A shared library of prompts scales whatever you put in it, including the mistakes. Contributions are admitted on evidence, preconditions and known failure modes — not on enthusiasm.",
+		"Plan before code: an executive summary leadership can read, a diagram engineers can check, risks, and a verification path. Jumping straight to an implementation is the habit this gate exists to break.",
+		"Six acts, each answering a question leadership actually asks and each ending in a number. This is the order to walk the programme in, not the order it was built in."
 	];
 
 	private TrainingSession? _session;
 	private readonly Dictionary<int, int> _answers = [];
 	private readonly CancellationTokenSource _pollCancellation = new();
 	private PeriodicTimer? _timer;
+	private DateTimeOffset? _judgeStartedAt;
+
+	// An elapsed count is the honest signal that a long wait is progress rather than a hang.
+	private string JudgeElapsed => _judgeStartedAt is { } started
+		? $" ({(int)(DateTimeOffset.UtcNow - started).TotalSeconds}s)"
+		: string.Empty;
 	private int _scene;
 	private int _traceStep;
 	private int _animationRun;
@@ -1788,7 +2964,7 @@ cobol85  -&gt; 000000</pre>
 	};
 
 	private ComparisonTopic? SelectedTopic => string.IsNullOrEmpty(_comparisonTopicId) ? null : ComparisonCatalog.Find(_comparisonTopicId);
-	private bool ComparisonBusy => _session?.Comparison.Status is "queued" or "running" or "judging";
+	private bool ComparisonBusy => _session?.Comparison.Status is "queued" or "running" or "grounding" or "judging";
 	private string CompareButtonText => !_bridgeConnected
 		? "Connect VSIX to compare"
 		: ComparisonBusy ? "Comparing…" : "Run comparison";
@@ -1886,6 +3062,7 @@ cobol85  -&gt; 000000</pre>
 				var previousReview = _session.ReviewStatus;
 				_session = Store.GetSession(_session.SessionId);
 				_bridgeConnected = Store.IsBridgeConnected(_session.SessionId);
+				_judgeStartedAt = _session.Comparison.Status is "grounding" or "judging" ? _judgeStartedAt ?? DateTimeOffset.UtcNow : null;
 				await InvokeAsync(StateHasChanged);
 				if (previousReview != "completed" && _session.ReviewStatus == "completed") await JS.InvokeVoidAsync("trainingSpeech.focus", "review-feedback");
 			}
@@ -1897,6 +3074,129 @@ cobol85  -&gt; 000000</pre>
 	private void SubmitReview() { if (_session is null) return; Store.QueueReview(_session.SessionId, _learnerPrompt.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunComparison() { if (_session is null || string.IsNullOrEmpty(_comparisonTopicId)) return; Store.QueueComparison(_session.SessionId, _comparisonTopicId); _session = Store.GetSession(_session.SessionId); }
 	private void RunLlmSupport() { if (_session is null || _supportRequirement.Trim().Length < 20) return; Store.QueueLlmSupport(_session.SessionId, _supportRequirement.Trim()); _session = Store.GetSession(_session.SessionId); }
+
+	private readonly AgentRegistration _agent = new()
+	{
+		Name = "fulfillment-story-implementer",
+		Owner = "",
+		ReleaseId = "2026.09.1",
+		Model = "claude-opus-5@2026-08",
+		BlastRadius = "Team-system",
+		Autonomy = "Acts-with-approval",
+		DataTier = "Confidential",
+		AgentStatus = "Piloting",
+		ToolEnabled = true
+	};
+	private string _testPayload = RoundTripSamples.EphemeralTestPayload;
+	private AgentTierResult? _tier;
+	private DataTierAssessment? _assessment;
+
+	private void RunTiering() => _tier = Registry.Evaluate(_agent);
+	private void RunDataTier() => _assessment = DataTier.Assess(_testPayload);
+
+	private string _framingQuestion = "Should we move the order-status service off VMs and onto a managed container platform?";
+	private string _selectedActionId = "deploy-prod";
+	private ActionAuthorityDecision? _decision;
+
+	private bool CurveBusy => _session?.ContextCurve.Status is "running" or "judging";
+	private bool FramingBusy => _session?.Framing.Status is "running" or "judging";
+	private void RunCurve() { if (_session is null) return; Store.QueueContextCurve(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
+	private void RunFraming() { if (_session is null || _framingQuestion.Trim().Length < 10) return; Store.QueueFramingLab(_session.SessionId, _framingQuestion.Trim()); _session = Store.GetSession(_session.SessionId); }
+	private void RunAuthority()
+	{
+		var action = ActionAuthorityService.Catalog.FirstOrDefault(candidate => candidate.Id == _selectedActionId);
+		if (action is null) return;
+		_decision = Authority.Decide(_agent, _tier ?? Registry.Evaluate(_agent), action);
+	}
+
+	private string _regressionSource = RegressionSamples.Source;
+	private string _regressionTests = RegressionSamples.Tests;
+	private MutationReport? _mutation;
+	private bool _mutationRunning;
+	private string _ephemeralTicket = RoundTripSamples.EphemeralTestPayload;
+
+	private async Task RunMutation()
+	{
+		_mutationRunning = true;
+		// Compiling and executing every mutant blocks; keep the circuit responsive.
+		_mutation = await Task.Run(() => Regression.Analyse(_regressionSource, _regressionTests));
+		_mutationRunning = false;
+	}
+
+	private bool EphemeralBusy => _session?.Ephemeral.Status == "running";
+	private void RunEphemeral() { if (_session is null || _ephemeralTicket.Trim().Length < 20) return; Store.QueueEphemeralTest(_session.SessionId, _ephemeralTicket.Trim()); _session = Store.GetSession(_session.SessionId); }
+
+	private PortfolioReport? _portfolio;
+	private CommonCodeReport? _commonCode;
+	private bool _commonCodeRunning;
+	private string? _expandedAmp;
+
+	private void RunPortfolio() => _portfolio = Portfolio.Build(DateTimeOffset.UtcNow);
+	private void ToggleAmp(string ampId) => _expandedAmp = _expandedAmp == ampId ? null : ampId;
+
+	private async Task RunCommonCode()
+	{
+		_commonCodeRunning = true;
+		// Embedding thirty real source files blocks for a while; keep the circuit responsive.
+		_commonCode = await Task.Run(CommonCode.Analyse);
+		_commonCodeRunning = false;
+	}
+
+	private bool ConsolidationBusy => _session?.Consolidation.Status is "designing" or "building";
+
+	private string ConsolidationButtonText => _session?.Consolidation.Status switch
+	{
+		"designing" => "Claude is designing…",
+		"building" => "Gemma is implementing…",
+		"completed" => "Run again",
+		_ => "Design, then implement"
+	};
+
+	private void RunConsolidation()
+	{
+		if (_session is null || _commonCode is null)
+		{
+			return;
+		}
+
+		Store.QueueConsolidation(_session.SessionId, _commonCode);
+		_session = Store.GetSession(_session.SessionId);
+	}
+
+	private EconomicsReport? _economics;
+	private readonly PatternSubmission _submission = new();
+	private LibraryReview? _libraryReview;
+	private string _planText = PlanFirstSamples.GoodPlan;
+	private PlanReview? _planReview;
+
+	// Observed success rates from the grounding-arm scenes; illustrative, replace with measured values.
+	private static readonly (string Rung, int SuccessPercent)[] ObservedSuccess =
+	[
+		("open-weight", 35),
+		("open-weight-grounded", 78),
+		("mid", 72),
+		("frontier", 91)
+	];
+
+	private void RunEconomics() => _economics = Economics.Build(4200, 700, ObservedSuccess);
+	private void SubmitPattern() => _libraryReview = Library.Submit(_submission);
+	private void ReviewPlan() => _planReview = PlanFirstChecker.Review(_planText);
+
+	private static readonly LeadershipAct[] Acts =
+	[
+		new("I — Know what you have", "What are we even running this on?", "Inventory, risk tiering and tiered context", "Context readiness score",
+			"Every control downstream assumes you can name and tier every agent and every repo. Most programmes skip this and then cannot explain what they are measuring.", 26, "Portfolio context tiers"),
+		new("II — Give it the right input", "Is the problem the AI, or how we're asking?", "Ticket gate, unbiased framing, plan-first", "Ticket pass rate",
+			"Most agent failures are underspecified tickets and leading prompts, not weak models. This act makes the human half of the system measurable.", 23, "Neutral framing lab"),
+		new("III — Pick the right tool", "Why are we paying for the big model?", "Model fit, grounding, routing policy", "Cost per merged outcome",
+			"Grounding is usually cheaper than escalating. The routing policy should follow measured failure, not preference.", 28, "Token economics"),
+		new("IV — Prove it works", "How do you know it's right?", "Golden baseline, mutation testing, planted traps", "Mutation score and trap recall",
+			"Green tests are not coverage. This act replaces assurance-by-assertion with executed evidence.", 24, "Regression adequacy"),
+		new("V — Keep it working", "Will it still be right in six months?", "Context budget, drift scorecard, action authority", "Drift delta",
+			"Success decays. Drift is attributed to the ticket, the context or the model so the fix lands in the right place.", 21, "Context sufficiency curve"),
+		new("VI — Scale the wins", "How does this become an asset, not a pilot?", "Consolidation and a curated pattern library", "Duplication reduction",
+			"The programme only compounds if what works is found, curated and reused instead of rediscovered.", 27, "Common code audit")
+	];
 	private void RunRoundTrip() { if (_session is null || _roundTripClass.Trim().Length < 20) return; Store.QueueRoundTrip(_session.SessionId, _roundTripClass.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunModernize() { if (_session is null || _legacyCode.Trim().Length < 20) return; Store.QueueModernize(_session.SessionId, _legacyCode.Trim()); _session = Store.GetSession(_session.SessionId); }
 	private void RunAudit() { if (_session is null || _auditCode.Trim().Length < 20) return; Store.QueueAudit(_session.SessionId, _auditCode.Trim()); _session = Store.GetSession(_session.SessionId); }

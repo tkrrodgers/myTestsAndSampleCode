@@ -62,3 +62,18 @@ flowchart LR
 - It does not demonstrate vector retrieval, embeddings, or fine-tuning.
 - It does not authorize code changes or replace current source/test inspection.
 - It contains no real customer, JIRA, repository, or confidential information.
+
+## Where other scenes get their context
+
+This bundle serves the FUL-1842 investigation lesson. Other scenes in the platform are grounded
+elsewhere, and conflating them will produce wrong conclusions:
+
+| Scene | Context source | Nature |
+| --- | --- | --- |
+| Common code audit | Three trading repositories on disk beside the workspace | Real compilable code, authored for this exercise |
+| Context sufficiency | The same fixed-income repository at three documentation tiers | Identical source, three levels of surrounding knowledge |
+| Model comparison | Google Cloud documentation fetched over HTTPS at judging time | Genuinely authoritative, retrieved live, and shown with its retrieval status |
+| Everything deterministic | Fixtures compiled into the server | Synthetic, versioned with the code |
+
+Only the last row is versioned inside this repository. The first three can change or become unavailable
+underneath a demonstration, which is why each reports its own availability rather than failing quietly.

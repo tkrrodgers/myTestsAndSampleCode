@@ -73,7 +73,9 @@ elsewhere, and conflating them will produce wrong conclusions:
 | Common code audit | Three trading repositories on disk beside the workspace | Real compilable code, authored for this exercise |
 | Context sufficiency | The same fixed-income repository at three documentation tiers | Identical source, three levels of surrounding knowledge |
 | Model comparison | Google Cloud documentation fetched over HTTPS at judging time | Genuinely authoritative, retrieved live, and shown with its retrieval status |
+| Making Gemma 4 an SME | A three-layer vendor documentation pack for crypto execution | Transcribed from public vendor documentation on a stated date; a dated snapshot, not a live feed |
+| Auto-run narration | The step fact packs in `AutopilotManifest` | Authored by a human, contract-tested against the markup, and the only thing narration may assert |
 | Everything deterministic | Fixtures compiled into the server | Synthetic, versioned with the code |
 
-Only the last row is versioned inside this repository. The first three can change or become unavailable
+Only the last two rows are versioned inside this repository. The first four can change or become unavailable
 underneath a demonstration, which is why each reports its own availability rather than failing quietly.

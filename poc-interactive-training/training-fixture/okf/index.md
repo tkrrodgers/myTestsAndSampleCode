@@ -4,7 +4,7 @@ title: Fulfillment Training Knowledge Bundle
 description: Entry point for the synthetic FUL-1842 delivery-estimate lesson.
 status: stable
 generated: { by: "human:ces-training-author", at: "2026-09-02T00:00:00Z" }
-verified: { by: "human:ces-training-reviewer", at: "2026-09-06T00:00:00Z" }
+verified: { by: "human:ces-training-reviewer", at: "2026-09-07T00:00:00Z" }
 stale_after: "2027-01-31T00:00:00Z"
 ---
 # Fulfillment Training Knowledge Bundle
@@ -20,7 +20,8 @@ Other scenes in the training platform draw on different context sources, which a
 linked from here because they are not part of this task:
 
 - the three trading repositories used by the common-code audit and the context-sufficiency tiers,
-- Google Cloud documentation retrieved at run time to judge the model comparison.
+- Google Cloud documentation retrieved at run time to judge the model comparison,
+- the vendor documentation pack used to make Gemma an SME on crypto execution.
 
 If a task is not FUL-1842, this is the wrong bundle. Say so rather than stretching these artifacts to fit.
 

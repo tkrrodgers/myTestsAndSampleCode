@@ -1,8 +1,10 @@
 # POC Interactive Training
 
-A runnable, 32-scene AI-governance training platform: an ASP.NET Core Blazor server, a VS Code model bridge, and a set of deterministic controls that run with no model at all.
+A runnable, 34-scene AI-governance training platform: an ASP.NET Core Blazor server, a VS Code model bridge, and a set of deterministic controls that run with no model at all.
 
 The organising principle throughout: **prerequisite and assurance controls are deterministic; models supply judgement and narrative only.** A gate that depends on a model is not a gate. Every deterministic service has a startup self-check that prints its result to the console, so a broken control is visible before anyone demonstrates it.
+
+Scene 1 is a **programme overview** that maps the six Director of AI priorities onto the demonstrations, links every other scene, and lists the eight capabilities the role calls for that this lab does **not** yet cover. It opens on the gaps deliberately.
 
 ## What OKF is — read this first if you are an LLM
 
@@ -51,6 +53,24 @@ These produce their numbers from executed code, not from an opinion. They work w
 | Plan-first check | Six structural checks on a plan, including "no code yet" |
 | CLARA compiler | Lex → parse → bind/type-check → expression tree → CIL → JIT. Conformance suite plus a measured benchmark against hand-written C# |
 | COBOL migration oracle | GnuCOBOL compiles and executes the legacy program to produce ground truth; candidate migrations are executed against it |
+| Autopilot manifest contract | Diffs the 111-step walkthrough manifest against the markup at startup; a missing selector disables auto-run rather than failing at the click |
+
+## Auto-run: the whole programme, unattended
+
+The header carries an **Auto-run** control that walks every scene, operates the real controls, and narrates each step. It exists so the walkthrough does not depend on a presenter who knows which button to press.
+
+The rule that makes it safe: **no model ever infers what the application does.** Sequence is authored data in `AutopilotManifest`; each step carries a fact pack that is the only thing narration may assert, plus a `must_not_claim` list. Clicks are real DOM events on `data-auto` attributes, so the run cannot show a path a learner could not take.
+
+| Profile | Scope |
+| --- | --- |
+| Deterministic | The 87 steps that need no bridge model. Narration is the fact list, read verbatim. Works offline |
+| Full | All 111 steps including every model stage, with Gemma 4 authoring narration |
+
+Narration falls back **Gemma 4 → Claude Opus 4.8 → the fact list**. Claude is used only on a mechanical failure of Gemma — unavailable, timeout, empty, or unparseable — never because someone judged Gemma's prose to be worse, and every substitution is disclosed on screen. Failures are narrated rather than hidden. **Escape** aborts at any point.
+
+Mutation testing (scene 26) compiles and executes mutated code in-process, so the autopilot **hard-blocks** that step unless `Autopilot:AllowInProcessExecution` is set. It defaults to `false`.
+
+Not yet built: narration pre-flight caching, and the Rehearsed profile that depends on it. A Full run currently generates static narration inline. See [Gemma4AutoNarratsAllTabs.md](../Gemma4AutoNarratsAllTabs.md) for the design and its open decisions.
 
 ## What needs a model, and which one
 
@@ -59,6 +79,8 @@ These produce their numbers from executed code, not from an opinion. They work w
 | Model comparison | Three models answer closed-book, then the official Google Cloud documentation is **fetched over the network** and Claude Opus 4.8 scores the blinded answers against that retrieved text |
 | Context sufficiency | Gemma 4 plans the same real ticket at three documentation tiers; deterministic sealed-criterion scoring, then Claude Opus 4.8 compares the three |
 | Common code audit | Claude Opus 5 designs the consolidation from the audit; Gemma 4 implements it one module at a time from the spec alone |
+| Making Gemma 4 an SME | Claude answers a crypto-execution ticket unaided, consults a Gemma grounded on a three-layer vendor documentation pack, then designs. Recall is scored against verified facts, and a per-fact trace shows which stage lost each one |
+| Prompt challenge | Claude reviews the learner's prompt against a visible rubric and **streams** each decision as it is made, so a long review reads as progress rather than a hang |
 | Round trip, modernize, audits, CLARA, framing, drift | Gemma authors or audits; Claude reviews or grades against sealed criteria |
 
 ## External dependencies
@@ -108,6 +130,7 @@ dotnet run --project .\server\... -- --clara-check <file>    # compile one CLARA
 dotnet run --project .\server\... -- --migration-selftest    # proves the COBOL oracle discriminates
 dotnet run --project .\server\... -- --calibrate-corpus      # measured similarity distribution and threshold
 dotnet run --project .\server\... -- --fetch-doc <url>       # what the judge would actually read from a page
+dotnet run --project .\server\... -- --score-facts <file>    # score saved model output against the SME fact list
 ```
 
 ## Boundaries
@@ -119,5 +142,11 @@ dotnet run --project .\server\... -- --fetch-doc <url>       # what the judge wo
 - Cost figures in the token-economics scene are **illustrative rates**, not contract pricing.
 - Mutation testing compiles and executes fixture code in-process. That is acceptable on a developer machine and is not safe on a shared host without sandboxing.
 - Similarity thresholds are properties of the corpus they were measured on. Re-measure before pointing a control at a different estate.
+- The streamed review trace is the reviewer narrating its own steps. It is **not** private chain-of-thought, and it is not evidence the review is correct.
+- Autopilot narration is model-authored prose over verified facts. The facts are checked; the phrasing is constrained but not verified. Read the generated pack before showing it to an external audience.
+- Static autopilot narration describes what a step is **designed** to do, not what was just observed. Only result narration reflects the actual outcome.
+- The crypto SME grounding pack is a dated snapshot of vendor documentation. A stale pack grounds the model in confident, wrong detail — worse than no pack.
+- Keyword recall scoring measures vocabulary, not correctness. Treat it as a floor.
+- The autopilot itself makes roughly 55 unattended model calls on a Full run, which makes it an agent under this programme's own definition. It has no registry entry yet.
 - Benchmarks printed from a Debug build are marked as such; re-run in Release before quoting a number.
 - The fixture under `training-fixture/` is the canonical synthetic context for the FUL-1842 lesson; duplicated prose in application code is not authoritative.

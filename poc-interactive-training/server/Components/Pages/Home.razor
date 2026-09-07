@@ -2488,16 +2488,14 @@ cobol85  -&gt; 000000</pre>
 							<div class="audit-body"><pre class="rt-code">@RegressionSamples.Enhancement</pre></div>
 						</section>
 
-						<div class="rt-flow">
-							<section class="rt-box">
-								<header class="rt-head"><span class="rt-step">2</span><div><strong>Code under test</strong><small>editable</small></div></header>
-								<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_regressionSource" @bind:event="oninput" disabled="@_mutationRunning" aria-label="Source"></textarea>
-							</section>
-							<section class="rt-box">
-								<header class="rt-head"><span class="rt-step">3</span><div><strong>Existing test suite</strong><small>currently passing</small></div></header>
-								<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_regressionTests" @bind:event="oninput" disabled="@_mutationRunning" aria-label="Tests"></textarea>
-							</section>
-						</div>
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>Code under test</strong><small>editable</small></div></header>
+							<textarea class="rt-code-input tall" spellcheck="false" maxlength="8000" @bind="_regressionSource" @bind:event="oninput" disabled="@_mutationRunning" aria-label="Source"></textarea>
+						</section>
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Existing test suite</strong><small>currently passing</small></div></header>
+							<textarea class="rt-code-input tall" spellcheck="false" maxlength="8000" @bind="_regressionTests" @bind:event="oninput" disabled="@_mutationRunning" aria-label="Tests"></textarea>
+						</section>
 
 						<div class="rt-actions">
 							<small>Deterministic &mdash; compiles and runs in-process, no model call.</small>

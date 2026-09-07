@@ -1845,6 +1845,12 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     overflow: auto;
 }
 
+/* Full-width code panes trade vertical space for far less horizontal scrolling. */
+.rt-code-input.tall {
+    min-height: 300px;
+    max-height: 520px;
+}
+
 .rt-actions {
     display: flex;
     align-items: center;

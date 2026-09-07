@@ -13,6 +13,7 @@ public sealed record TrainingSession(
     string? ReviewModel,
     ReviewResponse? Review,
     IReadOnlyList<ReviewTraceEvent> ReviewTrace,
+    string ReviewPartial,
     string? LastError,
     ComparisonState Comparison,
     RoundTripState RoundTrip,
@@ -67,6 +68,11 @@ public sealed record ReviewTraceEvent(
     string Evidence,
     string Decision,
     DateTimeOffset Timestamp);
+
+public sealed record ReviewStreamChunk(
+    string TaskId,
+    string SessionId,
+    string Text);
 
 public sealed record CoachResponse(
     string LessonTitle,

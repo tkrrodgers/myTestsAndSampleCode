@@ -504,66 +504,89 @@
 					<section>
 						<p class="kicker">YOU DRIVE THE INVESTIGATION</p>
 						<h2 id="scene-title">Write the prompt Claude will review</h2>
-						<div class="challenge-grid">
-							<div>
-								<p class="challenge-intro">Direct an AI to investigate FUL-1842. Require evidence, restraint, and a verification path — not an immediate code dump.</p>
-								<div class="rubric-list"><span>Index first</span><span>Source paths</span><span>Concept + boundary</span><span>ADR constraint</span><span>Code + tests</span><span>Open questions</span></div>
-								<label for="learner-prompt">Your investigation prompt</label>
-								<textarea id="learner-prompt" maxlength="6000" @bind="_learnerPrompt" @bind:event="oninput" placeholder="Investigate FUL-1842 by starting with..."></textarea>
-								<p class="ctx-method">Pre-filled with a worked example so a walkthrough can go straight to the review. Edit or clear it to see the rubric respond &mdash; deleting the numbered steps is the fastest way to show what a weak prompt costs.</p>
-								<div class="prompt-actions"><small>@_learnerPrompt.Length / 6000</small><button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _learnerPrompt.Trim().Length < 40 || _session?.ReviewStatus is "queued" or "running")" @onclick="SubmitReview">@ReviewButtonText</button></div>
-								@if (!_bridgeConnected)
-								{
-									<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before requesting Claude.</p>
-								}
-							</div>
-							<aside class="review-panel" id="review-feedback" tabindex="-1" aria-live="polite">
-								<p class="eyebrow">INDEPENDENT REVIEW</p>
-								@if (_session?.Review is null)
-								{
-									@if (_session?.ReviewStatus == "failed")
+						<div class="challenge-stack">
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>Direct the investigation</strong><small>require evidence, restraint and a verification path &mdash; not an immediate code dump</small></div></header>
+								<div class="audit-body">
+									<p class="challenge-intro">Direct an AI to investigate FUL-1842. The six checks below are the rubric Claude will score the prompt against.</p>
+									<div class="rubric-list"><span>Index first</span><span>Source paths</span><span>Concept + boundary</span><span>ADR constraint</span><span>Code + tests</span><span>Open questions</span></div>
+									<label for="learner-prompt">Your investigation prompt</label>
+									<textarea id="learner-prompt" maxlength="6000" @bind="_learnerPrompt" @bind:event="oninput" placeholder="Investigate FUL-1842 by starting with..."></textarea>
+									<p class="ctx-method">Pre-filled with a worked example so a walkthrough can go straight to the review. Edit or clear it to see the rubric respond &mdash; deleting the numbered steps is the fastest way to show what a weak prompt costs.</p>
+									<div class="prompt-actions"><small>@_learnerPrompt.Length / 6000</small><button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _learnerPrompt.Trim().Length < 40 || _session?.ReviewStatus is "queued" or "running")" @onclick="SubmitReview">@ReviewButtonText</button></div>
+									@if (!_bridgeConnected)
 									{
-										<div class="review-empty failed"><span>!</span><h3>Claude review didn't finish</h3><p>@(_session?.LastError ?? "The review task failed. Confirm a language model is signed in and available in VS Code, then request feedback again.")</p></div>
+										<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before requesting Claude.</p>
 									}
-									else
-									{
-										<div class="review-empty"><span>CL</span><h3>Feedback appears here</h3><p>Claude reviews the prompt against the visible rubric. It does not assign a validated grade.</p></div>
-									}
-								}
-								else
-								{
-									<div class="coach-label">AI coaching commentary — not a validated grade.</div>
-									<h3>@_session.Review.Summary</h3>
-									<h4>Strengths</h4><ul>@foreach (var item in _session.Review.Strengths) { <li>@item</li> }</ul>
-									<h4>Improve next</h4><ul>@foreach (var item in _session.Review.Improvements) { <li>@item</li> }</ul>
-									@if (_session.Review.UnsupportedAssumptions.Count > 0) { <h4>Unsupported assumptions</h4><ul>@foreach (var item in _session.Review.UnsupportedAssumptions) { <li>@item</li> }</ul> }
-									<details><summary>Suggested revision</summary><p>@_session.Review.SuggestedPrompt</p></details>
-									<small>Reviewed by @_session.ReviewModel</small>
-								}
-								<section class="review-trace-window" aria-label="Claude decision trace">
-									<div class="trace-window-heading">
-										<div><p class="eyebrow">CLAUDE DECISION TRACE</p><h4>Evidence and review decisions</h4></div>
-										<span class="live-indicator @(_session?.ReviewStatus == "running" ? "active" : _session?.ReviewStatus == "failed" ? "failed" : null)">@ReviewTraceState</span>
+								</div>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head">
+									<span class="rt-step">2</span>
+									<div><strong>Claude's decision trace</strong><small>streamed live as each rubric check is decided<span>@ReviewElapsed</span></small></div>
+									<span class="live-indicator @(_session?.ReviewStatus == "running" ? "active" : _session?.ReviewStatus == "failed" ? "failed" : null)">@ReviewTraceState</span>
+								</header>
+								<div class="audit-body">
+									<p class="trace-disclosure">Observable rubric checks as Claude emits them. This is the reviewer narrating its own steps, not private chain-of-thought, and it is not proof that the final feedback is correct.</p>
+									<div class="trace-stream" id="review-trace-stream">
+										@if (_session?.ReviewTrace.Count > 0)
+										{
+											<ol class="review-trace-list">
+												@foreach (var traceEvent in _session.ReviewTrace)
+												{
+													<li @key="traceEvent.Sequence" class="trace-arrived">
+														<span>@traceEvent.Sequence.ToString("00")</span>
+														<div><strong>@traceEvent.Stage</strong><blockquote>@traceEvent.Evidence</blockquote><p>@traceEvent.Decision</p></div>
+													</li>
+												}
+											</ol>
+										}
+										@if (_session?.ReviewStatus is "queued" or "running")
+										{
+											<div class="trace-typing">
+												<span class="trace-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+												<p>@(string.IsNullOrWhiteSpace(_session.ReviewPartial) ? "Waiting for the next step…" : _session.ReviewPartial)<span class="trace-caret" aria-hidden="true"></span></p>
+											</div>
+										}
+										else if (_session?.ReviewTrace.Count == 0)
+										{
+											<div class="trace-awaiting"><span></span><p>@ReviewTraceMessage</p></div>
+										}
 									</div>
-									<p class="trace-disclosure">Observable rubric checks streamed by Claude. This is not private chain-of-thought and is not proof that the final feedback is correct.</p>
-									@if (_session?.ReviewTrace.Count > 0)
+								</div>
+							</section>
+
+							<section class="rt-box" id="review-feedback" tabindex="-1" aria-live="polite">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>Independent review</strong><small>@(_session?.Review is null ? "appears when the trace above completes" : $"reviewed by {_session.ReviewModel}")</small></div></header>
+								<div class="audit-body">
+									@if (_session?.Review is null)
 									{
-										<ol class="review-trace-list">
-											@foreach (var traceEvent in _session.ReviewTrace)
-											{
-												<li>
-													<span>@traceEvent.Sequence.ToString("00")</span>
-													<div><strong>@traceEvent.Stage</strong><blockquote>@traceEvent.Evidence</blockquote><p>@traceEvent.Decision</p></div>
-												</li>
-											}
-										</ol>
+										@if (_session?.ReviewStatus == "failed")
+										{
+											<div class="review-empty failed"><span>!</span><h3>Claude review didn't finish</h3><p>@(_session?.LastError ?? "The review task failed. Confirm a language model is signed in and available in VS Code, then request feedback again.")</p></div>
+										}
+										else
+										{
+											<div class="review-empty"><span>CL</span><h3>Feedback appears here</h3><p>Claude reviews the prompt against the visible rubric. It does not assign a validated grade.</p></div>
+										}
 									}
 									else
 									{
-										<div class="trace-awaiting"><span></span><p>@ReviewTraceMessage</p></div>
+										<div class="coach-label">AI coaching commentary — not a validated grade.</div>
+										<h3>@_session.Review.Summary</h3>
+										<div class="review-columns">
+											<div><h4>Strengths</h4><ul>@foreach (var item in _session.Review.Strengths) { <li>@item</li> }</ul></div>
+											<div><h4>Improve next</h4><ul>@foreach (var item in _session.Review.Improvements) { <li>@item</li> }</ul></div>
+											@if (_session.Review.UnsupportedAssumptions.Count > 0)
+											{
+												<div><h4>Unsupported assumptions</h4><ul>@foreach (var item in _session.Review.UnsupportedAssumptions) { <li>@item</li> }</ul></div>
+											}
+										</div>
+										<details><summary>Suggested revision</summary><p>@_session.Review.SuggestedPrompt</p></details>
 									}
-								</section>
-							</aside>
+								</div>
+							</section>
 						</div>
 					</section>
 					break;
@@ -3652,10 +3675,15 @@ cobol85  -&gt; 000000</pre>
 	private readonly CancellationTokenSource _pollCancellation = new();
 	private PeriodicTimer? _timer;
 	private DateTimeOffset? _judgeStartedAt;
+	private DateTimeOffset? _reviewStartedAt;
 
 	// An elapsed count is the honest signal that a long wait is progress rather than a hang.
 	private string JudgeElapsed => _judgeStartedAt is { } started
 		? $" ({(int)(DateTimeOffset.UtcNow - started).TotalSeconds}s)"
+		: string.Empty;
+
+	private string ReviewElapsed => _reviewStartedAt is { } started
+		? $" · {(int)(DateTimeOffset.UtcNow - started).TotalSeconds}s"
 		: string.Empty;
 	private int _scene;
 	private int _traceStep;
@@ -3795,10 +3823,25 @@ Finish with the verification path: the tests you would add or change, and how I 
 			{
 				if (_session is null) continue;
 				var previousReview = _session.ReviewStatus;
+				var previousTrace = _session.ReviewTrace.Count;
+				var previousPartial = _session.ReviewPartial;
 				_session = Store.GetSession(_session.SessionId);
 				_bridgeConnected = Store.IsBridgeConnected(_session.SessionId);
 				_judgeStartedAt = _session.Comparison.Status is "grounding" or "judging" ? _judgeStartedAt ?? DateTimeOffset.UtcNow : null;
+
+				var reviewBusy = _session.ReviewStatus is "queued" or "running";
+				_reviewStartedAt = reviewBusy ? _reviewStartedAt ?? DateTimeOffset.UtcNow : null;
+
+				// A one-second poll makes streamed text arrive in visible jumps; tighten it only while streaming.
+				_timer.Period = reviewBusy ? TimeSpan.FromMilliseconds(300) : TimeSpan.FromSeconds(1);
+
 				await InvokeAsync(StateHasChanged);
+
+				if (reviewBusy && (_session.ReviewTrace.Count != previousTrace || _session.ReviewPartial != previousPartial))
+				{
+					await JS.InvokeVoidAsync("trainingSpeech.stickToBottom", "review-trace-stream");
+				}
+
 				if (previousReview != "completed" && _session.ReviewStatus == "completed") await JS.InvokeVoidAsync("trainingSpeech.focus", "review-feedback");
 			}
 		}

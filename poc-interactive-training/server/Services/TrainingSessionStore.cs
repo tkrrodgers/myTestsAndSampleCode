@@ -175,6 +175,7 @@ public sealed class TrainingSessionStore
             session.Review = null;
             session.ReviewModel = null;
             session.ReviewTrace.Clear();
+            session.ReviewPartial = string.Empty;
             session.LastError = null;
         }
     }
@@ -3034,9 +3035,70 @@ public sealed class TrainingSessionStore
                 session.ReviewTrace.Add(traceEvent with { Timestamp = DateTimeOffset.UtcNow });
                 session.ReviewTrace.Sort((left, right) => left.Sequence.CompareTo(right.Sequence));
             }
+
+            session.ReviewPartial = string.Empty;
         }
 
         return true;
+    }
+
+    public bool AppendReviewStream(string token, ReviewStreamChunk chunk)
+    {
+        var session = FindByToken(token);
+        if (session is null || session.SessionId != chunk.SessionId ||
+            !session.Tasks.TryGetValue(chunk.TaskId, out var task) ||
+            task.Task.Kind != "claude-review" || task.Status is "completed" or "failed")
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            session.ReviewPartial = HumaniseStreamFragment(chunk.Text);
+        }
+
+        return true;
+    }
+
+    // The model streams JSON. Showing the raw scaffolding reads as a bug rather than as progress,
+    // so field names and delimiters become plain prose while the text is still arriving.
+    public static string HumaniseStreamFragment(string text)
+    {
+        var readable = text.Replace("\\\"", "\"").Replace("\\n", " ");
+
+        // Comma-prefixed forms first, so a separator is not left stranded when the field name goes.
+        (string From, string To)[] fields =
+        [
+            ("{\"trace\":", ""),
+            (",\"sequence\":", " step "),
+            ("\"sequence\":", "step "),
+            (",\"stage\":", " · "),
+            ("\"stage\":", ""),
+            (",\"evidence\":", " — quoting: "),
+            ("\"evidence\":", " — quoting: "),
+            (",\"decision\":", " — decided: "),
+            ("\"decision\":", " — decided: ")
+        ];
+
+        foreach (var (from, to) in fields)
+        {
+            readable = readable.Replace(from, to);
+        }
+
+        readable = readable
+            .Replace("{", string.Empty)
+            .Replace("}", string.Empty)
+            .Replace("[", string.Empty)
+            .Replace("]", string.Empty)
+            .Replace("\"", string.Empty);
+
+        while (readable.Contains("  "))
+        {
+            readable = readable.Replace("  ", " ");
+        }
+
+        readable = readable.Trim().TrimStart('·', ',', ' ').Trim();
+        return readable.Length > 400 ? "…" + readable[^400..] : readable;
     }
 
     public BridgeTask? ClaimNextTask(string token)
@@ -3403,6 +3465,8 @@ public sealed class TrainingSessionStore
 
     private static void CompleteReview(SessionState session, BridgeTaskResult result, bool succeeded)
     {
+        session.ReviewPartial = string.Empty;
+
         if (!succeeded)
         {
             session.ReviewStatus = "failed";
@@ -3565,6 +3629,9 @@ public sealed class TrainingSessionStore
         public string? ReviewModel { get; set; }
         public ReviewResponse? Review { get; set; }
         public List<ReviewTraceEvent> ReviewTrace { get; } = [];
+
+        // The step Claude is part-way through writing, so the UI can show progress between trace events.
+        public string ReviewPartial { get; set; } = string.Empty;
         public string? LastError { get; set; }
         public Dictionary<string, TaskState> Tasks { get; } = [];
 
@@ -3761,6 +3828,7 @@ public sealed class TrainingSessionStore
             ReviewModel,
             Review,
             ReviewTrace.ToArray(),
+            ReviewPartial,
             LastError,
             new ComparisonState(
                 ComparisonStatus,

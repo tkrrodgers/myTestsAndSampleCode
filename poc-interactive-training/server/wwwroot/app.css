@@ -849,6 +849,15 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     align-items: stretch;
 }
 
+.challenge-stack {
+    display: block;
+    max-width: 1000px;
+}
+
+.challenge-stack .rt-head .live-indicator {
+    margin-left: auto;
+}
+
 .challenge-intro {
     line-height: 1.6;
 }
@@ -867,14 +876,16 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     font-size: .7rem;
 }
 
-.challenge-grid label {
+.challenge-grid label,
+.challenge-stack label {
     display: block;
     margin-bottom: 7px;
     font-size: .8rem;
     font-weight: 800;
 }
 
-.challenge-grid textarea {
+.challenge-grid textarea,
+.challenge-stack textarea {
     width: 100%;
     min-height: 250px;
     resize: vertical;
@@ -884,6 +895,10 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     background: var(--white);
     color: var(--ink);
     line-height: 1.55;
+}
+
+.challenge-stack textarea {
+    min-height: 190px;
 }
 
 .prompt-actions {
@@ -1091,6 +1106,114 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 .trace-awaiting p {
     margin: 0;
     font-size: .76rem;
+}
+
+.trace-stream {
+    max-height: 460px;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+}
+
+.trace-stream .review-trace-list {
+    max-height: none;
+    overflow-y: visible;
+}
+
+/* Steps are appended as they arrive; the fade marks which one is new without moving the others. */
+.review-trace-list li.trace-arrived {
+    animation: trace-arrive .28s ease-out;
+}
+
+@keyframes trace-arrive {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+}
+
+.trace-typing {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #354a42;
+    border-top: 0;
+    background: #16211d;
+}
+
+.trace-typing p {
+    margin: 0;
+    color: #b9d6cb;
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: .68rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.trace-typing-dots {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 3px;
+    padding-top: 5px;
+}
+
+.trace-typing-dots i {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #f0c772;
+    animation: trace-dot 1s ease-in-out infinite;
+}
+
+.trace-typing-dots i:nth-child(2) { animation-delay: .16s; }
+.trace-typing-dots i:nth-child(3) { animation-delay: .32s; }
+
+@keyframes trace-dot {
+    0%, 100% { opacity: .25; }
+    50% { opacity: 1; }
+}
+
+.trace-caret {
+    display: inline-block;
+    width: 6px;
+    height: .82em;
+    margin-left: 2px;
+    background: #f0c772;
+    vertical-align: text-bottom;
+    animation: trace-caret 1s steps(1) infinite;
+}
+
+@keyframes trace-caret {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+.review-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0 26px;
+}
+
+.review-columns h4 {
+    margin: 16px 0 7px;
+    font-size: .76rem;
+    text-transform: uppercase;
+}
+
+.review-columns li {
+    margin-bottom: 6px;
+    line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .review-trace-list li.trace-arrived,
+    .trace-typing-dots i,
+    .trace-caret {
+        animation: none;
+    }
+
+    .trace-stream {
+        scroll-behavior: auto;
+    }
 }
 
 .stage-footer {

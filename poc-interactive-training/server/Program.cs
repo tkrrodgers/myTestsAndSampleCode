@@ -319,6 +319,11 @@ var codeFirstProbe = PlanFirstChecker.Review("Here is the fix:\n```csharp\nvar x
 app.Logger.LogInformation("Plan-first self-check: good plan {Good}%, code-first plan {CodeFirst}%.",
     planProbe.Score, codeFirstProbe.Score);
 
+var streamProbe = TrainingSessionStore.HumaniseStreamFragment(
+    "{\"trace\":{\"sequence\":1,\"stage\":\"Index first\",\"evidence\":\"Start at okf/index.md\",\"decision\":\"Correctly forces index-first");
+app.Logger.LogInformation("Review stream humaniser self-check: clean={Clean}, sample=\"{Sample}\".",
+    !streamProbe.Contains('{') && !streamProbe.Contains('"') && !streamProbe.Contains("\":"), streamProbe);
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
@@ -382,6 +387,18 @@ bridge.MapPost("/events", (HttpRequest request, ReviewTraceEvent traceEvent, Tra
     return store.AppendReviewTrace(token!, traceEvent)
         ? Results.Accepted()
         : Results.BadRequest(new { error = "Trace event does not belong to the active review task." });
+});
+
+bridge.MapPost("/events/stream", (HttpRequest request, ReviewStreamChunk chunk, TrainingSessionStore store) =>
+{
+    if (!TryToken(request, store, out var token))
+    {
+        return Results.Unauthorized();
+    }
+
+    return store.AppendReviewStream(token!, chunk)
+        ? Results.Accepted()
+        : Results.BadRequest(new { error = "Stream chunk does not belong to the active review task." });
 });
 
 app.MapRazorComponents<App>()

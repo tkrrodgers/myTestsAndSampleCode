@@ -286,6 +286,7 @@ async function requestReviewModel(model: vscode.LanguageModelChat, task: BridgeT
 	let buffer = '';
 	let raw = '';
 	let review: ReviewRecord | undefined;
+	let lastStreamPost = 0;
 	try {
 		const prompt = ['<instructions>', task.systemPrompt, '</instructions>', '<task>', task.userPrompt, '</task>'].join('\n');
 		const response = await model.sendRequest([vscode.LanguageModelChatMessage.User(prompt)], {}, source.token);
@@ -298,6 +299,13 @@ async function requestReviewModel(model: vscode.LanguageModelChat, task: BridgeT
 				buffer = buffer.slice(newline + 1);
 				review = await processReviewLine(line, review, task, serverUrl, token, signal);
 				newline = buffer.indexOf('\n');
+			}
+
+			// Throttled so a fast token stream cannot flood the server with one request per fragment.
+			const now = Date.now();
+			if (buffer.trim() && now - lastStreamPost > 200) {
+				lastStreamPost = now;
+				await forwardStream(buffer, task, serverUrl, token, signal);
 			}
 		}
 
@@ -360,6 +368,18 @@ async function recoverFromBuffer(raw: string, task: BridgeTask, serverUrl: strin
 		}
 	}
 	return review;
+}
+
+async function forwardStream(text: string, task: BridgeTask, serverUrl: string, token: string, signal: AbortSignal): Promise<void> {
+	try {
+		await postJson(`${serverUrl}/api/bridge/events/stream`, token, {
+			taskId: task.taskId,
+			sessionId: task.sessionId,
+			text
+		}, signal);
+	} catch {
+		// A dropped progress frame must never fail the review itself.
+	}
 }
 
 async function forwardTrace(record: ReviewTraceRecord, task: BridgeTask, serverUrl: string, token: string, signal: AbortSignal): Promise<void> {

@@ -21,5 +21,15 @@ window.trainingSpeech = {
     },
     focus: function (id) {
         document.getElementById(id)?.focus();
+    },
+    // Follows streamed output only while the reader is already at the bottom, so scrolling back to
+    // re-read an earlier step is not yanked away by the next chunk.
+    stickToBottom: function (id) {
+        const el = document.getElementById(id);
+        if (!el) { return; }
+        const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (distance < 120) {
+            el.scrollTop = el.scrollHeight;
+        }
     }
 };

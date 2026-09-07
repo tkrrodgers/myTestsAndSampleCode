@@ -35,7 +35,14 @@ public sealed record TrainingSession(
     PortfolioTierState PortfolioTiers,
     RegressionGuidanceState RegressionGuidance,
     PatternRunState PatternRun,
-    CryptoSmeState CryptoSme);
+    CryptoSmeState CryptoSme,
+    NarrationState Narration);
+
+public sealed record NarrationState(
+    string Status,
+    string? Text,
+    string? Model,
+    bool FallbackUsed);
 
 public sealed record BridgeTask(
     string TaskId,

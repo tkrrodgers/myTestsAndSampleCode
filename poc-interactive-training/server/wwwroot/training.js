@@ -22,6 +22,11 @@ window.trainingSpeech = {
     focus: function (id) {
         document.getElementById(id)?.focus();
     },
+    scrollToTop: function () {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        document.scrollingElement?.scrollTo({ top: 0, behavior: 'auto' });
+        document.querySelector('.stage')?.scrollTo({ top: 0, behavior: 'auto' });
+    },
     // Follows streamed output only while the reader is already at the bottom, so scrolling back to
     // re-read an earlier step is not yanked away by the next chunk.
     stickToBottom: function (id) {

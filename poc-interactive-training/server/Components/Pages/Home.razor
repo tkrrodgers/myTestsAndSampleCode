@@ -10,6 +10,8 @@
 @inject CommonCodeAuditService CommonCode
 @inject TokenEconomicsService Economics
 @inject PatternLibraryService Library
+@inject AutopilotContract Contract
+@inject IConfiguration Configuration
 @inject IJSRuntime JS
 
 <PageTitle>AI Support &mdash; Interactive Training</PageTitle>
@@ -51,8 +53,41 @@
 				<button class="icon-button" type="button" title="Stop narration" aria-label="Stop narration" @onclick="StopSpeaking">
 					<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4.4 2.8h2.4v10.4H4.4zM9.2 2.8h2.4v10.4H9.2z" /></svg>
 				</button>
+				<span class="header-divider" aria-hidden="true"></span>
+				<button class="icon-button" type="button" title="Previous scene" aria-label="Previous scene" disabled="@(_scene == 0)" @onclick="Previous">
+					<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 2.6 4.6 8 10 13.4" /></svg>
+				</button>
+				<button class="icon-button" type="button" title="Next scene" aria-label="Next scene" disabled="@(_scene == Scenes.Length - 1)" @onclick="Next">
+					<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 2.6 11.4 8 6 13.4" /></svg>
+				</button>
+				<span class="header-divider" aria-hidden="true"></span>
+				@if (_autoRunning)
+				{
+					<button class="secondary-command compact auto-stop" type="button" @onclick="StopAutopilot">Stop auto-run (Esc)</button>
+				}
+				else
+				{
+					<select class="auto-profile" aria-label="Auto-run profile" @bind="_autoProfile" disabled="@(!Contract.Verify().Passed)">
+						<option value="@AutoProfile.Deterministic">Deterministic (no models)</option>
+						<option value="@AutoProfile.Full">Full (runs every model stage)</option>
+					</select>
+					<button class="secondary-command compact" type="button" disabled="@(!AutopilotReady)" title="@AutopilotTitle" @onclick="StartAutopilot">Auto-run</button>
+				}
 			</div>
 		</header>
+
+		@if (_autoRunning || _autoCompleted)
+		{
+			<div class="auto-bar" role="status" aria-live="polite">
+				<span class="auto-dot @(_autoRunning ? "active" : null)"></span>
+				<strong>@_autoStatus</strong>
+				<small>@_autoStepIndex / @_autoTotal steps &middot; scene @(_scene + 1) of @Scenes.Length</small>
+				@if (_autoFailures > 0)
+				{
+					<small class="auto-failures">@_autoFailures step(s) did not complete &mdash; shown, not hidden</small>
+				}
+			</div>
+		}
 
 		@if (_session is not null && _session.CoachFallbackUsed)
 		{
@@ -214,7 +249,7 @@
 							</div>
 						</section>
 
-						<section class="rt-box">
+						<section class="rt-box" data-auto="s01.gaps">
 							<header class="rt-head"><span class="rt-step">!</span><div><strong>What the role calls for and this lab does not yet do</strong><small>stated here so nobody has to discover it in a demo</small></div></header>
 							<div class="audit-body">
 								<p class="rt-reco">Thirty-three scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
@@ -234,7 +269,7 @@
 							</div>
 						</section>
 
-						<section class="rt-box">
+						<section class="rt-box" data-auto="s01.caveats">
 							<header class="rt-head"><span class="rt-step">&#8253;</span><div><strong>How to read the numbers</strong><small>the caveats that belong in the room</small></div></header>
 							<div class="audit-body">
 								<ul class="rt-list warn">
@@ -258,11 +293,11 @@
 							<p class="lede">A guided investigation from a JIRA story, through an OKF knowledge graph, to one defensible implementation path.</p>
 							@if (!_started)
 							{
-								<button class="primary-command" type="button" @onclick="StartLesson">Start the investigation <span>&rarr;</span></button>
+								<button class="primary-command" type="button" data-auto="s02.start" @onclick="StartLesson">Start the investigation <span>&rarr;</span></button>
 							}
 							else
 							{
-								<button class="primary-command" type="button" @onclick="Next">Continue <span>&rarr;</span></button>
+								<button class="primary-command" type="button" data-auto="s02.continue" @onclick="Next">Continue <span>&rarr;</span></button>
 							}
 						</div>
 						<div class="path-visual" aria-label="JIRA story connects through OKF to code and tests">
@@ -332,14 +367,14 @@
 							@for (var index = 0; index < TraceSteps.Length; index++)
 							{
 								var stepIndex = index;
-								<button type="button" class="trace-step @(stepIndex == _traceStep ? "active" : null)" @onclick="() => _traceStep = stepIndex"><span>@(stepIndex + 1)</span><div><strong>@TraceSteps[stepIndex].Title</strong><small>@TraceSteps[stepIndex].Path</small></div></button>
+								<button type="button" class="trace-step @(stepIndex == _traceStep ? "active" : null)" data-auto="s05.step-@(stepIndex + 1)" @onclick="() => _traceStep = stepIndex"><span>@(stepIndex + 1)</span><div><strong>@TraceSteps[stepIndex].Title</strong><small>@TraceSteps[stepIndex].Path</small></div></button>
 							}
 						</div>
 						<div class="trace-evidence" aria-live="polite"><p class="eyebrow">OBSERVABLE EVIDENCE</p><h3>@TraceSteps[_traceStep].Finding</h3><p>@TraceSteps[_traceStep].Result</p><code>@TraceSteps[_traceStep].Path</code></div>
 
 						@if (_session?.GroundedChange is { } change)
 						{
-							<section class="rt-box">
+							<section class="rt-box" data-auto="s05.context">
 								<header class="rt-head"><span class="rt-step">1</span><div><strong>The context the agent is given</strong><small>the OKF bundle and the current source · nothing else is available to it</small></div></header>
 								@foreach (var artifact in change.Context.Where(item => item.Kind != "jira"))
 								{
@@ -355,7 +390,7 @@
 								<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_changeJira" @bind:event="oninput" disabled="@ChangeBusy" aria-label="JIRA ticket"></textarea>
 								<div class="rt-actions">
 									<small>@(change.PromptTokens > 0 ? $"{change.PromptTokens:N0} prompt tokens" : "context + ticket")</small>
-									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || ChangeBusy)" @onclick="RunGroundedChange">@ChangeButtonText</button>
+									<button class="primary-command compact" type="button" data-auto="s05.run" disabled="@(!_bridgeConnected || ChangeBusy)" @onclick="RunGroundedChange">@ChangeButtonText</button>
 								</div>
 								@if (!_bridgeConnected)
 								{
@@ -456,7 +491,7 @@
 						<ol class="animation-transcript">
 							<li>Read the story intent.</li><li>Enter through the OKF index.</li><li>Apply concept, boundary, and ADR evidence.</li><li>Inspect the mapped code and tests.</li>
 						</ol>
-						<button class="secondary-command replay-command" type="button" @onclick="ReplayAnimation">? Replay animation</button>
+						<button class="secondary-command replay-command" type="button" data-auto="s06.replay" @onclick="ReplayAnimation">? Replay animation</button>
 					</section>
 					break;
 				case 6:
@@ -491,7 +526,7 @@
 									@for (var optionIndex = 0; optionIndex < question.Options.Count; optionIndex++)
 									{
 										var currentOption = optionIndex;
-										<label class="answer-option @AnswerClass(currentQuestion, currentOption)"><input type="radio" name="question-@questionIndex" checked="@(_answers.GetValueOrDefault(currentQuestion, -1) == currentOption)" @onchange="() => Answer(currentQuestion, currentOption)" /><span>@((char)('A' + optionIndex))</span>@question.Options[optionIndex]</label>
+										<label class="answer-option @AnswerClass(currentQuestion, currentOption)"><input type="radio" name="question-@questionIndex" data-auto="s08.q@(currentQuestion)-o@(currentOption)" checked="@(_answers.GetValueOrDefault(currentQuestion, -1) == currentOption)" @onchange="() => Answer(currentQuestion, currentOption)" /><span>@((char)('A' + optionIndex))</span>@question.Options[optionIndex]</label>
 									}
 									@if (_answers.ContainsKey(currentQuestion)) { <p class="answer-feedback">@question.Feedback</p> }
 									</div>
@@ -513,7 +548,7 @@
 									<label for="learner-prompt">Your investigation prompt</label>
 									<textarea id="learner-prompt" maxlength="6000" @bind="_learnerPrompt" @bind:event="oninput" placeholder="Investigate FUL-1842 by starting with..."></textarea>
 									<p class="ctx-method">Pre-filled with a worked example so a walkthrough can go straight to the review. Edit or clear it to see the rubric respond &mdash; deleting the numbered steps is the fastest way to show what a weak prompt costs.</p>
-									<div class="prompt-actions"><small>@_learnerPrompt.Length / 6000</small><button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _learnerPrompt.Trim().Length < 40 || _session?.ReviewStatus is "queued" or "running")" @onclick="SubmitReview">@ReviewButtonText</button></div>
+									<div class="prompt-actions"><small>@_learnerPrompt.Length / 6000</small><button class="primary-command compact" type="button" data-auto="s09.submit" disabled="@(!_bridgeConnected || _learnerPrompt.Trim().Length < 40 || _session?.ReviewStatus is "queued" or "running")" @onclick="SubmitReview">@ReviewButtonText</button></div>
 									@if (!_bridgeConnected)
 									{
 										<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before requesting Claude.</p>
@@ -603,14 +638,14 @@
 						</div>
 
 						<div class="compare-controls">
-							<select class="compare-select" @bind="_comparisonTopicId" disabled="@ComparisonBusy">
+							<select class="compare-select" data-auto="s10.topic" @bind="_comparisonTopicId" disabled="@ComparisonBusy">
 								<option value="">Choose a topic…</option>
 								@foreach (var topic in ComparisonCatalog.Topics)
 								{
 									<option value="@topic.Id">@topic.Title</option>
 								}
 							</select>
-							<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || string.IsNullOrEmpty(_comparisonTopicId) || ComparisonBusy)" @onclick="RunComparison">@CompareButtonText</button>
+							<button class="primary-command compact" type="button" data-auto="s10.run" disabled="@(!_bridgeConnected || string.IsNullOrEmpty(_comparisonTopicId) || ComparisonBusy)" @onclick="RunComparison">@CompareButtonText</button>
 						</div>
 						@if (!_bridgeConnected)
 						{
@@ -777,7 +812,7 @@
 							<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_supportRequirement" @bind:event="oninput" disabled="@SupportBusy" aria-label="GCP migration requirement"></textarea>
 							<div class="rt-actions">
 								<small>@_supportRequirement.Length / 8000</small>
-								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _supportRequirement.Trim().Length < 20 || SupportBusy)" @onclick="RunLlmSupport">@SupportButtonText</button>
+								<button class="primary-command compact" type="button" data-auto="s11.run" disabled="@(!_bridgeConnected || _supportRequirement.Trim().Length < 20 || SupportBusy)" @onclick="RunLlmSupport">@SupportButtonText</button>
 							</div>
 							@if (!_bridgeConnected)
 							{
@@ -897,7 +932,7 @@
 							<textarea class="rt-code-input" spellcheck="false" maxlength="12000" @bind="_roundTripClass" @bind:event="oninput" disabled="@RoundTripBusy" aria-label="Original class"></textarea>
 							<div class="rt-actions">
 								<small>@_roundTripClass.Length / 12000</small>
-								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _roundTripClass.Trim().Length < 20 || RoundTripBusy)" @onclick="RunRoundTrip">@RoundTripButtonText</button>
+								<button class="primary-command compact" type="button" data-auto="s12.run" disabled="@(!_bridgeConnected || _roundTripClass.Trim().Length < 20 || RoundTripBusy)" @onclick="RunRoundTrip">@RoundTripButtonText</button>
 							</div>
 							@if (!_bridgeConnected)
 							{
@@ -990,7 +1025,7 @@
 							<textarea class="rt-code-input" spellcheck="false" maxlength="12000" @bind="_legacyCode" @bind:event="oninput" disabled="@ModernizeBusy" aria-label="Legacy code"></textarea>
 							<div class="rt-actions">
 								<small>@_legacyCode.Length / 12000</small>
-								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _legacyCode.Trim().Length < 20 || ModernizeBusy)" @onclick="RunModernize">@ModernizeButtonText</button>
+								<button class="primary-command compact" type="button" data-auto="s13.run" disabled="@(!_bridgeConnected || _legacyCode.Trim().Length < 20 || ModernizeBusy)" @onclick="RunModernize">@ModernizeButtonText</button>
 							</div>
 							@if (!_bridgeConnected)
 							{
@@ -1057,7 +1092,7 @@
 							<textarea class="rt-code-input" spellcheck="false" maxlength="16000" @bind="_auditCode" @bind:event="oninput" disabled="@AuditBusy" aria-label="C# project to audit"></textarea>
 							<div class="rt-actions">
 								<small>@_auditCode.Length / 16000</small>
-								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _auditCode.Trim().Length < 20 || AuditBusy)" @onclick="RunAudit">@AuditButtonText</button>
+								<button class="primary-command compact" type="button" data-auto="s14.run" disabled="@(!_bridgeConnected || _auditCode.Trim().Length < 20 || AuditBusy)" @onclick="RunAudit">@AuditButtonText</button>
 							</div>
 							@if (!_bridgeConnected)
 							{
@@ -1162,7 +1197,7 @@
 							<textarea class="rt-code-input" spellcheck="false" maxlength="16000" @bind="_contextCode" @bind:event="oninput" disabled="@ContextBusy" aria-label="Code with context"></textarea>
 							<div class="rt-actions">
 								<small>@_contextCode.Length / 16000</small>
-								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _contextCode.Trim().Length < 20 || ContextBusy)" @onclick="RunContextAudit">@ContextButtonText</button>
+								<button class="primary-command compact" type="button" data-auto="s15.run" disabled="@(!_bridgeConnected || _contextCode.Trim().Length < 20 || ContextBusy)" @onclick="RunContextAudit">@ContextButtonText</button>
 							</div>
 							@if (!_bridgeConnected)
 							{
@@ -1272,7 +1307,7 @@
 							<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_claraJira" @bind:event="oninput" disabled="@ClaraBusy" aria-label="JIRA requirement"></textarea>
 							<div class="rt-actions">
 								<small>@_claraJira.Length / 8000</small>
-								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _claraJira.Trim().Length < 20 || ClaraBusy)" @onclick="RunClaraPoc">@ClaraButtonText</button>
+								<button class="primary-command compact" type="button" data-auto="s16.run" disabled="@(!_bridgeConnected || _claraJira.Trim().Length < 20 || ClaraBusy)" @onclick="RunClaraPoc">@ClaraButtonText</button>
 							</div>
 							@if (!_bridgeConnected)
 							{
@@ -1408,7 +1443,7 @@
 							<p class="rt-intro">The button runs the compiler's own conformance suite, then times the reference late-fee policy against the identical rules written by hand in C# — on this machine, right now.</p>
 							<div class="rt-actions">
 								<small>@(_benchmark is null ? "not measured yet" : _benchmark.Runtime)</small>
-								<button class="primary-command compact" type="button" disabled="@_benchmarkRunning" @onclick="RunBenchmark">@(_benchmarkRunning ? "Measuring…" : "Run conformance + benchmark")</button>
+								<button class="primary-command compact" type="button" data-auto="s16.benchmark" disabled="@_benchmarkRunning" @onclick="RunBenchmark">@(_benchmarkRunning ? "Measuring…" : "Run conformance + benchmark")</button>
 							</div>
 
 							@if (_conformance is { } conformance)
@@ -1424,7 +1459,7 @@
 
 							@if (_benchmark is { } measurement)
 							{
-								<table class="audit-table">
+								<table class="audit-table" data-auto="s16.benchmark-result">
 									<thead><tr><th>Engine</th><th>ns / decision</th><th>Million decisions / sec</th><th>vs C#</th><th>Notes</th></tr></thead>
 									<tbody>
 										@foreach (var row in measurement.Rows)
@@ -1479,7 +1514,7 @@
 								<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_languageJira" @bind:event="oninput" disabled="@LanguageBusy" aria-label="JIRA ticket"></textarea>
 								<div class="rt-actions">
 									<small>@_languageJira.Length / 8000</small>
-									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _languageJira.Trim().Length < 20 || LanguageBusy)" @onclick="RunLanguageTest">@LanguageButtonText</button>
+									<button class="primary-command compact" type="button" data-auto="s17.run" disabled="@(!_bridgeConnected || _languageJira.Trim().Length < 20 || LanguageBusy)" @onclick="RunLanguageTest">@LanguageButtonText</button>
 								</div>
 								@if (!_bridgeConnected)
 								{
@@ -1665,7 +1700,7 @@ cobol85  -&gt; 000000</pre>
 								<header class="rt-head"><span class="rt-step">3</span><div><strong>Run the comparison</strong><small>@migration.Arms.Count of 3 arms complete</small></div></header>
 								<div class="rt-actions">
 									<small>Gemma 4 migrates the same program three times</small>
-									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || MigrationBusy || !migration.ToolchainAvailable)" @onclick="RunMigration">@MigrationButtonText</button>
+									<button class="primary-command compact" type="button" data-auto="s18.run" disabled="@(!_bridgeConnected || MigrationBusy || !migration.ToolchainAvailable)" @onclick="RunMigration">@MigrationButtonText</button>
 								</div>
 								@if (!_bridgeConnected)
 								{
@@ -1756,7 +1791,7 @@ cobol85  -&gt; 000000</pre>
 								<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_ticketText" @bind:event="oninput" disabled="@TicketBusy" aria-label="JIRA ticket"></textarea>
 								<div class="rt-actions">
 									<small>@_ticketText.Length / 8000</small>
-									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || TicketBusy)" @onclick="RunTicketGate">@TicketButtonText</button>
+									<button class="primary-command compact" type="button" data-auto="s19.run" disabled="@(!_bridgeConnected || TicketBusy)" @onclick="RunTicketGate">@TicketButtonText</button>
 								</div>
 								@if (!_bridgeConnected)
 								{
@@ -1840,7 +1875,7 @@ cobol85  -&gt; 000000</pre>
 								<pre class="rt-code">@hunt.Design</pre>
 								<div class="rt-actions">
 									<small>@GovernanceSamples.PlantedTraps.Length defects are planted in this file</small>
-									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || TrapBusy)" @onclick="RunTrapHunt">@TrapButtonText</button>
+									<button class="primary-command compact" type="button" data-auto="s20.run" disabled="@(!_bridgeConnected || TrapBusy)" @onclick="RunTrapHunt">@TrapButtonText</button>
 								</div>
 								@if (!_bridgeConnected)
 								{
@@ -1930,8 +1965,8 @@ cobol85  -&gt; 000000</pre>
 								<div class="rt-actions">
 									<small>Score the drifted patch, or the human patch as a control</small>
 									<div>
-										<button class="secondary-command compact" type="button" disabled="@(!_bridgeConnected || DriftBusy)" @onclick="() => RunDrift(true)">Score the control</button>
-										<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || DriftBusy)" @onclick="() => RunDrift(false)">@(DriftBusy ? "Scoring…" : "Score the agent patch")</button>
+										<button class="secondary-command compact" type="button" data-auto="s21.control" disabled="@(!_bridgeConnected || DriftBusy)" @onclick="() => RunDrift(true)">Score the control</button>
+										<button class="primary-command compact" type="button" data-auto="s21.agent" disabled="@(!_bridgeConnected || DriftBusy)" @onclick="() => RunDrift(false)">@(DriftBusy ? "Scoring…" : "Score the agent patch")</button>
 									</div>
 								</div>
 								@if (!_bridgeConnected)
@@ -2010,9 +2045,9 @@ cobol85  -&gt; 000000</pre>
 								<label>Owner<input type="text" @bind="_agent.Owner" /></label>
 								<label>Release id<input type="text" @bind="_agent.ReleaseId" /></label>
 								<label>Model (pinned)<input type="text" @bind="_agent.Model" /></label>
-								<label>Blast radius<select @bind="_agent.BlastRadius">@foreach (var level in AgentRegistryService.BlastRadiusLevels) { <option value="@level">@level</option> }</select></label>
-								<label>Autonomy<select @bind="_agent.Autonomy">@foreach (var level in AgentRegistryService.AutonomyLevels) { <option value="@level">@level</option> }</select></label>
-								<label>Data tier<select @bind="_agent.DataTier">@foreach (var level in AgentRegistryService.DataTiers) { <option value="@level">@level</option> }</select></label>
+								<label>Blast radius<select data-auto="s22.blast" @bind="_agent.BlastRadius">@foreach (var level in AgentRegistryService.BlastRadiusLevels) { <option value="@level">@level</option> }</select></label>
+								<label>Autonomy<select data-auto="s22.autonomy" @bind="_agent.Autonomy">@foreach (var level in AgentRegistryService.AutonomyLevels) { <option value="@level">@level</option> }</select></label>
+								<label>Data tier<select data-auto="s22.datatier" @bind="_agent.DataTier">@foreach (var level in AgentRegistryService.DataTiers) { <option value="@level">@level</option> }</select></label>
 								<label>Status<select @bind="_agent.AgentStatus">@foreach (var level in AgentRegistryService.AgentStatuses) { <option value="@level">@level</option> }</select></label>
 								<label class="p0-check"><input type="checkbox" @bind="_agent.ToolEnabled" /> Tool-enabled (can take actions)</label>
 								@if (_agent.ToolEnabled)
@@ -2024,13 +2059,13 @@ cobol85  -&gt; 000000</pre>
 							</div>
 							<div class="rt-actions">
 								<small>Deterministic — no model call.</small>
-								<button class="primary-command compact" type="button" @onclick="RunTiering">Tier this agent</button>
+								<button class="primary-command compact" type="button" data-auto="s22.tier" @onclick="RunTiering">Tier this agent</button>
 							</div>
 						</section>
 
 						@if (_tier is { } tier)
 						{
-							<section class="rt-box">
+							<section class="rt-box" data-auto="s22.tier-result">
 								<header class="rt-head"><span class="rt-step">2</span><div><strong>Risk tier &amp; controls owed</strong><small>10 §4–5 · proportionate, read as a budget</small></div></header>
 								<div class="audit-body">
 									<div class="audit-scoreline">
@@ -2063,13 +2098,13 @@ cobol85  -&gt; 000000</pre>
 							<textarea class="rt-code-input" spellcheck="false" maxlength="12000" @bind="_testPayload" @bind:event="oninput" aria-label="Ephemeral test payload"></textarea>
 							<div class="rt-actions">
 								<small>@_testPayload.Length / 12000 · deterministic scan</small>
-								<button class="primary-command compact" type="button" @onclick="RunDataTier">Classify before sending</button>
+								<button class="primary-command compact" type="button" data-auto="s22.classify" @onclick="RunDataTier">Classify before sending</button>
 							</div>
 						</section>
 
 						@if (_assessment is { } assessment)
 						{
-							<section class="rt-qa">
+							<section class="rt-qa" data-auto="s22.tier-decision">
 								<header class="rt-head"><span class="rt-step">4</span><div><strong>Decision &amp; incident path</strong><small>severity, containment, owner, SLA</small></div></header>
 								<div class="audit-scoreline">
 									<span class="ctx-label decision-@assessment.Decision.ToLowerInvariant().Replace("-", "")">@assessment.Decision</span>
@@ -2146,7 +2181,7 @@ cobol85  -&gt; 000000</pre>
 								</div>
 								<div class="rt-actions">
 									<small>@ContextTierSamples.Tiers.Count variants × @curve.RunsPerTier runs, then one comparative review. @(curve.TokensExact ? "Tokens counted with the Gemma tokenizer." : "Tokens estimated.")</small>
-									<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || CurveBusy)" @onclick="RunCurve">@(!_bridgeConnected ? "Connect VSIX to run" : CurveBusy ? "Running…" : "Run all three")</button>
+									<button class="primary-command compact" type="button" data-auto="s23.run" disabled="@(!_bridgeConnected || CurveBusy)" @onclick="RunCurve">@(!_bridgeConnected ? "Connect VSIX to run" : CurveBusy ? "Running…" : "Run all three")</button>
 								</div>
 								@if (!_bridgeConnected)
 								{
@@ -2293,17 +2328,17 @@ cobol85  -&gt; 000000</pre>
 						<section class="rt-box rt-input-box">
 							<header class="rt-head"><span class="rt-step">1</span><div><strong>Proposed action</strong><small>agent: @_agent.Name · autonomy: @_agent.Autonomy</small></div></header>
 							<div class="p0-form">
-								<label>Action<select @bind="_selectedActionId">@foreach (var action in ActionAuthorityService.Catalog) { <option value="@action.Id">@action.Description</option> }</select></label>
+								<label>Action<select data-auto="s24.action" @bind="_selectedActionId">@foreach (var action in ActionAuthorityService.Catalog) { <option value="@action.Id">@action.Description</option> }</select></label>
 							</div>
 							<div class="rt-actions">
 								<small>Deterministic — no model call.</small>
-								<button class="primary-command compact" type="button" @onclick="RunAuthority">Decide authority</button>
+								<button class="primary-command compact" type="button" data-auto="s24.decide" @onclick="RunAuthority">Decide authority</button>
 							</div>
 						</section>
 
 						@if (_decision is { } decision)
 						{
-							<section class="rt-box">
+							<section class="rt-box" data-auto="s24.decision">
 								<header class="rt-head"><span class="rt-step">2</span><div><strong>Decision</strong><small>09 §3.4 · 10 §5</small></div></header>
 								<div class="audit-body">
 									<div class="audit-scoreline">
@@ -2341,7 +2376,7 @@ cobol85  -&gt; 000000</pre>
 							<textarea class="rt-code-input" spellcheck="false" maxlength="4000" @bind="_framingQuestion" @bind:event="oninput" disabled="@FramingBusy" aria-label="Question"></textarea>
 							<div class="rt-actions">
 								<small>@_framingQuestion.Length / 4000</small>
-								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _framingQuestion.Trim().Length < 10 || FramingBusy)" @onclick="RunFraming">@(!_bridgeConnected ? "Connect VSIX to run" : FramingBusy ? "Asking…" : "Ask all three ways")</button>
+								<button class="primary-command compact" type="button" data-auto="s25.run" disabled="@(!_bridgeConnected || _framingQuestion.Trim().Length < 10 || FramingBusy)" @onclick="RunFraming">@(!_bridgeConnected ? "Connect VSIX to run" : FramingBusy ? "Asking…" : "Ask all three ways")</button>
 							</div>
 							@if (!_bridgeConnected)
 							{
@@ -2465,12 +2500,13 @@ cobol85  -&gt; 000000</pre>
 						</div>
 
 						<div class="rt-actions">
-							<small>Deterministic — compiles and runs in-process, no model call.</small>
-							<button class="primary-command compact" type="button" disabled="@_mutationRunning" @onclick="RunMutation">@(_mutationRunning ? "Running mutants…" : "Run mutation test")</button>
+							<small>Deterministic &mdash; compiles and runs in-process, no model call.</small>
+							<button class="primary-command compact" type="button" data-auto="s26.mutate" disabled="@_mutationRunning" @onclick="RunMutation">@(_mutationRunning ? "Running mutants…" : "Run mutation test")</button>
 						</div>
 
 						@if (_mutation is { } mutation)
 						{
+							<span data-auto="s26.mutation-result" hidden></span>
 							@if (!mutation.Ran)
 							{
 								<div class="compare-status failed" role="alert">@mutation.Error</div>
@@ -2507,7 +2543,7 @@ cobol85  -&gt; 000000</pre>
 										<p class="rt-reco">A surviving mutant is a <strong>falsifiable target</strong>: either a proposed test fails against the mutated code or it does not. That is why the model is asked to close specific survivors rather than to improve the suite in general — the instruction can be checked.</p>
 										<div class="rt-actions">
 											<small>Gemma sees the mutation report, the code and the existing tests.</small>
-											<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || GuidanceBusy || mutation.Mutants.All(item => item.Killed))" @onclick="RunRegressionGuidance">@GuidanceButtonText</button>
+											<button class="primary-command compact" type="button" data-auto="s26.guidance" disabled="@(!_bridgeConnected || GuidanceBusy || mutation.Mutants.All(item => item.Killed))" @onclick="RunRegressionGuidance">@GuidanceButtonText</button>
 										</div>
 										@if (mutation.Mutants.All(item => item.Killed))
 										{
@@ -2612,7 +2648,7 @@ cobol85  -&gt; 000000</pre>
 							<textarea class="rt-code-input" spellcheck="false" maxlength="12000" @bind="_ephemeralTicket" @bind:event="oninput" disabled="@EphemeralBusy" aria-label="Ephemeral ticket"></textarea>
 							<div class="rt-actions">
 								<small>@_ephemeralTicket.Length / 12000</small>
-								<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _ephemeralTicket.Trim().Length < 20 || EphemeralBusy)" @onclick="RunEphemeral">@(!_bridgeConnected ? "Connect VSIX to run" : EphemeralBusy ? "Running…" : "Gate, then run")</button>
+								<button class="primary-command compact" type="button" data-auto="s27.run" disabled="@(!_bridgeConnected || _ephemeralTicket.Trim().Length < 20 || EphemeralBusy)" @onclick="RunEphemeral">@(!_bridgeConnected ? "Connect VSIX to run" : EphemeralBusy ? "Running…" : "Gate, then run")</button>
 							</div>
 							@if (!_bridgeConnected)
 							{
@@ -2695,12 +2731,12 @@ cobol85  -&gt; 000000</pre>
 
 						<div class="rt-actions">
 							<small>Deterministic — no model call, works without the bridge.</small>
-							<button class="primary-command compact" type="button" @onclick="RunPortfolio">Load the tiers</button>
+							<button class="primary-command compact" type="button" data-auto="s28.load" @onclick="RunPortfolio">Load the tiers</button>
 						</div>
 
 						@if (_portfolio is { } portfolio)
 						{
-							<section class="rt-box">
+							<section class="rt-box" data-auto="s28.estate">
 								<header class="rt-head"><span class="rt-step">1</span><div><strong>Tier 1 — Cortex global ecosystem</strong><small>@portfolio.Services.Count services · structure, ownership, health</small></div></header>
 								<div class="audit-body">
 									<table class="audit-table">
@@ -2740,7 +2776,7 @@ cobol85  -&gt; 000000</pre>
 											@foreach (var amp in portfolio.Amps)
 											{
 												var ampId = amp.AmpId;
-												<tr class="p0-clickable @(_expandedAmp == ampId ? "curve-plateau" : null)" @onclick="() => ToggleAmp(ampId)">
+												<tr class="p0-clickable @(_expandedAmp == ampId ? "curve-plateau" : null)" data-auto="s28.amp-@ampId" @onclick="() => ToggleAmp(ampId)">
 													<td>@amp.AmpId</td>
 													<td>@amp.Name<br /><small>@amp.Team</small></td>
 													<td>@amp.RegulatoryPerimeter</td>
@@ -2790,7 +2826,7 @@ cobol85  -&gt; 000000</pre>
 									<p class="rt-reco">Loading every repository's Tier 3 up front would cost <strong>@portfolio.Cost.Tier3TokensEverything.ToString("N0")</strong> tokens instead of @portfolio.Cost.Tier3TokensInScope.ToString("N0") — and would hand the model the crypto desk's context while asking it to exclude the crypto desk. The funnel is a correctness control before it is a cost control.</p>
 									<div class="rt-actions">
 										<small>Each stage receives only its own tier. @(portfolio.Cost.Exact ? "Token counts are exact." : "Token counts are estimated.")</small>
-										<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || TierBusy)" @onclick="RunPortfolioTiers">@TierButtonText</button>
+										<button class="primary-command compact" type="button" data-auto="s28.tiers" disabled="@(!_bridgeConnected || TierBusy)" @onclick="RunPortfolioTiers">@TierButtonText</button>
 									</div>
 									@if (!_bridgeConnected)
 									{
@@ -2950,12 +2986,13 @@ cobol85  -&gt; 000000</pre>
 							</div>
 							<div class="rt-actions">
 								<small>Deterministic — embeddings only, no bridge needed.</small>
-								<button class="primary-command compact" type="button" disabled="@_commonCodeRunning" @onclick="RunCommonCode">@(_commonCodeRunning ? "Embedding…" : "Run the audit")</button>
+								<button class="primary-command compact" type="button" data-auto="s29.analyse" disabled="@_commonCodeRunning" @onclick="RunCommonCode">@(_commonCodeRunning ? "Embedding…" : "Run the audit")</button>
 							</div>
 						</section>
 
 						@if (_commonCode is { } codeAudit)
 						{
+							<span data-auto="s29.clusters" hidden></span>
 							@if (!codeAudit.CorpusAvailable)
 							{
 								<div class="rt-error" role="alert">@codeAudit.CorpusStatus</div>
@@ -3028,7 +3065,7 @@ cobol85  -&gt; 000000</pre>
 									<header class="rt-head"><span class="rt-step">5</span><div><strong>Claude Opus 5 designs the consolidation</strong><small>judgement, not typing</small></div></header>
 									<div class="rt-actions">
 										<small>Claude sees the audit; the implementation spec it writes is the only thing Gemma will see.</small>
-										<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || codeAudit.DuplicatedClusters == 0 || ConsolidationBusy)" @onclick="RunConsolidation">@ConsolidationButtonText</button>
+										<button class="primary-command compact" type="button" data-auto="s29.consolidate" disabled="@(!_bridgeConnected || codeAudit.DuplicatedClusters == 0 || ConsolidationBusy)" @onclick="RunConsolidation">@ConsolidationButtonText</button>
 									</div>
 									@if (!_bridgeConnected)
 									{
@@ -3148,12 +3185,12 @@ cobol85  -&gt; 000000</pre>
 
 						<div class="rt-actions">
 							<small>Deterministic — illustrative rates, no model call.</small>
-							<button class="primary-command compact" type="button" @onclick="RunEconomics">Compute the economics</button>
+							<button class="primary-command compact" type="button" data-auto="s30.run" @onclick="RunEconomics">Compute the economics</button>
 						</div>
 
 						@if (_economics is { } econ)
 						{
-							<section class="rt-box">
+							<section class="rt-box" data-auto="s30.result">
 								<header class="rt-head"><span class="rt-step">1</span><div><strong>The escalation ladder</strong><small>@econ.PromptTokens.ToString("N0") prompt + @econ.OutputTokens.ToString("N0") output tokens per attempt</small></div></header>
 								<div class="audit-body">
 									<table class="audit-table">
@@ -3208,7 +3245,7 @@ cobol85  -&gt; 000000</pre>
 							<textarea class="rt-code-input" spellcheck="false" maxlength="4000" @bind="_submission.Approach" @bind:event="oninput" aria-label="Shared prompt"></textarea>
 							<div class="rt-actions">
 								<small>The gate is deterministic. Running the pattern needs the bridge.</small>
-								<button class="primary-command compact" type="button" disabled="@PatternBusy" @onclick="SubmitPattern">@PatternButtonText</button>
+								<button class="primary-command compact" type="button" data-auto="s31.submit" disabled="@PatternBusy" @onclick="SubmitPattern">@PatternButtonText</button>
 							</div>
 							@if (!_bridgeConnected)
 							{
@@ -3331,13 +3368,13 @@ cobol85  -&gt; 000000</pre>
 							<textarea class="rt-code-input" spellcheck="false" maxlength="8000" @bind="_planText" @bind:event="oninput" aria-label="Plan"></textarea>
 							<div class="rt-actions">
 								<small>Deterministic structural check — no model call.</small>
-								<button class="primary-command compact" type="button" @onclick="ReviewPlan">Review the plan</button>
+								<button class="primary-command compact" type="button" data-auto="s32.review" @onclick="ReviewPlan">Review the plan</button>
 							</div>
 						</section>
 
 						@if (_planReview is { } plan)
 						{
-							<section class="rt-qa">
+							<section class="rt-qa" data-auto="s32.result">
 								<header class="rt-head"><span class="rt-step">2</span><div><strong>Result</strong><small>executive summary: @plan.SummaryWords words</small></div></header>
 								<div class="audit-scoreline">
 									<span class="ctx-label @(plan.Score == 100 ? "ctx-rich" : plan.Score >= 60 ? "ctx-adequate" : "ctx-poor")">@plan.Score%</span>
@@ -3415,7 +3452,7 @@ cobol85  -&gt; 000000</pre>
 
 						<div class="rt-actions">
 							<small>Three stages: Claude unaided, Gemma grounded, Claude designs.</small>
-							<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || SmeBusy)" @onclick="RunCryptoSme">@SmeButtonText</button>
+							<button class="primary-command compact" type="button" data-auto="s34.run" disabled="@(!_bridgeConnected || SmeBusy)" @onclick="RunCryptoSme">@SmeButtonText</button>
 						</div>
 						@if (!_bridgeConnected)
 						{
@@ -3595,7 +3632,14 @@ cobol85  -&gt; 000000</pre>
 
 		<footer class="stage-footer">
 			<button class="secondary-command" type="button" disabled="@(_scene == 0)" @onclick="Previous">&larr; Previous</button>
-			<div class="narration-text"><span>Narration transcript</span><p>@CurrentNarration</p></div>
+			<div class="narration-text">
+				<span>@(_autoRunning ? "Autopilot narration" : "Narration transcript")</span>
+				<p>@(_autoRunning ? _autoNarration : CurrentNarration)</p>
+				@if (_autoRunning && _autoNarrationSource is { } narrationSource)
+				{
+					<small class="auto-source">@narrationSource</small>
+				}
+			</div>
 			<button class="secondary-command" type="button" disabled="@(_scene == Scenes.Length - 1)" @onclick="Next">Next &rarr;</button>
 		</footer>
 	</section>
@@ -3686,6 +3730,7 @@ cobol85  -&gt; 000000</pre>
 		? $" · {(int)(DateTimeOffset.UtcNow - started).TotalSeconds}s"
 		: string.Empty;
 	private int _scene;
+	private bool _scrollPending;
 	private int _traceStep;
 	private int _animationRun;
 	private bool _started;
@@ -4087,7 +4132,315 @@ Finish with the verification path: the tests you would add or change, and how I 
 	}
 	private void Answer(int question, int option) => _answers[question] = option;
 	private string? AnswerClass(int question, int option) => !_answers.TryGetValue(question, out var selected) || selected != option ? null : Questions[question].CorrectIndex == option ? "correct" : "incorrect";
-	private void GoTo(int scene) => _scene = Math.Clamp(scene, 0, Scenes.Length - 1);
+	private void GoTo(int scene)
+	{
+		var target = Math.Clamp(scene, 0, Scenes.Length - 1);
+		if (target == _scene)
+		{
+			return;
+		}
+
+		_scene = target;
+		_scrollPending = true;
+	}
+
+	// ---------------------------------------------------------------- autopilot
+
+	private bool _autoRunning;
+	private bool _autoCompleted;
+	private bool _autoAbort;
+	private AutoProfile _autoProfile = AutoProfile.Deterministic;
+	private string _autoStatus = "Idle";
+	private string _autoNarration = string.Empty;
+	private string? _autoNarrationSource;
+	private int _autoStepIndex;
+	private int _autoTotal;
+	private int _autoFailures;
+	private readonly List<string> _autoLog = [];
+	private DotNetObjectReference<Home>? _autoRef;
+
+	private bool AllowInProcessExecution =>
+		Configuration.GetValue("Autopilot:AllowInProcessExecution", false);
+
+	private bool AutopilotReady =>
+		Contract.Verify().Passed &&
+		(_autoProfile != AutoProfile.Full || _bridgeConnected);
+
+	private string AutopilotTitle
+	{
+		get
+		{
+			var contract = Contract.Verify();
+			if (!contract.Passed)
+			{
+				return $"Manifest does not match the markup: {contract.Missing.Count} selector(s) missing.";
+			}
+
+			return _autoProfile == AutoProfile.Full && !_bridgeConnected
+				? "Connect the VSIX before running the Full profile."
+				: "Walk every scene, operating the real controls.";
+		}
+	}
+
+	[JSInvokable]
+	public Task AbortFromKeyboard()
+	{
+		_autoAbort = true;
+		return InvokeAsync(StateHasChanged);
+	}
+
+	private async Task StartAutopilot()
+	{
+		if (_autoRunning || _session is null)
+		{
+			return;
+		}
+
+		_autoRunning = true;
+		_autoCompleted = false;
+		_autoAbort = false;
+		_autoFailures = 0;
+		_autoStepIndex = 0;
+		_autoLog.Clear();
+		_autoRef ??= DotNetObjectReference.Create(this);
+		await JS.InvokeVoidAsync("autopilot.registerAbort", _autoRef);
+
+		var steps = AutopilotManifest.ForProfile(_autoProfile, AllowInProcessExecution).ToList();
+		_autoTotal = steps.Count;
+
+		var skipScene = -1;
+		foreach (var step in steps)
+		{
+			if (_autoAbort)
+			{
+				break;
+			}
+
+			if (step.SceneNumber == skipScene)
+			{
+				continue;
+			}
+
+			skipScene = -1;
+			_autoStepIndex++;
+
+			if (_scene != step.SceneNumber - 1)
+			{
+				GoTo(step.SceneNumber - 1);
+				await InvokeAsync(StateHasChanged);
+				await Task.Delay(700);
+			}
+
+			var outcome = await RunAutoStep(step);
+			if (outcome == AutoFail.AbortRun)
+			{
+				_autoStatus = "Aborted";
+				break;
+			}
+
+			if (outcome == AutoFail.SkipScene)
+			{
+				skipScene = step.SceneNumber;
+			}
+		}
+
+		await JS.InvokeVoidAsync("autopilot.clear");
+		await JS.InvokeVoidAsync("autopilot.stopSpeaking");
+		_autoStatus = _autoAbort ? $"Stopped by the presenter at step {_autoStepIndex} of {_autoTotal}" : $"Finished — {_autoFailures} step(s) did not complete";
+		_autoRunning = false;
+		_autoCompleted = true;
+		await InvokeAsync(StateHasChanged);
+	}
+
+	private void StopAutopilot() => _autoAbort = true;
+
+	private async Task<AutoFail> RunAutoStep(AutoStep step)
+	{
+		_autoStatus = $"Scene {step.SceneNumber} · {step.StepId}";
+		await InvokeAsync(StateHasChanged);
+
+		// Static narration is spoken before the action so the audience knows what is about to happen.
+		if (!step.ResultNarration)
+		{
+			await Narrate(step, null);
+		}
+
+		var acted = true;
+		if (step.Kind != AutoKind.Observe && step.Selector is { } selector)
+		{
+			await JS.InvokeVoidAsync("autopilot.highlight", selector);
+			await Task.Delay(500);
+
+			acted = step.Kind switch
+			{
+				AutoKind.Click => await JS.InvokeAsync<bool>("autopilot.click", selector),
+				AutoKind.Select or AutoKind.Fill => await JS.InvokeAsync<bool>("autopilot.setValue", selector, step.Value),
+				AutoKind.Scroll => await JS.InvokeAsync<bool>("autopilot.scrollTo", selector),
+				_ => true
+			};
+		}
+
+		if (!acted)
+		{
+			return Fail(step, $"{step.StepId}: control was missing or disabled", step.OnFailure);
+		}
+
+		var completed = await WaitForStep(step);
+		if (!completed)
+		{
+			return Fail(step, $"{step.StepId}: did not complete within {step.TimeoutSeconds}s", step.OnTimeout);
+		}
+
+		if (step.ResultNarration)
+		{
+			await Narrate(step, ObservedValues(step));
+		}
+
+		await Task.Delay(900);
+		return AutoFail.NarrateAndContinue;
+	}
+
+	private async Task<bool> WaitForStep(AutoStep step)
+	{
+		var deadline = DateTimeOffset.UtcNow.AddSeconds(step.TimeoutSeconds);
+		switch (step.WaitType)
+		{
+			case AutoWait.Settle:
+				await Task.Delay(TimeSpan.FromSeconds(Math.Min(step.TimeoutSeconds, 3)));
+				return true;
+
+			case AutoWait.Element:
+				while (DateTimeOffset.UtcNow < deadline && !_autoAbort)
+				{
+					if (await JS.InvokeAsync<bool>("autopilot.exists", step.WaitKey!))
+					{
+						return true;
+					}
+
+					await Task.Delay(500);
+				}
+
+				return false;
+
+			case AutoWait.State:
+				while (DateTimeOffset.UtcNow < deadline && !_autoAbort)
+				{
+					_session = Store.GetSession(_session!.SessionId);
+					var status = AutoStatus(step.WaitKey!);
+					if (status is "completed" or "failed")
+					{
+						await InvokeAsync(StateHasChanged);
+						return status == "completed";
+					}
+
+					await InvokeAsync(StateHasChanged);
+					await Task.Delay(1000);
+				}
+
+				return false;
+		}
+
+		return true;
+	}
+
+	private string? AutoStatus(string key) => _session is null ? null : key switch
+	{
+		"Coach" => _session.CoachStatus,
+		"Review" => _session.ReviewStatus,
+		"Comparison" => _session.Comparison.Status,
+		"LlmSupport" => _session.LlmSupport.Status,
+		"RoundTrip" => _session.RoundTrip.Status,
+		"Modernize" => _session.Modernize.Status,
+		"Audit" => _session.Audit.Status,
+		"ContextAudit" => _session.ContextAudit.Status,
+		"Clara" => _session.Clara.Status,
+		"LanguageTest" => _session.LanguageTest.Status,
+		"Migration" => _session.Migration.Status,
+		"TicketGate" => _session.TicketGate.Status,
+		"TrapHunt" => _session.TrapHunt.Status,
+		"Drift" => _session.Drift.Status,
+		"GroundedChange" => _session.GroundedChange.Status,
+		"ContextCurve" => _session.ContextCurve.Status,
+		"Framing" => _session.Framing.Status,
+		"Ephemeral" => _session.Ephemeral.Status,
+		"Consolidation" => _session.Consolidation.Status,
+		"PortfolioTiers" => _session.PortfolioTiers.Status,
+		"RegressionGuidance" => _session.RegressionGuidance.Status,
+		"PatternRun" => _session.PatternRun.Status,
+		"CryptoSme" => _session.CryptoSme.Status,
+		_ => null
+	};
+
+	// Only deterministic, already-computed values reach the narrator; never raw fixture payloads.
+	private string? ObservedValues(AutoStep step) => step.SceneNumber switch
+	{
+		22 when _tier is { } tier => $"Derived risk tier: {tier.Tier}. Registrable: {tier.Registrable}. Missing fields: {tier.MissingFields.Count}.",
+		24 when _decision is { } decision => $"Verdict: {decision.VerdictLabel}. Reasons: {string.Join("; ", decision.Reasons)}.",
+		26 when _mutation is { } mutation && mutation.Ran => $"Mutation score {mutation.MutationScore}%, {mutation.KilledMutants} of {mutation.TotalMutants} mutants killed.",
+		29 when _commonCode is { } audit => $"{audit.DuplicatedClusters} duplicated cluster(s) across {audit.UnitCount} units, threshold {audit.Threshold:0.000}.",
+		30 when _economics is { } econ => $"Cheapest per attempt: {econ.CheapestPerAttempt}. Cheapest per success: {econ.CheapestPerSuccess}.",
+		32 when _planReview is { } plan => $"Plan score {plan.Score}%.",
+		_ => null
+	};
+
+	private async Task Narrate(AutoStep step, string? observed)
+	{
+		var spoken = string.Join(" ", step.Facts);
+		var source = "fact list (no model)";
+
+		if (_autoProfile == AutoProfile.Full && _bridgeConnected && _session is not null)
+		{
+			Store.QueueNarration(_session.SessionId, step, observed);
+			var deadline = DateTimeOffset.UtcNow.AddSeconds(20);
+			while (DateTimeOffset.UtcNow < deadline && !_autoAbort)
+			{
+				_session = Store.GetSession(_session.SessionId);
+				if (_session.Narration.Status is "completed" or "failed")
+				{
+					break;
+				}
+
+				await Task.Delay(400);
+			}
+
+			if (_session.Narration is { Status: "completed", Text: { } text })
+			{
+				spoken = text;
+				source = _session.Narration.FallbackUsed
+					? $"narrated by {_session.Narration.Model} — Gemma 4 was unavailable"
+					: $"narrated by {_session.Narration.Model}";
+			}
+			else
+			{
+				source = "fact list (no model) — narration did not return in time";
+			}
+		}
+
+		_autoNarration = spoken;
+		_autoNarrationSource = source;
+		await InvokeAsync(StateHasChanged);
+		await JS.InvokeVoidAsync("autopilot.speak", spoken, 1.0);
+		await Task.Delay(Math.Min(12000, 1500 + spoken.Length * 55));
+	}
+
+	private AutoFail Fail(AutoStep step, string message, AutoFail policy)
+	{
+		_autoFailures++;
+		_autoLog.Add(message);
+		_autoNarration = $"This step did not complete. {message}. The run continues, and the failure is recorded rather than hidden.";
+		_autoNarrationSource = "autopilot (deterministic)";
+		return policy;
+	}
+
+	// Deferred to after render so the scroll lands on the new scene rather than the outgoing one.
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (_scrollPending)
+		{
+			_scrollPending = false;
+			await JS.InvokeVoidAsync("trainingSpeech.scrollToTop");
+		}
+	}
 
 	private static int SceneIndex(string id) => Array.FindIndex(Scenes, scene => scene.Id == id);
 

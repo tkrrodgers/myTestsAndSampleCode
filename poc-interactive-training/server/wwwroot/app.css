@@ -244,13 +244,18 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 }
 
 .stage-header {
+    position: sticky;
+    top: 0;
+    z-index: 6;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 16px;
     min-height: 76px;
     padding: 16px clamp(24px, 4vw, 62px);
     border-bottom: 1px solid var(--line);
     background: rgba(244, 242, 235, .94);
+    backdrop-filter: blur(6px);
 }
 
 .stage-header .eyebrow {
@@ -265,7 +270,25 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 
 .header-actions {
     display: flex;
+    align-items: center;
     gap: 8px;
+}
+
+.header-divider {
+    width: 1px;
+    height: 22px;
+    margin: 0 2px;
+    background: var(--line);
+}
+
+.icon-button:disabled {
+    opacity: .3;
+    cursor: default;
+}
+
+.icon-button:disabled:hover {
+    background: transparent;
+    color: var(--forest);
 }
 
 .icon-button {
@@ -2172,6 +2195,78 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     text-decoration: underline;
     text-underline-offset: 2px;
     cursor: pointer;
+}
+
+.auto-profile {
+    padding: 6px 8px;
+    border: 1px solid var(--forest);
+    border-radius: 3px;
+    background: var(--white);
+    color: var(--ink);
+    font-size: .72rem;
+}
+
+.auto-stop {
+    border-color: var(--coral);
+    color: var(--error);
+}
+
+.auto-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 9px clamp(24px, 4vw, 62px);
+    border-bottom: 1px solid #9cc6b4;
+    background: #dfeee7;
+    color: #205141;
+    font-size: .78rem;
+}
+
+.auto-bar small {
+    color: var(--muted);
+    font-size: .7rem;
+}
+
+.auto-bar .auto-failures {
+    color: var(--error);
+    font-weight: 700;
+}
+
+.auto-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--muted);
+}
+
+.auto-dot.active {
+    background: var(--coral);
+    animation: trace-pulse 1.2s ease-in-out infinite;
+}
+
+.auto-source {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: .66rem;
+    font-style: italic;
+}
+
+/* The audience has to be able to see which control the run is about to operate. */
+.autopilot-target {
+    outline: 3px solid var(--coral) !important;
+    outline-offset: 3px;
+    animation: autopilot-ping 1s ease-out infinite;
+}
+
+@keyframes autopilot-ping {
+    0%, 100% { outline-color: var(--coral); }
+    50% { outline-color: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .autopilot-target, .auto-dot.active { animation: none; }
 }
 
 .scene-link:hover,

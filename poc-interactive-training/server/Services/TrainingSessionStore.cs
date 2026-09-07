@@ -150,6 +150,87 @@ public sealed class TrainingSessionStore
         }
     }
 
+    /// <summary>
+    /// Narration for one autopilot step. Gemma is primary; the bridge falls back to Claude only on a
+    /// mechanical failure, never because someone judged Gemma's prose to be worse.
+    /// </summary>
+    public string QueueNarration(string sessionId, AutoStep step, string? observedValues)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            var request = new System.Text.StringBuilder();
+            request.AppendLine("Narrate this step of a training walkthrough.");
+            request.AppendLine();
+            request.AppendLine("FACTS YOU MAY STATE (use only these):");
+            foreach (var fact in step.Facts)
+            {
+                request.AppendLine($"- {fact}");
+            }
+
+            if (step.MustNotClaim.Count > 0)
+            {
+                request.AppendLine();
+                request.AppendLine("YOU MUST NOT CLAIM:");
+                foreach (var claim in step.MustNotClaim)
+                {
+                    request.AppendLine($"- {claim}");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(observedValues))
+            {
+                request.AppendLine();
+                request.AppendLine("OBSERVED VALUES (these are real results; you may quote these numbers):");
+                request.AppendLine(observedValues);
+            }
+
+            request.AppendLine();
+            request.AppendLine($"Maximum {step.MaxWords} words. Plain spoken English.");
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "autopilot-narration",
+                GemmaModel,
+                ClaudeModel,
+                Prompts.AutopilotSystem,
+                request.ToString(),
+                40,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.NarrationStatus = "queued";
+            session.NarrationText = null;
+            session.NarrationModel = null;
+            session.NarrationFallbackUsed = false;
+            return task.TaskId;
+        }
+    }
+
+    private static void CompleteNarration(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded)
+        {
+            session.NarrationStatus = "failed";
+            session.NarrationText = null;
+            return;
+        }
+
+        if (!TryDeserialize<NarrationDto>(result.Content!, out var dto) ||
+            dto is null || string.IsNullOrWhiteSpace(dto.Narration))
+        {
+            session.NarrationStatus = "failed";
+            return;
+        }
+
+        session.NarrationText = dto.Narration.Trim();
+        session.NarrationModel = result.ModelUsed;
+        session.NarrationFallbackUsed = result.FallbackUsed;
+        session.NarrationStatus = "completed";
+    }
+
+    private sealed record NarrationDto(string? Narration);
+
     public void QueueReview(string sessionId, string learnerPrompt)
     {
         if (string.IsNullOrWhiteSpace(learnerPrompt) || learnerPrompt.Length > 6000)
@@ -3126,6 +3207,9 @@ public sealed class TrainingSessionStore
             task.ClaimedAt = now;
             switch (task.Task.Kind)
             {
+                case "autopilot-narration":
+                    session.NarrationStatus = "running";
+                    break;
                 case "coach-narration":
                     session.CoachStatus = "running";
                     break;
@@ -3309,6 +3393,9 @@ public sealed class TrainingSessionStore
 
             switch (task.Task.Kind)
             {
+                case "autopilot-narration":
+                    CompleteNarration(session, result, succeeded);
+                    break;
                 case "coach-narration":
                     CompleteCoach(session, result, succeeded);
                     break;
@@ -3632,6 +3719,11 @@ public sealed class TrainingSessionStore
 
         // The step Claude is part-way through writing, so the UI can show progress between trace events.
         public string ReviewPartial { get; set; } = string.Empty;
+
+        public string NarrationStatus { get; set; } = "idle";
+        public string? NarrationText { get; set; }
+        public string? NarrationModel { get; set; }
+        public bool NarrationFallbackUsed { get; set; }
         public string? LastError { get; set; }
         public Dictionary<string, TaskState> Tasks { get; } = [];
 
@@ -4094,7 +4186,8 @@ public sealed class TrainingSessionStore
                         SmeDesign is null
                             ? null
                             : SmeDesign.Summary + " " + string.Join(" ", SmeDesign.Steps.Select(step => step.Step + " " + step.Detail))),
-                SmeError));
+                SmeError),
+            new NarrationState(NarrationStatus, NarrationText, NarrationModel, NarrationFallbackUsed));
     }
 
     private sealed class CurveRunState(int rung, int attempt)
@@ -4309,6 +4402,25 @@ public sealed class TrainingSessionStore
 
     private static class Prompts
     {
+        public const string AutopilotSystem = """
+            You are narrating a live walkthrough of an AI training application for an audience watching a screen.
+
+            You are given a list of FACTS. Those facts are the only things you may assert. If something is not
+            in the list, you do not know it and must not say it. You may be given OBSERVED VALUES, which are
+            real measured results; you may quote those numbers exactly as given and must not round or reinterpret
+            them.
+
+            Rules, in priority order:
+            1. Never state a fact that was not supplied. Never invent a number, a file name, or a model name.
+            2. Never claim a result is correct, validated, proven, or industry-leading.
+            3. If the supplied values describe a failure, say so plainly. Do not soften it or explain it away.
+            4. Honour every entry in YOU MUST NOT CLAIM exactly.
+            5. Plain spoken English, second person or neutral. No marketing language. No exclamation marks.
+            6. Respect the word limit.
+
+            Return JSON only, no Markdown fences: {"narration":"..."}
+            """;
+
         public const string CoachSystem = """
             You are the grounded coach for a synthetic Public-data OKF lesson. Use only the fixture below.
             The fixture README defines Open Knowledge Format for models that do not already know it. Apply that

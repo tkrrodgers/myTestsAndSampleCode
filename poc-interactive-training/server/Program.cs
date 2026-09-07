@@ -206,6 +206,7 @@ builder.Services.AddHttpClient<DocumentationFetcher>();
 builder.Services.AddSingleton<CommonCodeAuditService>();
 builder.Services.AddSingleton<TokenEconomicsService>();
 builder.Services.AddSingleton<PatternLibraryService>();
+builder.Services.AddSingleton<AutopilotContract>();
 builder.Services.AddSingleton(_ => new EmbeddingGemmaEncoder(
     Path.Combine(builder.Environment.ContentRootPath, "..", "models", "embeddinggemma-300m-onnx")));
 builder.Services.AddSingleton<ContextAuditService>();
@@ -323,6 +324,18 @@ var streamProbe = TrainingSessionStore.HumaniseStreamFragment(
     "{\"trace\":{\"sequence\":1,\"stage\":\"Index first\",\"evidence\":\"Start at okf/index.md\",\"decision\":\"Correctly forces index-first");
 app.Logger.LogInformation("Review stream humaniser self-check: clean={Clean}, sample=\"{Sample}\".",
     !streamProbe.Contains('{') && !streamProbe.Contains('"') && !streamProbe.Contains("\":"), streamProbe);
+
+// A demo must never start against a stale script, so a manifest mismatch disables auto-run.
+var autopilotProbe = app.Services.GetRequiredService<AutopilotContract>().Verify();
+app.Logger.LogInformation(
+    "Autopilot manifest self-check: {Steps} steps, {Selectors} selectors, {Resolved} resolved, {Missing} missing, {Violations} invariant violation(s), manifest v{Version}.",
+    autopilotProbe.Steps, autopilotProbe.Selectors, autopilotProbe.Resolved,
+    autopilotProbe.Missing.Count, autopilotProbe.Violations.Count, AutopilotManifest.Version);
+
+foreach (var problem in autopilotProbe.Missing.Concat(autopilotProbe.Violations))
+{
+    app.Logger.LogWarning("Autopilot manifest problem: {Problem}", problem);
+}
 
 if (!app.Environment.IsDevelopment())
 {

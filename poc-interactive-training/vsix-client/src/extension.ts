@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 interface BridgeTask {
 	taskId: string;
 	sessionId: string;
-	kind: 'coach-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis' | 'context-curve-plan' | 'framing-arm' | 'framing-judge' | 'claude-consolidation-design' | 'gemma-consolidation-build' | 'claude-curve-judge' | 'claude-tier1-discover' | 'claude-tier2-scope' | 'claude-tier3-design' | 'gemma-regression-guidance' | 'claude-regression-review' | 'gemma-pattern-apply' | 'claude-pattern-review' | 'claude-crypto-unaided' | 'gemma-crypto-sme' | 'claude-crypto-design';
+	kind: 'coach-narration' | 'autopilot-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis' | 'context-curve-plan' | 'framing-arm' | 'framing-judge' | 'claude-consolidation-design' | 'gemma-consolidation-build' | 'claude-curve-judge' | 'claude-tier1-discover' | 'claude-tier2-scope' | 'claude-tier3-design' | 'gemma-regression-guidance' | 'claude-regression-review' | 'gemma-pattern-apply' | 'claude-pattern-review' | 'claude-crypto-unaided' | 'gemma-crypto-sme' | 'claude-crypto-design';
 	preferredModel: string;
 	fallbackModel?: string;
 	systemPrompt: string;
@@ -163,7 +163,7 @@ async function runTask(serverUrl: string, token: string, task: BridgeTask, signa
 	}
 
 	log(`${label}: task received — connecting to a language model…`);
-	setStatus(task.kind === 'coach-narration' ? 'coaching' : 'reviewing');
+	setStatus(task.kind === 'coach-narration' || task.kind === 'autopilot-narration' ? 'coaching' : 'reviewing');
 	const result = await executeTask(task, serverUrl, token, signal);
 	if (result.status === 'completed') {
 		log(`${label}: connected to ${result.modelUsed}${result.fallbackUsed ? ' (substitute model)' : ''} and completed in ${result.durationMs} ms.`);
@@ -240,12 +240,18 @@ function taskLabel(task: BridgeTask): string {
 	}
 }
 
+// These kinds name an explicit fallback model, so a substitute must never be chosen silently -
+// the disclosure banner has to report which model actually authored the text.
+function hasDeclaredFallback(task: BridgeTask): boolean {
+	return task.kind === 'coach-narration' || task.kind === 'autopilot-narration';
+}
+
 async function executeTask(task: BridgeTask, serverUrl: string, token: string, signal: AbortSignal): Promise<BridgeTaskResult> {
 	const started = Date.now();
 	try {
 		let preferred = await findModel(task.preferredModel);
 		let substitute = false;
-		if (!preferred && task.kind !== 'coach-narration') {
+		if (!preferred && !hasDeclaredFallback(task)) {
 			preferred = await firstAvailableModel();
 			substitute = preferred !== undefined;
 		}
@@ -260,7 +266,7 @@ async function executeTask(task: BridgeTask, serverUrl: string, token: string, s
 		}
 		return completed(task, preferred.name, substitute, started, content);
 	} catch (preferredError) {
-		if (task.kind !== 'coach-narration') {
+		if (!hasDeclaredFallback(task)) {
 			return failed(task, started, 'model_request_failed', preferredError);
 		}
 

@@ -30,7 +30,11 @@ public sealed record TrainingSession(
     ContextCurveState ContextCurve,
     FramingState Framing,
     EphemeralState Ephemeral,
-    ConsolidationState Consolidation);
+    ConsolidationState Consolidation,
+    PortfolioTierState PortfolioTiers,
+    RegressionGuidanceState RegressionGuidance,
+    PatternRunState PatternRun,
+    CryptoSmeState CryptoSme);
 
 public sealed record BridgeTask(
     string TaskId,
@@ -740,6 +744,37 @@ public sealed record MutationReport(
     string Verdict,
     string? Error);
 
+public sealed record ProposedTest(
+    string Name,
+    string TargetsSurvivor,
+    string Behaviour,
+    string Assertion);
+
+public sealed record MutationRemediation(
+    string Summary,
+    IReadOnlyList<ProposedTest> Tests,
+    IReadOnlyList<string> NotWorthTesting,
+    string? Model);
+
+public sealed record TestAssessment(
+    string Name,
+    bool WouldKill,
+    string Reasoning);
+
+public sealed record MutationReview(
+    string Verdict,
+    IReadOnlyList<TestAssessment> Assessments,
+    IReadOnlyList<string> Gaps,
+    IReadOnlyList<string> Overreach,
+    string NextStep,
+    string? Model);
+
+public sealed record RegressionGuidanceState(
+    string Status,
+    MutationRemediation? Remediation,
+    MutationReview? Review,
+    string? Error);
+
 public sealed record EphemeralRecord(
     string TicketId,
     string Owner,
@@ -760,46 +795,96 @@ public sealed record EphemeralState(
 
 // --- Phase 3: portfolio context tiers and cross-repo common-code audit (deterministic) ---
 
-public sealed record PortfolioRepo(
+public sealed record TierService(
     string Name,
     string AmpId,
-    string Purpose,
-    string Owner,
-    int Score,
-    bool Stale,
-    string StaleAfter,
-    IReadOnlyList<string> Present,
-    IReadOnlyList<string> Missing);
+    string Domain,
+    bool HandlesClientOrders,
+    string Health,
+    string Sla,
+    IReadOnlyList<string> DependsOn,
+    string? Repository);
 
-public sealed record PortfolioAmp(
+public sealed record TierAmp(
     string AmpId,
     string Name,
-    string Convention,
-    int AverageScore,
-    int WeakestScore,
-    bool Stale,
-    string StaleAfter,
-    int RepoCount,
-    int StaleRepos);
+    string Team,
+    string RegulatoryPerimeter,
+    IReadOnlyList<string> AssetClasses,
+    IReadOnlyList<string> Repositories,
+    string ScopeNote);
 
-public sealed record TierConflict(
-    string Repo,
-    string Field,
-    string CortexSays,
-    string RepoSays,
-    string Resolution);
+public sealed record TierRepository(
+    string Name,
+    string AmpId,
+    string Service,
+    int OkfDocuments,
+    int CodeFiles,
+    IReadOnlyList<string> OkfTypes,
+    bool Available);
+
+public sealed record TierCost(
+    int Tier1Tokens,
+    int Tier2Tokens,
+    int Tier3TokensInScope,
+    int Tier3TokensEverything,
+    bool Exact);
 
 public sealed record PortfolioReport(
-    string CortexName,
-    int PortfolioScore,
-    int WeakestScore,
-    string WeakestRepo,
-    bool CortexStale,
-    string CortexStaleAfter,
-    IReadOnlyList<PortfolioAmp> Amps,
-    IReadOnlyList<PortfolioRepo> Repos,
-    IReadOnlyList<TierConflict> Conflicts,
-    IReadOnlyList<string> StalenessCascades);
+    bool CorpusAvailable,
+    string CorpusStatus,
+    IReadOnlyList<TierService> Services,
+    IReadOnlyList<TierAmp> Amps,
+    IReadOnlyList<TierRepository> Repositories,
+    TierCost Cost,
+    IReadOnlyList<string> SharedDependencyWarning);
+
+// --- The three-stage funnel: discover on Tier 1, scope on Tier 2, design on Tier 3 ---
+
+public sealed record TierCandidate(
+    string Service,
+    string AmpId,
+    string Why);
+
+public sealed record Tier1Discovery(
+    IReadOnlyList<TierCandidate> Candidates,
+    IReadOnlyList<string> Excluded,
+    IReadOnlyList<string> CannotDetermineYet,
+    string Summary);
+
+public sealed record TierScopeDecision(
+    string Service,
+    bool InScope,
+    string Reason,
+    string Evidence);
+
+public sealed record Tier2Scoping(
+    IReadOnlyList<TierScopeDecision> Decisions,
+    string SharedLibraryVerdict,
+    string Summary);
+
+public sealed record ServiceChange(
+    string File,
+    string Change,
+    string Justification);
+
+public sealed record ServiceDesign(
+    string Service,
+    string Repository,
+    string Summary,
+    IReadOnlyList<ServiceChange> Changes,
+    IReadOnlyList<string> Unchanged,
+    IReadOnlyList<string> Risks,
+    IReadOnlyList<string> OpenQuestions);
+
+public sealed record PortfolioTierState(
+    string Status,
+    Tier1Discovery? Discovery,
+    Tier2Scoping? Scoping,
+    IReadOnlyList<ServiceDesign> Designs,
+    string? Model,
+    TierCost? Cost,
+    string? Error);
 
 public sealed record CommonCodeMember(
     string Name,
@@ -957,6 +1042,77 @@ public sealed record LibraryReview(
     IReadOnlyList<CurationCheck> Checks,
     string Verdict,
     int LibrarySize);
+
+public sealed record PatternApplyReview(
+    int Fidelity,
+    string Verdict,
+    IReadOnlyList<string> Followed,
+    IReadOnlyList<string> Ignored,
+    IReadOnlyList<string> Risks,
+    string PromptRecommendation,
+    string? Model);
+
+public sealed record PatternRunState(
+    string Status,
+    string? ModifiedClass,
+    string? GemmaModel,
+    PatternApplyReview? Review,
+    string? Error);
+
+// --- Making Gemma an SME: unaided attempt, grounded subagent answers, then the design ---
+
+public sealed record SmeUnaided(
+    string Attempt,
+    IReadOnlyList<string> Uncertain,
+    IReadOnlyList<string> Questions,
+    string? Model,
+    int FactScore,
+    IReadOnlyList<string> FactsHit,
+    IReadOnlyList<string> FactsMissed);
+
+public sealed record SmeAnswer(
+    string Question,
+    string Answer,
+    string Citation,
+    bool InPack);
+
+public sealed record SmeConsultation(
+    IReadOnlyList<SmeAnswer> Answers,
+    IReadOnlyList<string> Corrections,
+    IReadOnlyList<string> Unprompted,
+    string? Model,
+    int PackTokens);
+
+public sealed record SmeFactTrace(
+    string Name,
+    bool InUnaided,
+    bool Asked,
+    bool AnsweredBySme,
+    bool InDesign,
+    string Verdict);
+
+public sealed record SmeDesignStep(
+    string Step,
+    string Detail,
+    string Source);
+
+public sealed record SmeDesign(
+    string Summary,
+    IReadOnlyList<SmeDesignStep> Steps,
+    IReadOnlyList<string> Risks,
+    IReadOnlyList<string> OpenQuestions,
+    string? Model,
+    int FactScore,
+    IReadOnlyList<string> FactsHit,
+    IReadOnlyList<string> FactsMissed);
+
+public sealed record CryptoSmeState(
+    string Status,
+    SmeUnaided? Unaided,
+    SmeConsultation? Consultation,
+    SmeDesign? Design,
+    IReadOnlyList<SmeFactTrace> Trace,
+    string? Error);
 
 public sealed record PlanCheck(
     string Name,

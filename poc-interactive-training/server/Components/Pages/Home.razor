@@ -12,14 +12,14 @@
 @inject PatternLibraryService Library
 @inject IJSRuntime JS
 
-<PageTitle>OKF Context Navigator</PageTitle>
+<PageTitle>AI Support &mdash; Interactive Training</PageTitle>
 
 <div class="app-shell @(_drawerOpen ? null : "drawer-closed")">
 	<aside class="rail" aria-label="Lesson navigation">
-		<div class="brand-mark" aria-hidden="true">OKF</div>
+		<div class="brand-mark" aria-hidden="true">AI Support</div>
 		<div>
-			<p class="eyebrow">CES AI PRACTICE LAB</p>
-			<h1>Context<br />Navigator</h1>
+			<p class="eyebrow">CES AI REAL DEMOS</p>
+			<h1>Interactive<br />Training</h1>
 		</div>
 		<ol class="scene-list">
 			@for (var index = 0; index < Scenes.Length; index++)
@@ -45,8 +45,12 @@
 		<header class="stage-header">
 			<div><p class="eyebrow">SCENE @(_scene + 1) / @Scenes.Length</p><strong>@Scenes[_scene].Title</strong></div>
 			<div class="header-actions">
-				<button class="icon-button" type="button" title="Play narration" aria-label="Play narration" @onclick="Speak">?</button>
-				<button class="icon-button" type="button" title="Stop narration" aria-label="Stop narration" @onclick="StopSpeaking">¦</button>
+				<button class="icon-button" type="button" title="Play narration" aria-label="Play narration" @onclick="Speak">
+					<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4.5 2.6a.6.6 0 0 1 .92-.5l7 5.4a.6.6 0 0 1 0 1l-7 5.4a.6.6 0 0 1-.92-.5z" /></svg>
+				</button>
+				<button class="icon-button" type="button" title="Stop narration" aria-label="Stop narration" @onclick="StopSpeaking">
+					<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4.4 2.8h2.4v10.4H4.4zM9.2 2.8h2.4v10.4H9.2z" /></svg>
+				</button>
 			</div>
 		</header>
 
@@ -67,6 +71,186 @@
 			@switch (_scene)
 			{
 				case 0:
+					<div class="intro-scene">
+						<header class="intro-hero">
+							<p class="kicker">DIRECTOR OF AI &middot; PROGRAMME OVERVIEW</p>
+							<h2 id="scene-title">Help teams adopt AI<br /><em>without asking them to take it on trust.</em></h2>
+							<p class="lede">
+								Six priorities, thirty-three working demonstrations. Every scene ends in a number, and every scene
+								says whether that number came from running something or from asking a model. Where the honest answer
+								is &ldquo;we have not built this yet&rdquo;, it is listed at the bottom of this page rather than left out.
+							</p>
+							<p class="intro-nav-hint">
+								Blue references jump straight to the scene. Nothing below has to be read in order &mdash;
+								@SceneLink("leadership-map") is the shortest path if you have twenty minutes.
+							</p>
+						</header>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">0</span><div><strong>Before any of it: the prerequisites</strong><small>deterministic &middot; no model involved</small></div></header>
+							<div class="audit-body">
+								<p>
+									Two controls have to hold before agentic delivery is safe to scale, and neither may depend on a model &mdash;
+									a prerequisite that can hallucinate is not a prerequisite. @SceneLink("phase-zero") enumerates and tiers
+									every agent and blocks anything unregistered; @SceneLink("action-authority") decides authority per exact
+									action against a registered envelope, so approving &ldquo;deploy&rdquo; never means approving deployment.
+									@SceneLink("ephemeral-test") is the third: realistic test data is the best fixture and the worst leak, so the
+									ticket is gated before it leaves the boundary and the audit record keeps references rather than payloads.
+								</p>
+								<p class="ctx-method">These three run with no model at all. That is the design, not a limitation.</p>
+							</div>
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Training and success sharing</strong><small>practical, grounded in real scenarios, adaptable</small></div></header>
+							<div class="audit-body">
+								<p>
+									The curriculum starts from a single defensible investigation: @SceneLink("welcome") follows a JIRA story to
+									one code path, @SceneLink("why-okf") explains why a knowledge graph beats keyword search,
+									@SceneLink("artifact-tree") shows the artifact structure that makes it reviewable, and
+									@SceneLink("jira-trace") walks the evidence chain step by step.
+								</p>
+								<p>
+									Practice, not lecture: @SceneLink("knowledge-check") tests the mental model, @SceneLink("prompt-challenge")
+									has Claude coach a learner's prompt against a rubric, and @SceneLink("framing-lab") measures how much the
+									asker's own phrasing moved the answer &mdash; the most expensive bias is the one you introduced yourself.
+									@SceneLink("animation-demo") and @SceneLink("image-demo") exist to make the point that motion and bitmaps
+									aid comprehension but cannot carry the authoritative content.
+								</p>
+								<p>
+									Sharing is @SceneLink("pattern-library"): a shared prompt library scales whatever you put in it, including
+									the mistakes, so contributions are admitted on evidence, preconditions and known failure modes rather than
+									enthusiasm. @SceneLink("leadership-map") is the same material reordered for an executive audience.
+								</p>
+							</div>
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>Quality assurance and agentic readiness</strong><small>is the work ready for an agent, and would we notice if it were not</small></div></header>
+							<div class="audit-body">
+								<p>
+									Most agent failures are underspecified tickets, not weak models. @SceneLink("ticket-gate") scores the story
+									deterministically before any model sees it, then has Claude rewrite it so it would pass &mdash; and it uses a
+									zero-token-cost model for the grading, which is the point.
+								</p>
+								<p>
+									Green tests are not coverage. @SceneLink("regression-adequacy") compiles and runs the suite, then injects one
+									deliberate defect at a time; a defect that survives is a defect the suite would have shipped.
+									@SceneLink("drift-scorecard") holds the golden baseline &mdash; a frozen commit, its ticket, and the patch a
+									human actually wrote &mdash; and scores a candidate patch functionally, structurally and semantically.
+									@SceneLink("trap-hunt") does the same for cloud design against planted defects, and
+									@SceneLink("plan-first") refuses to accept an implementation before a readable plan.
+								</p>
+							</div>
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Adoption enablement and token optimisation</strong><small>right model, right task, right context</small></div></header>
+							<div class="audit-body">
+								<p>
+									@SceneLink("model-comparison") asks three models the same question and has a judge blind-score them against
+									live vendor documentation. @SceneLink("token-economics") makes the harder argument: free is the wrong word and
+									cost per token is the wrong unit, because a model that fails a third of the time is billed for every failure.
+									Budget in cost per successful outcome.
+								</p>
+								<p>
+									Grounding is what makes the cheap model viable. @SceneLink("round-trip") measures how much behaviour survives a
+									class &rarr; story &rarr; class round trip; @SceneLink("llm-support") harvests a specialist model's answer past
+									another model's knowledge boundary; @SceneLink("crypto-sme") is the sharpest version &mdash; Claude answers
+									unaided, consults a Gemma grounded on vendor documentation, then designs, and the delta is measured against
+									verified facts. That scene is also where the uncomfortable finding lives: delegation only retrieves what the
+									delegator thought to ask.
+								</p>
+							</div>
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">4</span><div><strong>Agent effectiveness monitoring</strong><small>how much context is enough, and how would we know</small></div></header>
+							<div class="audit-body">
+								<p>
+									@SceneLink("context-curve") is the direct implementation of the priority: the same task and the same model, run
+									against a cumulative ladder of context, scored against sealed criteria the model never sees. Add context until
+									quality plateaus and remove it until quality collapses &mdash; the plateau is the token budget, measured rather
+									than argued. @SceneLink("plan-first") supplies the &ldquo;describe how you would take this from 1.0 to 1.1, and
+									name the context you used&rdquo; artifact, and @SceneLink("drift-scorecard") is where a sampled production change
+									would be scored.
+								</p>
+							</div>
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">5</span><div><strong>Enterprise architecture consolidation</strong><small>three real repositories, not a thought experiment</small></div></header>
+							<div class="audit-body">
+								<p>
+									@SceneLink("common-code") runs embedding similarity over three real trading repositories to find duplication by
+									meaning rather than by name, then has Claude design the consolidation and Gemma write it &mdash; the expensive
+									model billed for judgement, not for typing. @SceneLink("audit-code") rates the code deterministically with Roslyn
+									first, so the model's recommendations rest on reproducible numbers.
+								</p>
+								<p>
+									Modernisation is the same argument over a longer horizon: @SceneLink("modernize") treats legacy comprehension as a
+									recurring token tax worth paying down once, and @SceneLink("cobol-migration") proves it by compiling and executing
+									every migration against outputs captured from the real legacy program &mdash; nothing in that scene is graded by a
+									model. @SceneLink("llm-language") and @SceneLink("language-test") ask the speculative question: what if the business
+									rules lived in a language a human and an LLM read identically.
+								</p>
+							</div>
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">6</span><div><strong>Repository context and knowledge mapping</strong><small>Cortex &rarr; APM ID &rarr; repository</small></div></header>
+							<div class="audit-body">
+								<p>
+									@SceneLink("portfolio-tiers") is the three-tier model end to end: Cortex maps the estate and finds candidate
+									services, the APM record bounds what a team actually owns and settles scope, and the repository's own OKF bundle
+									is the only tier that can name a file. Load them in the wrong order and you either miss a service or bury the model
+									in context it should never have seen.
+								</p>
+								<p>
+									@SceneLink("audit-context") is the cheap gate in front of it &mdash; a deterministic scan plus a classifier decide
+									whether a repository has usable context before anyone spends tokens on it. @SceneLink("artifact-tree") and
+									@SceneLink("why-okf") define what a Tier 3 artifact set has to contain to be worth loading.
+								</p>
+							</div>
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">!</span><div><strong>What the role calls for and this lab does not yet do</strong><small>stated here so nobody has to discover it in a demo</small></div></header>
+							<div class="audit-body">
+								<p class="rt-reco">Thirty-three scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
+								<table class="audit-table">
+									<thead><tr><th>Missing capability</th><th>Nearest scene</th><th>Why the scene is not sufficient</th></tr></thead>
+									<tbody>
+										<tr class="p0-req"><td>Golden baseline as a maintained asset</td><td>@SceneLink("drift-scorecard")</td><td>One frozen case is a demonstration. There is no story for how cases are chosen, versioned, or retired as the code moves under them.</td></tr>
+										<tr class="p0-req"><td>Sampling method for production review</td><td>@SceneLink("drift-scorecard")</td><td>&ldquo;A representative percentage&rdquo; needs a defined rate, a selection method and a reviewer. Without those it is anecdote, not monitoring.</td></tr>
+										<tr class="p0-req"><td>Did the training change behaviour</td><td>@SceneLink("knowledge-check")</td><td>Quiz answers are not competency. Nothing tracks a learner over time or measures delivery outcomes before and after.</td></tr>
+										<tr class="p0-req"><td>Success-story capture loop</td><td>@SceneLink("pattern-library")</td><td>The library admits prompts. It does not capture outcomes, lessons learned, or the failures that are usually more instructive.</td></tr>
+										<tr class="p0-req"><td>Vendor model drift over time</td><td>@SceneLink("drift-scorecard")</td><td>That scene measures agent output against a golden patch. It does not detect the provider silently changing the model underneath you.</td></tr>
+										<tr class="p0-req"><td>Runtime incident response and observability</td><td>&mdash;</td><td>No scene. Covered in the written strategy only. This is the gap that matters most once agents touch production.</td></tr>
+										<tr class="p0-req"><td>Portfolio-level ROI baseline</td><td>@SceneLink("token-economics")</td><td>Per-task cost modelling with illustrative rates. It does not roll up to a programme baseline anyone could defend in a budget review.</td></tr>
+										<tr class="p0-req"><td>Operating model and intake</td><td>&mdash;</td><td>No scene. Who requests an engagement, who does the work, and what teams are accountable for is undefined.</td></tr>
+									</tbody>
+								</table>
+							</div>
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">&#8253;</span><div><strong>How to read the numbers</strong><small>the caveats that belong in the room</small></div></header>
+							<div class="audit-body">
+								<ul class="rt-list warn">
+									<li><strong>Model-scored numbers are judgement, not measurement.</strong> Scenes state which of the two they are. Keyword-based recall scores measure vocabulary, not correctness &mdash; treat them as a floor.</li>
+									<li><strong>Most results are single runs.</strong> These models are not deterministic. A difference of a few points between two arms is noise until it is repeated.</li>
+									<li><strong>The fixtures are synthetic except where stated.</strong> @SceneLink("common-code") and @SceneLink("portfolio-tiers") use three real repositories; almost everything else is a purpose-built fixture with known planted answers.</li>
+									<li><strong>Similarity thresholds are corpus-specific.</strong> The consolidation threshold was calibrated on this corpus and separates duplicates from unrelated code by a narrow margin. It will not transfer unchanged.</li>
+									<li><strong>@SceneLink("regression-adequacy") executes mutated code in-process.</strong> That is acceptable on a laptop and not acceptable on a shared host.</li>
+									<li><strong>This is a proof of concept.</strong> It exists to make the strategy arguable with evidence, not to be a production platform.</li>
+								</ul>
+							</div>
+						</section>
+					</div>
+					break;
+
+				case 1:
 					<section class="opening-scene">
 						<div class="opening-copy">
 							<p class="kicker">GROUND BEFORE YOU GENERATE</p>
@@ -74,11 +258,11 @@
 							<p class="lede">A guided investigation from a JIRA story, through an OKF knowledge graph, to one defensible implementation path.</p>
 							@if (!_started)
 							{
-								<button class="primary-command" type="button" @onclick="StartLesson">Start the investigation <span>?</span></button>
+								<button class="primary-command" type="button" @onclick="StartLesson">Start the investigation <span>&rarr;</span></button>
 							}
 							else
 							{
-								<button class="primary-command" type="button" @onclick="Next">Continue <span>?</span></button>
+								<button class="primary-command" type="button" @onclick="Next">Continue <span>&rarr;</span></button>
 							}
 						</div>
 						<div class="path-visual" aria-label="JIRA story connects through OKF to code and tests">
@@ -90,7 +274,7 @@
 						</div>
 					</section>
 					break;
-				case 1:
+				case 2:
 					<section>
 						<p class="kicker">SEARCH FINDS WORDS. CONTEXT FINDS MEANING.</p>
 						<h2 id="scene-title">Why OKF changes the investigation</h2>
@@ -108,7 +292,7 @@
 						</div>
 					</section>
 					break;
-				case 2:
+				case 3:
 					<section>
 						<p class="kicker">THE CONTEXT ARTIFACT</p>
 						<h2 id="scene-title">A map the human and model can inspect</h2>
@@ -138,7 +322,7 @@
 						</div>
 					</section>
 					break;
-				case 3:
+				case 4:
 					<section>
 						<p class="kicker">DOES THE CONTEXT ACTUALLY CARRY THE WORK?</p>
 						<h2 id="scene-title">From FUL-1842 to a grounded change</h2>
@@ -257,7 +441,7 @@
 						}
 					</section>
 					break;
-				case 4:
+				case 5:
 					<section>
 						<p class="kicker">MOTION WITH A PURPOSE</p>
 						<h2 id="scene-title">Watch context narrow the search</h2>
@@ -275,7 +459,7 @@
 						<button class="secondary-command replay-command" type="button" @onclick="ReplayAnimation">? Replay animation</button>
 					</section>
 					break;
-				case 5:
+				case 6:
 					<section>
 						<p class="kicker">REVIEWED VISUAL ASSET</p>
 						<h2 id="scene-title">The same flow as an image</h2>
@@ -292,7 +476,7 @@
 						</div>
 					</section>
 					break;
-				case 6:
+				case 7:
 					<section>
 						<p class="kicker">CHECK THE MENTAL MODEL</p>
 						<h2 id="scene-title">Three decisions before code</h2>
@@ -316,7 +500,7 @@
 						</div>
 					</section>
 					break;
-				case 7:
+				case 8:
 					<section>
 						<p class="kicker">YOU DRIVE THE INVESTIGATION</p>
 						<h2 id="scene-title">Write the prompt Claude will review</h2>
@@ -326,6 +510,7 @@
 								<div class="rubric-list"><span>Index first</span><span>Source paths</span><span>Concept + boundary</span><span>ADR constraint</span><span>Code + tests</span><span>Open questions</span></div>
 								<label for="learner-prompt">Your investigation prompt</label>
 								<textarea id="learner-prompt" maxlength="6000" @bind="_learnerPrompt" @bind:event="oninput" placeholder="Investigate FUL-1842 by starting with..."></textarea>
+								<p class="ctx-method">Pre-filled with a worked example so a walkthrough can go straight to the review. Edit or clear it to see the rubric respond &mdash; deleting the numbered steps is the fastest way to show what a weak prompt costs.</p>
 								<div class="prompt-actions"><small>@_learnerPrompt.Length / 6000</small><button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || _learnerPrompt.Trim().Length < 40 || _session?.ReviewStatus is "queued" or "running")" @onclick="SubmitReview">@ReviewButtonText</button></div>
 								@if (!_bridgeConnected)
 								{
@@ -382,7 +567,7 @@
 						</div>
 					</section>
 					break;
-				case 8:
+				case 9:
 					<section>
 						<p class="kicker">CAPABILITY COMPARISON</p>
 						<h2 id="scene-title">Ask three models the same question</h2>
@@ -558,7 +743,7 @@
 						}
 					</section>
 					break;
-				case 9:
+				case 10:
 					<section>
 						<p class="kicker">ONE MODEL GROUNDS ANOTHER</p>
 						<h2 id="scene-title">Using a specialist model as a source, not an oracle</h2>
@@ -678,7 +863,7 @@
 						</section>
 					</section>
 					break;
-				case 10:
+				case 11:
 					<section>
 						<p class="kicker">GROUNDING ROUND TRIP</p>
 						<h2 id="scene-title">Class ? JIRA story ? class</h2>
@@ -771,7 +956,7 @@
 						</section>
 					</section>
 					break;
-				case 11:
+				case 12:
 					<section>
 						<p class="kicker">MODERNIZE FOR AI-FRIENDLINESS</p>
 						<h2 id="scene-title">Spend comprehension tokens once</h2>
@@ -838,7 +1023,7 @@
 						</section>
 					</section>
 					break;
-				case 12:
+				case 13:
 					<section>
 						<p class="kicker">AGENTIC-READINESS AUDIT · CODE</p>
 						<h2 id="scene-title">Rate the code deterministically, then let Gemma advise</h2>
@@ -943,7 +1128,7 @@
 						</section>
 					</section>
 					break;
-				case 13:
+				case 14:
 					<section>
 						<p class="kicker">AGENTIC-READINESS AUDIT · CONTEXT</p>
 						<h2 id="scene-title">Does the context actually help an agent?</h2>
@@ -1053,7 +1238,7 @@
 						</section>
 					</section>
 					break;
-				case 14:
+				case 15:
 					<section>
 						<p class="kicker">A LANGUAGE FOR THE LOGIC LAYER</p>
 						<h2 id="scene-title">Business rules in a language built for models</h2>
@@ -1241,7 +1426,7 @@
 						</section>
 					</section>
 					break;
-				case 15:
+				case 16:
 					<section>
 						<p class="kicker">DOES THE REPRESENTATION CHANGE THE OUTCOME?</p>
 						<h2 id="scene-title">The same ticket, the same model, no context either way</h2>
@@ -1386,7 +1571,7 @@
 						}
 					</section>
 					break;
-				case 16:
+				case 17:
 					<section>
 						<p class="kicker">GROUNDING, GRADED BY A COMPILER</p>
 						<h2 id="scene-title">Three migrations of real Enterprise COBOL</h2>
@@ -1512,7 +1697,7 @@ cobol85  -&gt; 000000</pre>
 							@if (migration.Status == "completed" && migration.Arms.Count == 3)
 							{
 								<section class="rt-qa">
-									<header class="rt-head"><span class="rt-step">?</span><div><strong>Verdict</strong><small>decided by execution, not by a model</small></div></header>
+									<header class="rt-head"><span class="rt-step">&#10003;</span><div><strong>Verdict</strong><small>decided by execution, not by a model</small></div></header>
 									<table class="audit-table">
 										<thead><tr><th>Arm</th><th>Grounding</th><th>Cases passed</th><th>Prompt tokens</th></tr></thead>
 										<tbody>
@@ -1535,7 +1720,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 17:
+				case 18:
 					<section>
 						<p class="kicker">STOP BAD WORK BEFORE IT STARTS</p>
 						<h2 id="scene-title">A ticket an agent cannot act on</h2>
@@ -1619,7 +1804,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 18:
+				case 19:
 					<section>
 						<p class="kicker">FIND WHAT WAS PLANTED</p>
 						<h2 id="scene-title">Auditing a cloud design an AI helped write</h2>
@@ -1699,7 +1884,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 19:
+				case 20:
 					<section>
 						<p class="kicker">IS THE AGENT STILL DOING THE JOB?</p>
 						<h2 id="scene-title">One golden case, three layers of drift</h2>
@@ -1789,7 +1974,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 20:
+				case 21:
 					<section>
 						<p class="kicker">PHASE 0 — BEFORE ANY OF THIS IS SAFE</p>
 						<h2 id="scene-title">Name it, tier it, and gate what it sees</h2>
@@ -1904,7 +2089,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 21:
+				case 22:
 					<section>
 						<p class="kicker">HOW MUCH CONTEXT DOES THE CHEAP MODEL NEED?</p>
 						<h2 id="scene-title">Same ticket, same code, three levels of documentation</h2>
@@ -2076,7 +2261,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 22:
+				case 23:
 					<section>
 						<p class="kicker">AUTHORITY IS PER ACTION, NOT PER AGENT</p>
 						<h2 id="scene-title">"Approve deploy" is not approval</h2>
@@ -2122,7 +2307,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 23:
+				case 24:
 					<section>
 						<p class="kicker">THE BIAS YOU BRING</p>
 						<h2 id="scene-title">The same question, asked three ways</h2>
@@ -2200,11 +2385,45 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 24:
+				case 25:
 					<section>
 						<p class="kicker">GREEN TESTS ARE NOT COVERAGE</p>
 						<h2 id="scene-title">Does the suite cover the risk this change adds?</h2>
-						<p class="rt-intro">The fixture is <strong>compiled and executed</strong>, then one deliberate defect is injected at a time and the tests are run again. A defect the tests fail to notice is a defect the suite would have shipped. No model is involved in the verdict — this is executed evidence, like the COBOL oracle.</p>
+						<p class="rt-intro">Line coverage asks <em>"did a test execute this line?"</em> — a test with no assertions satisfies it. Mutation testing asks the question that actually matters: <strong>"would a test have noticed if this line were wrong?"</strong></p>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">?</span><div><strong>What a mutation score is</strong><small>and why it is called that</small></div></header>
+							<div class="audit-body">
+								<p class="rt-reco">The technique dates to the 1970s and the name is a biological metaphor. You breed small variants of a working program — <strong>mutants</strong> — and see how many the tests can detect.</p>
+								<div class="pipeline-chain">
+									<span>compile</span><span>run baseline</span><span>inject one defect</span><span>re-run tests</span><span>killed or survived</span><span>score</span>
+								</div>
+								<table class="audit-table">
+									<thead><tr><th>Outcome</th><th>What happened</th><th>What it means</th></tr></thead>
+									<tbody>
+										<tr class="p0-opt"><td><strong>Killed</strong></td><td>At least one test failed against the mutated code.</td><td>The suite would have caught this defect in review or CI.</td></tr>
+										<tr class="p0-req"><td><strong>Survived</strong></td><td>Every test still passed against code that is measurably wrong.</td><td>The suite is blind to this defect. It would ship green.</td></tr>
+									</tbody>
+								</table>
+								<p class="rt-reco"><strong>Mutation score = killed ÷ viable mutants.</strong> A score of 100% does not mean the code is correct — it means the suite noticed every defect <em>this tool knows how to inject</em>. It is a lower bound on test sensitivity, not a proof of correctness.</p>
+								<h4>The defects injected here</h4>
+								<table class="audit-table">
+									<thead><tr><th>Operator</th><th>Mutation</th><th>The real bug it stands in for</th></tr></thead>
+									<tbody>
+										<tr><td>Boundary widened</td><td><code>&gt;</code> → <code>&gt;=</code>, <code>&lt;</code> → <code>&lt;=</code></td><td>Off-by-one at a threshold — the classic fee, tier and limit defect.</td></tr>
+										<tr><td>Boundary narrowed</td><td><code>&gt;=</code> → <code>&gt;</code>, <code>&lt;=</code> → <code>&lt;</code></td><td>An eligible case silently excluded at the edge.</td></tr>
+										<tr><td>Arithmetic flipped</td><td><code>+</code> → <code>-</code>, <code>-</code> → <code>+</code></td><td>A sign error in a money calculation.</td></tr>
+										<tr><td>Threshold shifted</td><td>numeric literal → value + 1</td><td>A rate, cap or grace period that quietly drifted from policy.</td></tr>
+									</tbody>
+								</table>
+								<h4>Two rules that keep the number honest</h4>
+								<ul class="rt-list warn">
+									<li><strong>The baseline must be green first.</strong> If the unmutated suite already fails, every mutant looks killed and the score is meaningless. This refuses to run in that state.</li>
+									<li><strong>Mutants that will not compile are excluded, not counted as kills.</strong> No test could ever have caught them, so counting them would inflate the score for free — a common way mutation tools flatter a suite.</li>
+								</ul>
+								<p class="ctx-method">A timeout also counts as a kill: an infinite loop caused by a flipped operator is a detected defect, just detected slowly.</p>
+							</div>
+						</section>
 
 						<section class="rt-box">
 							<header class="rt-head"><span class="rt-step">1</span><div><strong>The enhancement</strong><small>what the change is meant to add</small></div></header>
@@ -2235,7 +2454,7 @@ cobol85  -&gt; 000000</pre>
 							}
 							else
 							{
-								<section class="rt-qa">
+								<section class="rt-box">
 									<header class="rt-head"><span class="rt-step">4</span><div><strong>Result</strong><small>@mutation.KilledMutants of @mutation.TotalMutants defects caught</small></div></header>
 									<div class="audit-scoreline">
 										<span class="ctx-label @(mutation.MutationScore >= 80 ? "ctx-rich" : mutation.MutationScore >= 50 ? "ctx-adequate" : "ctx-poor")">@mutation.MutationScore%</span>
@@ -2250,7 +2469,7 @@ cobol85  -&gt; 000000</pre>
 												<tr class="@(mutant.Killed ? "p0-opt" : "p0-req")">
 													<td>@mutant.Line</td>
 													<td>@mutant.Description</td>
-													<td><code>@mutant.Original</code> ? <code>@mutant.Mutated</code></td>
+													<td><code>@mutant.Original</code> → <code>@mutant.Mutated</code></td>
 													<td>@(mutant.Killed ? $"caught by {mutant.Detail}" : "SURVIVED — no test failed")</td>
 												</tr>
 											}
@@ -2258,11 +2477,108 @@ cobol85  -&gt; 000000</pre>
 									</table>
 									<p class="ctx-method">Every surviving row is a real behaviour change the suite accepted. Add a test until the rows that matter go away.</p>
 								</section>
+
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">5</span><div><strong>Gemma 4 proposes the missing tests</strong><small>closing named survivors, not "more coverage"</small></div></header>
+									<div class="audit-body">
+										<p class="rt-reco">A surviving mutant is a <strong>falsifiable target</strong>: either a proposed test fails against the mutated code or it does not. That is why the model is asked to close specific survivors rather than to improve the suite in general — the instruction can be checked.</p>
+										<div class="rt-actions">
+											<small>Gemma sees the mutation report, the code and the existing tests.</small>
+											<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || GuidanceBusy || mutation.Mutants.All(item => item.Killed))" @onclick="RunRegressionGuidance">@GuidanceButtonText</button>
+										</div>
+										@if (mutation.Mutants.All(item => item.Killed))
+										{
+											<p class="ctx-method">Nothing survived, so there is nothing to remediate.</p>
+										}
+										else if (!_bridgeConnected)
+										{
+											<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running.</p>
+										}
+										@if (_session?.RegressionGuidance.Error is { } guidanceError)
+										{
+											<div class="compare-status failed" role="alert">@guidanceError</div>
+										}
+										@if (_session?.RegressionGuidance.Remediation is { } remediation)
+										{
+											<div class="coach-label">Proposed by @remediation.Model</div>
+											<p class="rt-reco">@remediation.Summary</p>
+											<table class="audit-table">
+												<thead><tr><th>Test</th><th>Kills</th><th>Scenario</th><th>Assertion</th></tr></thead>
+												<tbody>
+													@foreach (var proposal in remediation.Tests)
+													{
+														<tr><td><code>@proposal.Name</code></td><td>@proposal.TargetsSurvivor</td><td>@proposal.Behaviour</td><td>@proposal.Assertion</td></tr>
+													}
+												</tbody>
+											</table>
+											@if (remediation.NotWorthTesting.Count > 0)
+											{
+												<h4>Deliberately not tested</h4>
+												<ul class="rt-list">@foreach (var item in remediation.NotWorthTesting) { <li>@item</li> }</ul>
+											}
+										}
+										else if (_session?.RegressionGuidance.Status == "advising")
+										{
+											<div class="rt-pending"><span></span>Gemma is working out which tests would close the survivors…</div>
+										}
+									</div>
+								</section>
+
+								<section class="rt-qa">
+									<header class="rt-head"><span class="rt-step">6</span><div><strong>Claude Opus 4.8 checks the proposals</strong><small>would each test actually kill what it claims?</small></div></header>
+									@if (_session?.RegressionGuidance.Review is { } guidanceReview)
+									{
+										<div class="coach-label">Reviewed by @guidanceReview.Model</div>
+										<p class="rt-reco">@guidanceReview.Verdict</p>
+										<table class="audit-table">
+											<thead><tr><th>Proposed test</th><th>Would it kill the mutant?</th><th>Reasoning traced against the code</th></tr></thead>
+											<tbody>
+												@foreach (var testCheck in guidanceReview.Assessments)
+												{
+													<tr class="@(testCheck.WouldKill ? "p0-opt" : "p0-req")">
+														<td><code>@testCheck.Name</code></td>
+														<td>@(testCheck.WouldKill ? "yes" : "NO")</td>
+														<td>@testCheck.Reasoning</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+										@if (guidanceReview.Gaps.Count > 0)
+										{
+											<h4>Survivors still uncovered</h4>
+											<ul class="rt-list warn">@foreach (var gap in guidanceReview.Gaps) { <li>@gap</li> }</ul>
+										}
+										@if (guidanceReview.Overreach.Count > 0)
+										{
+											<h4>Asserts implementation detail — will break on refactoring</h4>
+											<ul class="rt-list warn">@foreach (var item in guidanceReview.Overreach) { <li>@item</li> }</ul>
+										}
+										@if (!string.IsNullOrWhiteSpace(guidanceReview.NextStep))
+										{
+											<h4>Before trusting any of this</h4>
+											<p class="rt-reco">@guidanceReview.NextStep</p>
+										}
+									}
+									else if (_session?.RegressionGuidance.Status is "advising" or "reviewing")
+									{
+										<div class="rt-pending"><span></span>Claude is tracing each proposed assertion against the code…</div>
+									}
+									else
+									{
+										<div class="rt-placeholder">Claude's assessment of Gemma's proposals will appear here.</div>
+									}
+									<h4>Read this carefully</h4>
+									<ul class="rt-list warn">
+										<li>Both model stages are <strong>opinions about tests that do not exist yet</strong>. The mutation score above is executed evidence; nothing below step 4 is.</li>
+										<li>The only real proof is to write the proposed tests and re-run the mutation test. If the score does not move, the proposal did not work — whatever either model said about it.</li>
+										<li>Claude reviewing Gemma is two models in agreement, not verification. It catches obvious errors; it cannot make an untested claim true.</li>
+									</ul>
+								</section>
 							}
 						}
 					</section>
 					break;
-				case 25:
+				case 26:
 					<section>
 						<p class="kicker">REAL DATA, NEVER COMMITTED</p>
 						<h2 id="scene-title">The best test data is also the worst leak</h2>
@@ -2348,109 +2664,244 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 26:
+				case 27:
 					<section>
-						<p class="kicker">THREE TIERS, ONE SOURCE OF TRUTH</p>
-						<h2 id="scene-title">Cortex routes. The repo decides.</h2>
-						<p class="rt-intro">A tier hierarchy only earns its keep when you can say what happens if the tiers <strong>disagree</strong>. The rule: Tier 3 is closest to the code and is authoritative on specifics; Tier 1 exists for routing. And freshness never cascades downward — a parent that looks current says nothing about its children.</p>
+						<p class="kicker">DISCOVER WIDE, SCOPE NARROW, DESIGN DEEP</p>
+						<h2 id="scene-title">Each tier answers a question the tier below it cannot</h2>
+						<p class="rt-intro">Cortex maps the whole estate. An <strong>APM ID</strong> bounds what a team owns. A repository's <strong>/okf</strong> bundle is the atomic truth about its own code. The value is not that three tiers exist — it is that each one answers a question the others cannot, and loading them in the wrong order either misses services or buries the model in irrelevant context.</p>
 
 						<div class="rt-actions">
 							<small>Deterministic — no model call, works without the bridge.</small>
-							<button class="primary-command compact" type="button" @onclick="RunPortfolio">Map the portfolio</button>
+							<button class="primary-command compact" type="button" @onclick="RunPortfolio">Load the tiers</button>
 						</div>
 
 						@if (_portfolio is { } portfolio)
 						{
 							<section class="rt-box">
-								<header class="rt-head"><span class="rt-step">1</span><div><strong>Tier 1 — @portfolio.CortexName</strong><small>routing only</small></div></header>
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>Tier 1 — Cortex global ecosystem</strong><small>@portfolio.Services.Count services · structure, ownership, health</small></div></header>
 								<div class="audit-body">
-									<div class="audit-scoreline">
-										<span class="ctx-label @(portfolio.PortfolioScore >= 70 ? "ctx-rich" : portfolio.PortfolioScore >= 45 ? "ctx-adequate" : "ctx-poor")">@portfolio.PortfolioScore</span>
-										<div><strong>Portfolio average</strong><small>weakest repo: @portfolio.WeakestRepo at @portfolio.WeakestScore</small></div>
-										<p>An agent routed to the weakest repo gets the weakest experience. The average is the headline; the minimum is the risk.</p>
-									</div>
-									@if (portfolio.CortexStale)
-									{
-										<div class="compare-status failed" role="alert">The Cortex tier itself expired on @portfolio.CortexStaleAfter. Portfolio routing is running on unverified knowledge.</div>
-									}
+									<table class="audit-table">
+										<thead><tr><th>Service</th><th>APM</th><th>Domain</th><th>Client orders</th><th>Health</th><th>Depends on</th></tr></thead>
+										<tbody>
+											@foreach (var service in portfolio.Services)
+											{
+												<tr class="@(service.HandlesClientOrders ? "p0-req" : "p0-opt")">
+													<td>@service.Name</td>
+													<td>@service.AmpId</td>
+													<td>@service.Domain</td>
+													<td>@(service.HandlesClientOrders ? "yes" : "no")</td>
+													<td>@service.Health</td>
+													<td>@(service.DependsOn.Count == 0 ? "—" : string.Join(", ", service.DependsOn))</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="ctx-method">Tier 1 answers <em>what exists and what touches what</em>. It does not record regulatory perimeter, asset-class scope, or how a team accepts change — which is exactly why stopping here is dangerous.</p>
 								</div>
 							</section>
 
+							@if (portfolio.SharedDependencyWarning.Count > 0)
+							{
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">!</span><div><strong>The trap in this estate</strong><small>deterministic — a structural fact, not an opinion</small></div></header>
+									<ul class="rt-list warn">@foreach (var line in portfolio.SharedDependencyWarning) { <li>@line</li> }</ul>
+								</section>
+							}
+
 							<section class="rt-box">
-								<header class="rt-head"><span class="rt-step">2</span><div><strong>Tier 2 — AMP groups</strong><small>convention and ownership · select to drill down</small></div></header>
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Tier 2 — APM records</strong><small>team ownership bounds</small></div></header>
 								<div class="audit-body">
 									<table class="audit-table">
-										<thead><tr><th>AMP ID</th><th>Group</th><th>Convention</th><th>Average</th><th>Weakest</th><th>Stale repos</th></tr></thead>
+										<thead><tr><th>APM</th><th>Group / team</th><th>Regulatory perimeter</th><th>Asset classes</th><th>Repositories</th></tr></thead>
 										<tbody>
 											@foreach (var amp in portfolio.Amps)
 											{
 												var ampId = amp.AmpId;
 												<tr class="p0-clickable @(_expandedAmp == ampId ? "curve-plateau" : null)" @onclick="() => ToggleAmp(ampId)">
 													<td>@amp.AmpId</td>
-													<td>@amp.Name</td>
-													<td>@amp.Convention</td>
-													<td>@amp.AverageScore</td>
-													<td>@amp.WeakestScore</td>
-													<td>@amp.StaleRepos / @amp.RepoCount@(amp.Stale ? " · tier stale" : string.Empty)</td>
+													<td>@amp.Name<br /><small>@amp.Team</small></td>
+													<td>@amp.RegulatoryPerimeter</td>
+													<td>@string.Join(", ", amp.AssetClasses)</td>
+													<td>@(amp.Repositories.Count == 0 ? "—" : string.Join(", ", amp.Repositories))</td>
 												</tr>
+												@if (_expandedAmp == ampId)
+												{
+													<tr><td colspan="5"><em>Scope note:</em> @amp.ScopeNote</td></tr>
+												}
 											}
 										</tbody>
 									</table>
+									<p class="ctx-method">Tier 2 answers <em>who owns this and what are they allowed to change</em>. Select a row for its scope note.</p>
 								</div>
 							</section>
 
 							<section class="rt-box">
-								<header class="rt-head"><span class="rt-step">3</span><div><strong>Tier 3 — repos</strong><small>authoritative on specifics@(_expandedAmp is null ? "" : $" · filtered to {_expandedAmp}")</small></div></header>
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>Tier 3 — repository /okf bundles</strong><small>atomic truth, read from disk</small></div></header>
+								<div class="repo-grid">
+									@foreach (var repo in portfolio.Repositories)
+									{
+										<article class="repo-card">
+											<h3>@repo.Name</h3>
+											<p class="repo-asset">@repo.AmpId · @repo.Service</p>
+											<p class="repo-diverge">@(repo.Available ? string.Join(", ", repo.OkfTypes) : "OKF bundle not found on disk")</p>
+											<p class="repo-stats">@repo.OkfDocuments OKF documents · @repo.CodeFiles source files</p>
+										</article>
+									}
+								</div>
+								<p class="ctx-method">@portfolio.CorpusStatus Tier 3 answers <em>how this repository actually works</em> — stage sequence, contracts, documented behaviour. It cannot tell you which repositories to open.</p>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">4</span><div><strong>The design brief</strong><small>FRAUD-2140 · what the estate is being asked to absorb</small></div></header>
+								<pre class="rt-code">@PortfolioTierSamples.DesignBrief</pre>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">5</span><div><strong>Claude Opus 4.8 walks the funnel</strong><small>one tier per stage, deliberately</small></div></header>
 								<div class="audit-body">
-									<table class="audit-table">
-										<thead><tr><th>Repo</th><th>AMP</th><th>Score</th><th>Present</th><th>Missing</th><th>Freshness</th></tr></thead>
-										<tbody>
-											@foreach (var repo in portfolio.Repos.Where(repo => _expandedAmp is null || repo.AmpId == _expandedAmp))
-											{
-												<tr class="@(repo.Stale ? "p0-req" : "p0-opt")">
-													<td>@repo.Name</td>
-													<td>@repo.AmpId</td>
-													<td><strong>@repo.Score</strong></td>
-													<td>@string.Join(", ", repo.Present)</td>
-													<td>@(repo.Missing.Count > 0 ? string.Join(", ", repo.Missing) : "—")</td>
-													<td>@(repo.Stale ? $"STALE since {repo.StaleAfter}" : $"fresh to {repo.StaleAfter}")</td>
-												</tr>
-											}
-										</tbody>
-									</table>
+									<div class="know-grid">
+										<div class="know-col own"><p class="eyebrow">TIER 1 → DISCOVER</p><ul><li>@portfolio.Cost.Tier1Tokens.ToString("N0") tokens. Which services could this brief touch?</li></ul></div>
+										<div class="know-col learned"><p class="eyebrow">TIER 2 → SCOPE</p><ul><li>@portfolio.Cost.Tier2Tokens.ToString("N0") tokens. Which of those are genuinely in scope, and why?</li></ul></div>
+										<div class="know-col unverified"><p class="eyebrow">TIER 3 → DESIGN</p><ul><li>@portfolio.Cost.Tier3TokensInScope.ToString("N0") tokens for the in-scope repos only.</li></ul></div>
+									</div>
+									<p class="rt-reco">Loading every repository's Tier 3 up front would cost <strong>@portfolio.Cost.Tier3TokensEverything.ToString("N0")</strong> tokens instead of @portfolio.Cost.Tier3TokensInScope.ToString("N0") — and would hand the model the crypto desk's context while asking it to exclude the crypto desk. The funnel is a correctness control before it is a cost control.</p>
+									<div class="rt-actions">
+										<small>Each stage receives only its own tier. @(portfolio.Cost.Exact ? "Token counts are exact." : "Token counts are estimated.")</small>
+										<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || TierBusy)" @onclick="RunPortfolioTiers">@TierButtonText</button>
+									</div>
+									@if (!_bridgeConnected)
+									{
+										<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running.</p>
+									}
+									@if (_session?.PortfolioTiers.Error is { } tierError)
+									{
+										<div class="compare-status failed" role="alert">@tierError</div>
+									}
 								</div>
 							</section>
 
-							<section class="rt-qa">
-								<header class="rt-head"><span class="rt-step">4</span><div><strong>Where the tiers disagree</strong><small>precedence rule R4</small></div></header>
-								@if (portfolio.Conflicts.Count > 0)
-								{
-									<table class="audit-table">
-										<thead><tr><th>Repo</th><th>Field</th><th>Cortex says</th><th>Repo says</th><th>Resolution</th></tr></thead>
-										<tbody>
-											@foreach (var conflict in portfolio.Conflicts)
-											{
-												<tr><td>@conflict.Repo</td><td>@conflict.Field</td><td>@conflict.CortexSays</td><td><strong>@conflict.RepoSays</strong></td><td>@conflict.Resolution</td></tr>
-											}
-										</tbody>
-									</table>
-								}
-								else
-								{
-									<p class="rt-reco">No disagreements found between the portfolio record and the repos.</p>
-								}
+							@if (_session?.PortfolioTiers.Discovery is { } discovery)
+							{
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">5a</span><div><strong>Tier 1 result — candidates</strong><small>@discovery.Candidates.Count found</small></div></header>
+									<div class="audit-body">
+										<p class="rt-reco">@discovery.Summary</p>
+										<table class="audit-table">
+											<thead><tr><th>Service</th><th>APM</th><th>Why it is a candidate</th></tr></thead>
+											<tbody>
+												@foreach (var candidate in discovery.Candidates)
+												{
+													<tr><td>@candidate.Service</td><td>@candidate.AmpId</td><td>@candidate.Why</td></tr>
+												}
+											</tbody>
+										</table>
+										@if (discovery.CannotDetermineYet.Count > 0)
+										{
+											<h4>What Tier 1 could not settle</h4>
+											<ul class="rt-list warn">@foreach (var item in discovery.CannotDetermineYet) { <li>@item</li> }</ul>
+										}
+									</div>
+								</section>
+							}
+							else if (_session?.PortfolioTiers.Status == "tier1")
+							{
+								<div class="rt-pending"><span></span>Claude is reading the Cortex ecosystem map…</div>
+							}
 
-								@if (portfolio.StalenessCascades.Count > 0)
+							@if (_session?.PortfolioTiers.Scoping is { } scoping)
+							{
+								<section class="rt-box">
+									<header class="rt-head"><span class="rt-step">5b</span><div><strong>Tier 2 result — scope</strong><small>@scoping.Decisions.Count(item => item.InScope) in scope</small></div></header>
+									<div class="audit-body">
+										<p class="rt-reco">@scoping.Summary</p>
+										<table class="audit-table">
+											<thead><tr><th>Service</th><th>Decision</th><th>Reason</th><th>Tier 2 evidence</th></tr></thead>
+											<tbody>
+												@foreach (var scopeRow in scoping.Decisions)
+												{
+													<tr class="@(scopeRow.InScope ? "p0-opt" : "p0-req")">
+														<td>@scopeRow.Service</td>
+														<td>@(scopeRow.InScope ? "IN SCOPE" : "excluded")</td>
+														<td>@scopeRow.Reason</td>
+														<td>@scopeRow.Evidence</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+										@if (!string.IsNullOrWhiteSpace(scoping.SharedLibraryVerdict))
+										{
+											<h4>Ruling on the shared library</h4>
+											<p class="rt-reco">@scoping.SharedLibraryVerdict</p>
+										}
+									</div>
+								</section>
+							}
+							else if (_session?.PortfolioTiers.Status == "tier2")
+							{
+								<div class="rt-pending"><span></span>Claude is applying the APM ownership bounds…</div>
+							}
+
+							@if (_session?.PortfolioTiers.Designs.Count > 0)
+							{
+								@foreach (var tierDesign in _session.PortfolioTiers.Designs)
 								{
-									<h4>Staleness does not cascade</h4>
-									<ul class="rt-list warn">@foreach (var cascade in portfolio.StalenessCascades) { <li>@cascade</li> }</ul>
+									<section class="rt-box">
+										<header class="rt-head"><span class="rt-step">5c</span><div><strong>Tier 3 design — @tierDesign.Service</strong><small>@tierDesign.Repository · from its own /okf bundle</small></div></header>
+										<div class="audit-body">
+											<p class="rt-reco">@tierDesign.Summary</p>
+											@if (tierDesign.Changes.Count > 0)
+											{
+												<table class="audit-table">
+													<thead><tr><th>File</th><th>Change</th><th>Justified by</th></tr></thead>
+													<tbody>
+														@foreach (var edit in tierDesign.Changes)
+														{
+															<tr><td><code>@edit.File</code></td><td>@edit.Change</td><td>@edit.Justification</td></tr>
+														}
+													</tbody>
+												</table>
+											}
+											@if (tierDesign.Unchanged.Count > 0)
+											{
+												<h4>Must stay unchanged</h4>
+												<ul class="rt-list good">@foreach (var item in tierDesign.Unchanged) { <li>@item</li> }</ul>
+											}
+											@if (tierDesign.Risks.Count > 0)
+											{
+												<h4>Risks</h4>
+												<ul class="rt-list warn">@foreach (var item in tierDesign.Risks) { <li>@item</li> }</ul>
+											}
+											@if (tierDesign.OpenQuestions.Count > 0)
+											{
+												<h4>Open questions</h4>
+												<ul class="rt-list warn">@foreach (var item in tierDesign.OpenQuestions) { <li>@item</li> }</ul>
+											}
+										</div>
+									</section>
 								}
-								<p class="ctx-method">Publish the precedence rule before the hierarchy is used for routing — hierarchies fail when tiers conflict and nobody said who wins.</p>
+							}
+							else if (_session?.PortfolioTiers.Status == "tier3")
+							{
+								<div class="rt-pending"><span></span>Claude is designing the change in each in-scope repository…</div>
+							}
+
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">·</span><div><strong>What this demonstrates</strong><small>and what it does not</small></div></header>
+								<ul class="rt-list good">
+									<li><strong>Tier 1 alone over-scopes.</strong> Three services handle client orders and all three share one library. The cheapest-looking fix is to change the shared library, which would impose broker-dealer fraud screening on a desk in a different regulatory perimeter.</li>
+									<li><strong>Tier 2 is what makes the exclusion defensible.</strong> "It sounds like crypto" is not evidence. APM-1187's asset classes and MSB perimeter are.</li>
+									<li><strong>Tier 3 is the only tier that can name a file.</strong> The stage sequence and the <code>IOrderStage</code> contract come from each repository's own bundle, not from the catalogue.</li>
+								</ul>
+								<ul class="rt-list warn">
+									<li>Tier 1 and Tier 2 here are an authored fixture modelled on Cortex and APM records. Tier 3 is real: the OKF bundles are read from the repositories on disk.</li>
+									<li>The funnel is only as good as the tier metadata. If APM-1187 had not recorded its perimeter, no amount of model capability would have justified the exclusion — it would have been a guess that happened to be right.</li>
+									<li>Claude's scoping and design are a model's judgement. The structure, the token costs and the shared-dependency warning are deterministic.</li>
+								</ul>
 							</section>
 						}
 					</section>
 					break;
-				case 27:
+				case 28:
 					<section>
 						<p class="kicker">THREE REAL SERVICES, ONE SHARED SPINE</p>
 						<h2 id="scene-title">Find the duplication by meaning, then let the right model do each job</h2>
@@ -2666,7 +3117,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 28:
+				case 29:
 					<section>
 						<p class="kicker">FREE IS THE WRONG WORD</p>
 						<h2 id="scene-title">Budget in cost per outcome, not cost per token</h2>
@@ -2715,32 +3166,49 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 29:
+				case 30:
 					<section>
 						<p class="kicker">A LIBRARY THAT SCALES WHAT WORKS</p>
-						<h2 id="scene-title">Contributions are admitted on evidence</h2>
-						<p class="rt-intro">A shared prompt library scales whatever you put in it — including the mistakes. So this has an <strong>entry gate</strong>, not an upload button: every contribution must carry its outcome evidence, the context it depends on, and at least one known way it fails.</p>
+						<h2 id="scene-title">Contributions are admitted on evidence, then run</h2>
+						<p class="rt-intro">A shared prompt library scales whatever you put in it — including the mistakes. So there is an <strong>entry gate</strong> rather than an upload button. But complete paperwork does not prove a prompt works, so an admitted contribution is then <strong>executed</strong> against a real class, and a second model judges what the prompt caused.</p>
 
 						<section class="rt-box rt-input-box">
-							<header class="rt-head"><span class="rt-step">1</span><div><strong>Contribute a pattern</strong><small>all six fields are required</small></div></header>
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Contribute a pattern</strong><small>pre-filled with a working example — edit any field to see the gate react</small></div></header>
 							<div class="p0-form">
 								<label>Title<input type="text" @bind="_submission.Title" /></label>
 								<label>Problem it solves<input type="text" @bind="_submission.Problem" /></label>
-								<label>The prompt or approach<input type="text" @bind="_submission.Approach" /></label>
 								<label>Evidence of outcome (include a number)<input type="text" @bind="_submission.Evidence" /></label>
 								<label>Context it depends on<input type="text" @bind="_submission.ContextNeeded" /></label>
 								<label>Known failure modes<input type="text" @bind="_submission.FailureModes" /></label>
 							</div>
+							<label class="p0-prompt-label">The prompt itself — this is the artefact being shared, and the instruction Gemma will receive</label>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="4000" @bind="_submission.Approach" @bind:event="oninput" aria-label="Shared prompt"></textarea>
 							<div class="rt-actions">
-								<small>Deterministic curation gate — no model call.</small>
-								<button class="primary-command compact" type="button" @onclick="SubmitPattern">Submit to the library</button>
+								<small>The gate is deterministic. Running the pattern needs the bridge.</small>
+								<button class="primary-command compact" type="button" disabled="@PatternBusy" @onclick="SubmitPattern">@PatternButtonText</button>
 							</div>
+							@if (!_bridgeConnected)
+							{
+								<p class="bridge-required" role="status">The gate runs without the bridge. Connect the VSIX to also execute the pattern.</p>
+							}
 						</section>
+
+						<div class="rt-flow">
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>The class the pattern runs against</strong><small>Billing.Pricing</small></div></header>
+								<pre class="rt-code">@PatternLibrarySamples.SourceClass</pre>
+							</section>
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>The change request</strong><small>what Gemma is asked to do</small></div></header>
+								<pre class="rt-code">@PatternLibrarySamples.ChangeRequest</pre>
+								<p class="ctx-method">Read the class comment against the code before you scroll on. A good shared prompt should make the model notice something here.</p>
+							</section>
+						</div>
 
 						@if (_libraryReview is { } curation)
 						{
 							<section class="rt-box">
-								<header class="rt-head"><span class="rt-step">2</span><div><strong>Curation gate</strong><small>@curation.Score% of checks passed</small></div></header>
+								<header class="rt-head"><span class="rt-step">4</span><div><strong>Curation gate</strong><small>@curation.Score% of checks passed · deterministic</small></div></header>
 								<div class="audit-body">
 									<div class="audit-scoreline">
 										<span class="ctx-label @(curation.Admitted ? "ctx-rich" : "ctx-poor")">@(curation.Admitted ? "ADMITTED" : "HELD")</span>
@@ -2755,12 +3223,60 @@ cobol85  -&gt; 000000</pre>
 											}
 										</tbody>
 									</table>
+									@if (!curation.Admitted)
+									{
+										<p class="ctx-method">The pattern was not run. The gate is a precondition, not a warning — an undocumented prompt that happens to work is still not shareable.</p>
+									}
 								</div>
 							</section>
 						}
 
+						@if (_session?.PatternRun.Error is { } patternError)
+						{
+							<div class="compare-status failed" role="alert">@patternError</div>
+						}
+
+						@if (_session?.PatternRun.ModifiedClass is { } produced)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">5</span><div><strong>What the shared prompt produced</strong><small>@(_session.PatternRun.GemmaModel ?? "Gemma 4") · the prompt was its only instruction</small></div></header>
+								<pre class="rt-code">@produced</pre>
+							</section>
+						}
+						else if (_session?.PatternRun.Status == "applying")
+						{
+							<div class="rt-pending"><span></span>Gemma is applying the contributed prompt to the class…</div>
+						}
+
+						@if (_session?.PatternRun.Review is { } patternReview)
+						{
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">6</span><div><strong>Claude Opus 4.8 judges the prompt</strong><small>@patternReview.Model · fidelity @patternReview.Fidelity/5</small></div></header>
+								<p class="rt-reco">@patternReview.Verdict</p>
+								<div class="know-grid">
+									<div class="know-col learned"><p class="eyebrow">INSTRUCTIONS HONOURED</p><ul>@foreach (var item in patternReview.Followed) { <li>@item</li> }</ul></div>
+									<div class="know-col unverified"><p class="eyebrow">INSTRUCTIONS SKIPPED</p><ul>@foreach (var item in patternReview.Ignored) { <li>@item</li> }</ul></div>
+								</div>
+								@if (patternReview.Risks.Count > 0)
+								{
+									<h4>What this prompt would do badly at scale</h4>
+									<ul class="rt-list warn">@foreach (var risk in patternReview.Risks) { <li>@risk</li> }</ul>
+								}
+								@if (!string.IsNullOrWhiteSpace(patternReview.PromptRecommendation))
+								{
+									<h4>Suggested wording change</h4>
+									<p class="rt-reco">@patternReview.PromptRecommendation</p>
+								}
+								<p class="ctx-method">The subject under review is the <strong>prompt</strong>, not the model. A weak result from a capable model is evidence the contribution is weak — which is the entire reason for running it rather than filing it.</p>
+							</section>
+						}
+						else if (_session?.PatternRun.Status == "reviewing")
+						{
+							<div class="rt-pending"><span></span>Claude is judging what the prompt caused…</div>
+						}
+
 						<section class="rt-qa">
-							<header class="rt-head"><span class="rt-step">@(_libraryReview is null ? "2" : "3")</span><div><strong>The library</strong><small>@Library.Entries.Count admitted pattern(s)</small></div></header>
+							<header class="rt-head"><span class="rt-step">·</span><div><strong>The library</strong><small>@Library.Entries.Count admitted pattern(s)</small></div></header>
 							@foreach (var entry in Library.Entries)
 							{
 								<div class="lib-entry">
@@ -2772,10 +3288,16 @@ cobol85  -&gt; 000000</pre>
 									<p class="lib-fail"><em>Fails when:</em> @entry.FailureModes</p>
 								</div>
 							}
+							<h4>Read this carefully</h4>
+							<ul class="rt-list warn">
+								<li>One execution against one class is a demonstration, not the evidence the gate asks for. The Evidence field should carry a measured rate across many runs — this scene shows you how one of those runs is produced.</li>
+								<li>Claude reviewing Gemma is a second opinion, not verification. It cannot tell you the prompt generalises.</li>
+								<li>The library admits on documentation quality. Nothing here stops a well-documented prompt that is simply wrong — which is why contributions carry failure modes and get re-reviewed.</li>
+							</ul>
 						</section>
 					</section>
 					break;
-				case 30:
+				case 31:
 					<section>
 						<p class="kicker">PLAN BEFORE CODE</p>
 						<h2 id="scene-title">A summary leadership reads, a diagram engineers check</h2>
@@ -2811,7 +3333,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 31:
+				case 32:
 					<section>
 						<p class="kicker">THE ORDER TO WALK IT IN</p>
 						<h2 id="scene-title">Six acts, each ending in a number</h2>
@@ -2843,13 +3365,215 @@ cobol85  -&gt; 000000</pre>
 						</section>
 					</section>
 					break;
+				case 33:
+					<section>
+						<p class="kicker">GROUND THE CHEAP MODEL, THEN DELEGATE TO IT</p>
+						<h2 id="scene-title">Making Gemma 4 a crypto SME</h2>
+						<p class="rt-intro">Claude Opus 5 is a strong generalist. On a domain with exact header names, exact defaults and exact error semantics, "strong generalist" is not the same as "will get it right". Here Claude answers <strong>unaided</strong> first, then consults a <strong>grounded Gemma 4</strong> as a subagent, then designs. The improvement is measured against verified facts — not asserted.</p>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>The requirement</strong><small>CRY-4417 · a real design task, not a quiz</small></div></header>
+							<pre class="rt-code">@CryptoSmeCorpus.Jira</pre>
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>What Gemma is grounded on</strong><small>three layers · @CryptoSmeCorpus.Facts.Count verified facts</small></div></header>
+							<div class="audit-body">
+								<div class="know-grid">
+									<div class="know-col own"><p class="eyebrow">LAYER 1 · UNIFIED</p><ul><li>CCXT — one API across 100+ venues, CCXT Pro for WebSocket streaming. Keeps venue two from being a rewrite.</li></ul></div>
+									<div class="know-col learned"><p class="eyebrow">LAYER 2 · VENUE MECHANICS</p><ul><li>Binance spot: weight-based rate limiting, timing and signature rules, symbol filters, unknown-outcome handling.</li></ul></div>
+									<div class="know-col unverified"><p class="eyebrow">LAYER 3 · FIRM RULES</p><ul><li>Decimal-only arithmetic, per-service credentials, dedicated egress, firm-generated client order ids. Synthetic here; real policy in production.</li></ul></div>
+								</div>
+								<h4>Sources the pack was built from</h4>
+								<ul class="rt-list good">@foreach (var source in CryptoSmeCorpus.Sources) { <li><a href="@source.Url" target="_blank" rel="noopener noreferrer">@source.Label</a></li> }</ul>
+								<p class="ctx-method">Layers 1 and 2 were transcribed from these pages and each fact is cited in the pack. Layer 3 is synthetic and labelled as such. Today this is a curated pack; the stated intent is that Gemma later runs internally with no per-token vendor cost, carrying both the industry rules and the firm's own.</p>
+							</div>
+						</section>
+
+						<div class="rt-actions">
+							<small>Three stages: Claude unaided, Gemma grounded, Claude designs.</small>
+							<button class="primary-command compact" type="button" disabled="@(!_bridgeConnected || SmeBusy)" @onclick="RunCryptoSme">@SmeButtonText</button>
+						</div>
+						@if (!_bridgeConnected)
+						{
+							<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge before running.</p>
+						}
+						@if (_session?.CryptoSme.Error is { } smeError)
+						{
+							<div class="compare-status failed" role="alert">@smeError</div>
+						}
+
+						@if (_session?.CryptoSme.Unaided is { } unaided)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>Claude Opus 5, unaided</strong><small>@unaided.Model · no documentation supplied</small></div></header>
+								<div class="audit-body">
+									<div class="audit-scoreline">
+										<span class="ctx-label @(unaided.FactScore >= 70 ? "ctx-rich" : unaided.FactScore >= 40 ? "ctx-adequate" : "ctx-poor")">@unaided.FactScore%</span>
+										<div><strong>Verified-fact recall</strong><small>@unaided.FactsHit.Count of @CryptoSmeCorpus.Facts.Count facts present</small></div>
+									</div>
+									<p class="rt-reco">@unaided.Attempt</p>
+									@if (unaided.Uncertain.Count > 0)
+									{
+										<h4>What it flagged as uncertain</h4>
+										<ul class="rt-list warn">@foreach (var item in unaided.Uncertain) { <li>@item</li> }</ul>
+									}
+									@if (unaided.Questions.Count > 0)
+									{
+										<h4>Questions it put to the SME</h4>
+										<ol class="rt-list">@foreach (var item in unaided.Questions) { <li>@item</li> }</ol>
+									}
+								</div>
+							</section>
+						}
+						else if (_session?.CryptoSme.Status == "unaided")
+						{
+							<div class="rt-pending"><span></span>Claude is attempting the design from its own knowledge…</div>
+						}
+
+						@if (_session?.CryptoSme.Consultation is { } consult)
+						{
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">4</span><div><strong>Gemma 4 answers as the grounded SME</strong><small>@consult.Model · @consult.PackTokens.ToString("N0") tokens of grounding</small></div></header>
+								<div class="audit-body">
+									<table class="audit-table">
+										<thead><tr><th>Question</th><th>Answer</th><th>Cited to</th></tr></thead>
+										<tbody>
+											@foreach (var answer in consult.Answers)
+											{
+												<tr class="@(answer.InPack ? "p0-opt" : "p0-req")">
+													<td>@answer.Question</td>
+													<td>@answer.Answer</td>
+													<td>@(answer.InPack ? answer.Citation : "NOT IN PACK — refused to guess")</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									@if (consult.Corrections.Count > 0)
+									{
+										<h4>Where the pack contradicted Claude's unaided attempt</h4>
+										<ul class="rt-list warn">@foreach (var correction in consult.Corrections) { <li>@correction</li> }</ul>
+									}
+									@if (consult.Unprompted.Count > 0)
+									{
+										<h4>Material facts nobody asked about</h4>
+										<ul class="rt-list good">@foreach (var extra in consult.Unprompted) { <li>@extra</li> }</ul>
+										<p class="ctx-method">This list is the point of the stage. A subagent that only answers the questions put to it limits the design to what the asker already suspected.</p>
+									}
+								</div>
+							</section>
+						}
+						else if (_session?.CryptoSme.Status == "consulting")
+						{
+							<div class="rt-pending"><span></span>Gemma is answering from the grounding pack…</div>
+						}
+
+						@if (_session?.CryptoSme.Design is { } smeDesign)
+						{
+							<section class="rt-qa">
+								<header class="rt-head"><span class="rt-step">5</span><div><strong>Final design — Claude Opus 5 using Gemma as a subagent</strong><small>@smeDesign.Model · every step tagged with its source</small></div></header>
+								<div class="audit-scoreline">
+									<span class="ctx-label @(smeDesign.FactScore >= 70 ? "ctx-rich" : smeDesign.FactScore >= 40 ? "ctx-adequate" : "ctx-poor")">@smeDesign.FactScore%</span>
+									<div>
+										<strong>Verified-fact recall</strong>
+										<small>@(_session.CryptoSme.Unaided is { } baseline ? $"{baseline.FactScore}% unaided → {smeDesign.FactScore}% grounded ({(smeDesign.FactScore - baseline.FactScore >= 0 ? "+" : "")}{smeDesign.FactScore - baseline.FactScore} points)" : "no baseline")</small>
+									</div>
+								</div>
+								<p class="rt-reco">@smeDesign.Summary</p>
+								<table class="audit-table">
+									<thead><tr><th>Step</th><th>Detail</th><th>Source</th></tr></thead>
+									<tbody>
+										@foreach (var step in smeDesign.Steps)
+										{
+											<tr>
+												<td>@step.Step</td>
+												<td>@step.Detail</td>
+												<td><span class="src-tag src-@step.Source">@(step.Source switch { "own" => "Claude knew", "sme" => "from Gemma SME", _ => "unverified" })</span></td>
+											</tr>
+										}
+									</tbody>
+								</table>
+								@if (smeDesign.Risks.Count > 0)
+								{
+									<h4>Risks</h4>
+									<ul class="rt-list warn">@foreach (var risk in smeDesign.Risks) { <li>@risk</li> }</ul>
+								}
+								@if (smeDesign.OpenQuestions.Count > 0)
+								{
+									<h4>Must be verified against the vendor documentation</h4>
+									<ul class="rt-list warn">@foreach (var question in smeDesign.OpenQuestions) { <li>@question</li> }</ul>
+								}
+								@if (smeDesign.FactsMissed.Count > 0)
+								{
+									<h4>Verified facts still absent from the design</h4>
+									<ul class="rt-list warn">@foreach (var missed in smeDesign.FactsMissed) { <li>@missed</li> }</ul>
+								}
+							</section>
+						}
+						else if (_session?.CryptoSme.Status == "designing")
+						{
+							<div class="rt-pending"><span></span>Claude is designing using the SME's answers…</div>
+						}
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">·</span><div><strong>The facts being scored</strong><small>deterministic · verified against the sources above</small></div></header>
+							<div class="audit-body">
+								@if (_session?.CryptoSme.Trace.Count > 0)
+								{
+									<p class="rt-reco">A flat score is not the same as no effect. This traces each fact through the three stages, so a fact missing from the design can be attributed to the stage that lost it.</p>
+									<table class="audit-table">
+										<thead><tr><th>Fact</th><th>Unaided</th><th>Asked</th><th>SME gave it</th><th>In design</th><th>Where it was lost</th></tr></thead>
+										<tbody>
+											@foreach (var row in _session.CryptoSme.Trace)
+											{
+												<tr class="@(row.InDesign ? "p0-opt" : "p0-req")">
+													<td>@row.Name</td>
+													<td>@(row.InUnaided ? "yes" : "—")</td>
+													<td>@(row.Asked ? "yes" : "—")</td>
+													<td>@(row.AnsweredBySme ? "yes" : "—")</td>
+													<td>@(row.InDesign ? "yes" : "NO")</td>
+													<td>@row.Verdict</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="ctx-method">"Never asked, never supplied, never used" is the most common row, and it is a failure of the <em>delegation</em>, not of the SME. The subagent now also volunteers material facts nobody asked about, which is the fix for that row.</p>
+								}
+								<table class="audit-table">
+									<thead><tr><th>Fact</th><th>Ground truth</th><th>What goes wrong without it</th></tr></thead>
+									<tbody>
+										@foreach (var fact in CryptoSmeCorpus.Facts)
+										{
+											<tr>
+												<td>@fact.Name</td>
+												<td>@fact.Truth</td>
+												<td>@fact.Trap</td>
+											</tr>
+										}
+									</tbody>
+								</table>
+							</div>
+						</section>
+
+						<section class="rt-qa">
+							<header class="rt-head"><span class="rt-step">!</span><div><strong>Read this carefully</strong><small>what this does and does not show</small></div></header>
+							<ul class="rt-list warn">
+								<li><strong>The recall score is keyword detection.</strong> It measures whether the specific fact appears, not whether it was used correctly. It is a floor, not a grade.</li>
+								<li><strong>A flat score can be a real result.</strong> If the unaided attempt and the grounded design score the same, read the trace above before concluding the grounding did nothing — the usual cause is that the facts were never asked about.</li>
+								<li><strong>A grounded small model is not a source.</strong> Gemma cites the pack; the pack cites the vendor. Neither is the vendor. Anything tagged <em>unverified</em> must be checked against the primary documentation before it is built.</li>
+								<li><strong>This is grounding, not training.</strong> No weights changed. The claimed future state — an internally hosted Gemma carrying industry and firm rules at no per-token vendor cost — still has fixed infrastructure cost, and still needs this pack maintained.</li>
+								<li><strong>The pack is a snapshot.</strong> It was transcribed on 2026-09-06. Exchange APIs change; a stale pack grounds the model in confident, wrong detail — worse than no pack at all.</li>
+							</ul>
+						</section>
+					</section>
+					break;
 			}
 		</article>
 
 		<footer class="stage-footer">
-			<button class="secondary-command" type="button" disabled="@(_scene == 0)" @onclick="Previous">? Previous</button>
+			<button class="secondary-command" type="button" disabled="@(_scene == 0)" @onclick="Previous">&larr; Previous</button>
 			<div class="narration-text"><span>Narration transcript</span><p>@CurrentNarration</p></div>
-			<button class="secondary-command" type="button" disabled="@(_scene == Scenes.Length - 1)" @onclick="Next">Next ?</button>
+			<button class="secondary-command" type="button" disabled="@(_scene == Scenes.Length - 1)" @onclick="Next">Next &rarr;</button>
 		</footer>
 	</section>
 
@@ -2869,7 +3593,7 @@ cobol85  -&gt; 000000</pre>
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough")];
+	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -2887,6 +3611,7 @@ cobol85  -&gt; 000000</pre>
 	];
 	private static readonly string[] BuiltInNarration =
 	[
+		"Six priorities, thirty-three working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
 		"A JIRA story names the desired outcome, but not always the system boundary or implementation path. This lesson follows governed evidence before code.",
 		"Search can find matching words. OKF adds concepts, ownership, decisions, and links that make those matches meaningful and reviewable.",
 		"The index is the entry point. Small linked artifacts disclose only the context needed for this task, while retaining provenance and freshness.",
@@ -2911,14 +3636,15 @@ cobol85  -&gt; 000000</pre>
 		"The same task, the same model, a cumulative ladder of context, repeated runs. Quality is scored against sealed criteria, so the floor and the plateau are measured rather than argued. The plateau is the token budget.",
 		"Approving 'deploy' is not approval. Authority is decided per exact action against the agent's registered envelope: reversible work inside the envelope may run, everything else stops for a verified human decision.",
 		"One question, three framings, one model. The divergence from the neutral answer is measured before anyone offers an opinion about it, because the most expensive bias is the one the asker introduced.",
-		"Green tests are not coverage. The fixture is compiled and executed, then one deliberate defect is injected at a time and the tests are run again. A defect that survives is a defect the suite would have shipped.",
+		"Green tests are not coverage. The fixture is compiled and executed, then one deliberate defect is injected at a time and the tests are run again. A defect that survives is a defect the suite would have shipped — and only then does a model get asked which tests would close it.",
 		"Real data makes the best test and the worst leak. The ticket is gated before it leaves the boundary, the model sees only the scrubbed copy, and the audit record keeps references rather than payloads.",
-		"Three tiers of context: the portfolio for routing, the department for convention, the repo for truth. When they disagree the repo wins, and freshness never cascades downward from a parent that merely looks current.",
+		"Three tiers, each answering a question the others cannot. Cortex maps the estate and finds the candidates, the APM record bounds what a team owns and settles what is genuinely in scope, and the repository's own OKF bundle is the only tier that can name a file. Load them in the wrong order and you either miss a service or bury the model in context it should never have seen.",
 		"Three real trading services share an identical framework spine and diverge completely in their business logic. Embeddinggemma finds the duplication by meaning, Claude designs the consolidation, and Gemma writes the code from that design — the expensive model is billed for judgement, not for typing.",
 		"Free is the wrong word and cost per token is the wrong unit. An open model has fixed infrastructure cost, and a model that fails a third of the time is billed for every failure. Budget in cost per successful outcome.",
 		"A shared library of prompts scales whatever you put in it, including the mistakes. Contributions are admitted on evidence, preconditions and known failure modes — not on enthusiasm.",
 		"Plan before code: an executive summary leadership can read, a diagram engineers can check, risks, and a verification path. Jumping straight to an implementation is the habit this gate exists to break.",
-		"Six acts, each answering a question leadership actually asks and each ending in a number. This is the order to walk the programme in, not the order it was built in."
+		"Six acts, each answering a question leadership actually asks and each ending in a number. This is the order to walk the programme in, not the order it was built in.",
+		"A strong generalist is not the same as an expert on exact header names and exact defaults. Claude answers unaided first, then consults a Gemma grounded on vendor documentation, then designs — and the improvement is measured against verified facts rather than asserted."
 	];
 
 	private TrainingSession? _session;
@@ -2936,7 +3662,16 @@ cobol85  -&gt; 000000</pre>
 	private int _animationRun;
 	private bool _started;
 	private bool _bridgeConnected;
-	private string _learnerPrompt = string.Empty;
+	private string _learnerPrompt = @"Investigate FUL-1842. Do not propose code until the evidence below is on the table.
+
+1. Start at okf/index.md and tell me which governed concept this ticket belongs to. Do not search the repository first.
+2. Resolve that concept and quote the sentence that distinguishes it from superficially similar work. Give me the file path for every claim you make.
+3. Check okf/architecture/service-boundaries.md and name the owning service. If a similarly named component exists outside that boundary, say why you are excluding it.
+4. Read okf/decisions/adr-024-delay-source.md and restate its constraint as a condition the code must enforce.
+5. Use okf/code-map/fulfillment-components.md to identify the primary implementation file and its callers, then read the existing tests and tell me which behaviours are already pinned.
+6. List every question the artifacts do not answer. If the acceptance criteria depend on a name or value that is not documented anywhere, mark it unresolved and name the owner I should ask. Do not invent a plausible one.
+
+Finish with the verification path: the tests you would add or change, and how I would know the change is correct.";
 	private string _comparisonTopicId = string.Empty;
 	private string _supportRequirement = RoundTripSamples.GcpMigrationRequirement;
 	private string _roundTripClass = RoundTripSamples.LateFeeCalculator;
@@ -3131,7 +3866,7 @@ cobol85  -&gt; 000000</pre>
 	private bool _commonCodeRunning;
 	private string? _expandedAmp;
 
-	private void RunPortfolio() => _portfolio = Portfolio.Build(DateTimeOffset.UtcNow);
+	private void RunPortfolio() => _portfolio = Portfolio.Build();
 	private void ToggleAmp(string ampId) => _expandedAmp = _expandedAmp == ampId ? null : ampId;
 
 	private async Task RunCommonCode()
@@ -3143,6 +3878,71 @@ cobol85  -&gt; 000000</pre>
 	}
 
 	private bool ConsolidationBusy => _session?.Consolidation.Status is "designing" or "building";
+
+	private bool TierBusy => _session?.PortfolioTiers.Status is "tier1" or "tier2" or "tier3";
+
+	private bool GuidanceBusy => _session?.RegressionGuidance.Status is "advising" or "reviewing";
+
+	private bool SmeBusy => _session?.CryptoSme.Status is "unaided" or "consulting" or "designing";
+
+	private string SmeButtonText => _session?.CryptoSme.Status switch
+	{
+		"unaided" => "Claude is trying unaided…",
+		"consulting" => "Gemma is answering…",
+		"designing" => "Claude is designing…",
+		"completed" => "Run again",
+		_ => "Start — Claude consults Gemma"
+	};
+
+	private void RunCryptoSme()
+	{
+		if (_session is null)
+		{
+			return;
+		}
+
+		Store.QueueCryptoSme(_session.SessionId);
+		_session = Store.GetSession(_session.SessionId);
+	}
+
+	private string GuidanceButtonText => _session?.RegressionGuidance.Status switch
+	{
+		"advising" => "Gemma is proposing tests…",
+		"reviewing" => "Claude is checking them…",
+		"completed" => "Run again",
+		_ => "Propose the missing tests"
+	};
+
+	private void RunRegressionGuidance()
+	{
+		if (_session is null || _mutation is null)
+		{
+			return;
+		}
+
+		Store.QueueRegressionGuidance(_session.SessionId, _mutation, _regressionSource, _regressionTests);
+		_session = Store.GetSession(_session.SessionId);
+	}
+
+	private string TierButtonText => _session?.PortfolioTiers.Status switch
+	{
+		"tier1" => "Discovering on Tier 1…",
+		"tier2" => "Scoping on Tier 2…",
+		"tier3" => "Designing on Tier 3…",
+		"completed" => "Run again",
+		_ => "Walk the three tiers"
+	};
+
+	private void RunPortfolioTiers()
+	{
+		if (_session is null)
+		{
+			return;
+		}
+
+		Store.QueuePortfolioTiers(_session.SessionId);
+		_session = Store.GetSession(_session.SessionId);
+	}
 
 	private string ConsolidationButtonText => _session?.Consolidation.Status switch
 	{
@@ -3164,8 +3964,17 @@ cobol85  -&gt; 000000</pre>
 	}
 
 	private EconomicsReport? _economics;
-	private readonly PatternSubmission _submission = new();
+	private readonly PatternSubmission _submission = PatternLibrarySamples.PreFilled();
 	private LibraryReview? _libraryReview;
+
+	private bool PatternBusy => _session?.PatternRun.Status is "applying" or "reviewing";
+
+	private string PatternButtonText => _session?.PatternRun.Status switch
+	{
+		"applying" => "Gemma is applying it…",
+		"reviewing" => "Claude is judging it…",
+		_ => "Submit to the library"
+	};
 	private string _planText = PlanFirstSamples.GoodPlan;
 	private PlanReview? _planReview;
 
@@ -3179,7 +3988,16 @@ cobol85  -&gt; 000000</pre>
 	];
 
 	private void RunEconomics() => _economics = Economics.Build(4200, 700, ObservedSuccess);
-	private void SubmitPattern() => _libraryReview = Library.Submit(_submission);
+	// The gate is a precondition: a contribution that fails curation is never executed.
+	private void SubmitPattern()
+	{
+		_libraryReview = Library.Submit(_submission);
+		if (_libraryReview.Admitted && _session is not null && _bridgeConnected)
+		{
+			Store.QueuePatternRun(_session.SessionId, _submission.Approach, PatternLibrarySamples.SourceClass, PatternLibrarySamples.ChangeRequest);
+			_session = Store.GetSession(_session.SessionId);
+		}
+	}
 	private void ReviewPlan() => _planReview = PlanFirstChecker.Review(_planText);
 
 	private static readonly LeadershipAct[] Acts =
@@ -3227,6 +4045,26 @@ cobol85  -&gt; 000000</pre>
 	private void Answer(int question, int option) => _answers[question] = option;
 	private string? AnswerClass(int question, int option) => !_answers.TryGetValue(question, out var selected) || selected != option ? null : Questions[question].CorrectIndex == option ? "correct" : "incorrect";
 	private void GoTo(int scene) => _scene = Math.Clamp(scene, 0, Scenes.Length - 1);
+
+	private static int SceneIndex(string id) => Array.FindIndex(Scenes, scene => scene.Id == id);
+
+	// Cross-references resolve by scene id so inserting a scene cannot silently repoint every link.
+	private RenderFragment SceneLink(string id) => builder =>
+	{
+		var index = SceneIndex(id);
+		if (index < 0)
+		{
+			builder.AddContent(0, id);
+			return;
+		}
+
+		builder.OpenElement(1, "button");
+		builder.AddAttribute(2, "class", "scene-link");
+		builder.AddAttribute(3, "type", "button");
+		builder.AddAttribute(4, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => GoTo(index)));
+		builder.AddContent(5, $"{index + 1}. {Scenes[index].Title}");
+		builder.CloseElement();
+	};
 	private void ToggleDrawer() => _drawerOpen = !_drawerOpen;	private void Next() => GoTo(_scene + 1);
 	private void Previous() => GoTo(_scene - 1);
 	private void ReplayAnimation() => _animationRun++;

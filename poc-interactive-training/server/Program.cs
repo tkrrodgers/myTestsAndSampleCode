@@ -89,6 +89,31 @@ if (args.Contains("--calibrate-corpus"))
     return 0;
 }
 
+// Scores a saved model output against the SME fact list. Signal changes must be checked against real
+// model text; loose signals silently inflate both sides of the comparison and hide the difference.
+if (args.Length >= 2 && args[0] == "--score-facts")
+{
+    if (!File.Exists(args[1]))
+    {
+        Console.WriteLine($"No such file: {args[1]}");
+        return 2;
+    }
+
+    var (factScore, factHit, factMissed) = CryptoSmeCorpus.ScoreFacts(File.ReadAllText(args[1]));
+    Console.WriteLine($"score {factScore}%  ({factHit.Count}/{CryptoSmeCorpus.Facts.Count})");
+    foreach (var name in factHit)
+    {
+        Console.WriteLine("  HIT     " + name);
+    }
+
+    foreach (var name in factMissed)
+    {
+        Console.WriteLine("  missing " + name);
+    }
+
+    return 0;
+}
+
 // Prints what the judge would actually read from a reference page. HTML-to-text extraction that quietly
 // returns navigation chrome would poison the grounding without failing anything.
 if (args.Length >= 2 && args[0] == "--fetch-doc")
@@ -238,10 +263,11 @@ app.Logger.LogInformation("Regression adequacy self-check: ran={Ran}, score {Sco
     mutationProbe.Ran, mutationProbe.MutationScore, mutationProbe.KilledMutants, mutationProbe.TotalMutants,
     mutationProbe.Error is null ? string.Empty : " " + mutationProbe.Error);
 
-var portfolioProbe = app.Services.GetRequiredService<PortfolioContextService>().Build(DateTimeOffset.UtcNow);
-app.Logger.LogInformation("Portfolio tier self-check: {Score}/100 portfolio, weakest {Weakest} at {WeakestScore}, {Conflicts} tier conflict(s), {Cascades} staleness warning(s).",
-    portfolioProbe.PortfolioScore, portfolioProbe.WeakestRepo, portfolioProbe.WeakestScore,
-    portfolioProbe.Conflicts.Count, portfolioProbe.StalenessCascades.Count);
+var portfolioProbe = app.Services.GetRequiredService<PortfolioContextService>().Build();
+app.Logger.LogInformation("Portfolio tier self-check: {Services} services, {Amps} APM records, {Repos} repo(s) with OKF, funnel {InScope} vs {All} tokens, shared-dependency trap detected={Trap}.",
+    portfolioProbe.Services.Count, portfolioProbe.Amps.Count, portfolioProbe.Repositories.Count(repo => repo.Available),
+    portfolioProbe.Cost.Tier3TokensInScope, portfolioProbe.Cost.Tier3TokensEverything,
+    portfolioProbe.SharedDependencyWarning.Count > 0);
 
 app.Logger.LogInformation("Trading corpus: {Status}", app.Services.GetRequiredService<TradingCorpus>().StatusMessage);
 

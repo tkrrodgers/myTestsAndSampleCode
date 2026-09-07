@@ -132,14 +132,16 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 .rail::-webkit-scrollbar-thumb { background: rgba(255,255,255,.28); border-radius: 4px; }
 
 .brand-mark {
-    display: grid;
+    display: inline-grid;
     place-items: center;
-    width: 52px;
-    height: 52px;
+    justify-self: start;
+    min-height: 52px;
+    padding: 0 14px;
     border: 1px solid rgba(255,255,255,.65);
     color: var(--white);
     font-family: Georgia, serif;
     font-weight: 700;
+    white-space: nowrap;
 }
 
 .eyebrow, .kicker {
@@ -275,6 +277,18 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     border-radius: 50%;
     background: transparent;
     color: var(--forest);
+    cursor: pointer;
+}
+
+.icon-button svg {
+    width: 15px;
+    height: 15px;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible {
+    background: var(--forest);
+    color: var(--white);
 }
 
 .model-banner {
@@ -1993,6 +2007,57 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     font-style: italic;
 }
 
+.intro-scene {
+    display: grid;
+    gap: 18px;
+    max-width: 980px;
+}
+
+.intro-hero h2 {
+    margin: 6px 0 12px;
+    font-size: 2rem;
+    line-height: 1.15;
+}
+
+.intro-hero .lede {
+    max-width: 74ch;
+}
+
+.intro-nav-hint {
+    margin: 12px 0 0;
+    color: var(--muted);
+    font-size: .82rem;
+}
+
+.intro-scene .audit-body p {
+    margin: 0 0 10px;
+    max-width: 82ch;
+    line-height: 1.62;
+}
+
+.intro-scene .audit-body p:last-of-type {
+    margin-bottom: 0;
+}
+
+.scene-link {
+    display: inline;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--accent, #6ea8fe);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.scene-link:hover,
+.scene-link:focus-visible {
+    color: #fff;
+    background: var(--accent, #6ea8fe);
+    border-radius: 3px;
+}
+
 .artifact-detail {
     border-top: 1px solid var(--line);
 }
@@ -2252,6 +2317,15 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     margin-bottom: 10px;
     border-left: 3px solid var(--forest);
     background: #fafaf7;
+}
+
+.p0-prompt-label {
+    display: block;
+    margin: 12px 0 6px;
+    font-size: .74rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--muted);
 }
 
 .lib-entry strong {

@@ -969,6 +969,589 @@ public sealed class TrainingSessionStore
         return request.ToString();
     }
 
+    // --- Making Gemma an SME: Claude tries unaided, then consults a grounded Gemma as a subagent ---
+    //
+    // Stage 1 is deliberately ungrounded. Without a measured baseline there is nothing to attribute the
+    // improvement to, and "the grounding helped" becomes an assertion rather than a result.
+    public void QueueCryptoSme(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.SmeUnaided = null;
+            session.SmeConsultation = null;
+            session.SmeDesign = null;
+            session.SmeError = null;
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "claude-crypto-unaided",
+                ClaudeModel,
+                ClaraAuthorModel,
+                Prompts.CryptoUnaidedSystem,
+                $"<ticket>\n{CryptoSmeCorpus.Jira}\n</ticket>\nYou have no reference documentation. Answer from your own knowledge.",
+                180,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.SmeStatus = "unaided";
+        }
+    }
+
+    private void CompleteCryptoUnaided(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out SmeUnaidedDto? dto) || dto is null || string.IsNullOrWhiteSpace(dto.Attempt))
+        {
+            session.SmeStatus = "failed";
+            session.SmeError = result.ErrorMessage ?? "The unaided attempt did not match the expected contract.";
+            return;
+        }
+
+        // Score the attempt only. Including the "uncertain" list would credit the model for naming a fact
+        // it has just said it cannot recall, which is the opposite of recall.
+        var (score, hit, missed) = CryptoSmeCorpus.ScoreFacts(dto.Attempt);
+        session.SmeUnaided = new SmeUnaided(
+            dto.Attempt!.Trim(),
+            dto.Uncertain ?? [],
+            dto.Questions ?? [],
+            result.ModelUsed,
+            score,
+            hit,
+            missed);
+
+        var questions = session.SmeUnaided.Questions.Take(8).ToList();
+        if (questions.Count == 0)
+        {
+            session.SmeStatus = "failed";
+            session.SmeError = "The unaided attempt asked no questions, so there is nothing to consult the SME about.";
+            return;
+        }
+
+        var pack = CryptoSmeCorpus.GroundingPack();
+        session.SmePackTokens = _encoder.CountTokens(pack).Tokens;
+
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<grounding_pack>");
+        request.AppendLine(pack);
+        request.AppendLine("</grounding_pack>");
+        request.AppendLine("<questions>");
+        foreach (var question in questions)
+        {
+            request.AppendLine($"- {question}");
+        }
+
+        request.AppendLine("</questions>");
+        request.AppendLine($"<peer_attempt model=\"{result.ModelUsed}\">\n{session.SmeUnaided.Attempt}\n</peer_attempt>");
+        request.AppendLine("Answer each question from the pack, and correct anything in the peer attempt the pack contradicts.");
+
+        var task = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "gemma-crypto-sme",
+            GemmaModel,
+            GptFallbackModel,
+            Prompts.CryptoSmeSystem,
+            request.ToString(),
+            240,
+            DateTimeOffset.UtcNow);
+        session.Tasks[task.TaskId] = new TaskState(task);
+        session.SmeStatus = "consulting";
+    }
+
+    private static void CompleteCryptoSme(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out SmeConsultDto? dto) || dto is null || (dto.Answers ?? []).Count == 0)
+        {
+            session.SmeStatus = "failed";
+            session.SmeError = result.ErrorMessage ?? "The SME consultation did not match the expected contract.";
+            return;
+        }
+
+        session.SmeConsultation = new SmeConsultation(
+            dto.Answers!.Select(answer => new SmeAnswer(
+                answer.Question ?? "?",
+                answer.Answer ?? string.Empty,
+                answer.Citation ?? "not cited",
+                answer.InPack)).ToList(),
+            dto.Corrections ?? [],
+            dto.Unprompted ?? [],
+            result.ModelUsed,
+            session.SmePackTokens);
+
+        var request = new System.Text.StringBuilder();
+        request.AppendLine($"<ticket>\n{CryptoSmeCorpus.Jira}\n</ticket>");
+        request.AppendLine($"<your_earlier_attempt>\n{session.SmeUnaided?.Attempt}\n</your_earlier_attempt>");
+        request.AppendLine($"<sme_subagent model=\"{result.ModelUsed}\" note=\"grounded on vendor documentation; still a model, not the documentation itself\">");
+        foreach (var answer in session.SmeConsultation.Answers)
+        {
+            request.AppendLine($"Q: {answer.Question}");
+            request.AppendLine($"A: {answer.Answer}");
+            request.AppendLine($"Cited: {answer.Citation}{(answer.InPack ? "" : " (NOT FOUND IN PACK)")}");
+        }
+
+        if (session.SmeConsultation.Corrections.Count > 0)
+        {
+            request.AppendLine("Corrections to your earlier attempt:");
+            foreach (var correction in session.SmeConsultation.Corrections)
+            {
+                request.AppendLine($"- {correction}");
+            }
+        }
+
+        if (session.SmeConsultation.Unprompted.Count > 0)
+        {
+            request.AppendLine("Material facts from the pack that you did NOT ask about:");
+            foreach (var extra in session.SmeConsultation.Unprompted)
+            {
+                request.AppendLine($"- {extra}");
+            }
+        }
+
+        request.AppendLine("</sme_subagent>");
+        request.AppendLine("Produce the execution adapter design, tagging every step with its source.");
+
+        var task = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "claude-crypto-design",
+            ClaudeModel,
+            ClaraAuthorModel,
+            Prompts.CryptoDesignSystem,
+            request.ToString(),
+            240,
+            DateTimeOffset.UtcNow);
+        session.Tasks[task.TaskId] = new TaskState(task);
+        session.SmeStatus = "designing";
+    }
+
+    private static void CompleteCryptoDesign(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        session.SmeStatus = "completed";
+        if (!succeeded || !TryDeserialize(result.Content!, out SmeDesignDto? dto) || dto is null || string.IsNullOrWhiteSpace(dto.Summary))
+        {
+            session.SmeError = result.ErrorMessage ?? "The design did not match the expected contract.";
+            return;
+        }
+
+        var steps = (dto.Steps ?? []).Select(step => new SmeDesignStep(
+            step.Step ?? "step",
+            step.Detail ?? string.Empty,
+            step.Source is "own" or "sme" or "unverified" ? step.Source : "unverified")).ToList();
+
+        var scored = dto.Summary + " " + string.Join(" ", steps.Select(step => step.Step + " " + step.Detail)) +
+                     " " + string.Join(" ", dto.Risks ?? []);
+        var (score, hit, missed) = CryptoSmeCorpus.ScoreFacts(scored);
+
+        session.SmeDesign = new SmeDesign(
+            dto.Summary!.Trim(),
+            steps,
+            dto.Risks ?? [],
+            dto.OpenQuestions ?? [],
+            result.ModelUsed,
+            score,
+            hit,
+            missed);
+    }
+
+    // --- Shared prompt library: execute the contributed prompt, then review what it produced ---
+    //
+    // A curation gate proves the paperwork is complete. It does not prove the prompt works. Running the
+    // contribution against a known class and reviewing the output is the part that produces evidence.
+    public void QueuePatternRun(string sessionId, string prompt, string sourceClass, string changeRequest)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            throw new ArgumentException("The pattern has no prompt to run.", nameof(prompt));
+        }
+
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.PatternModifiedClass = null;
+            session.PatternGemmaModel = null;
+            session.PatternReview = null;
+            session.PatternError = null;
+            session.PatternPrompt = prompt;
+            session.PatternSource = sourceClass;
+            session.PatternRequest = changeRequest;
+
+            var request = $"<change_request>\n{changeRequest}\n</change_request>\n\n<class>\n{sourceClass}\n</class>";
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "gemma-pattern-apply",
+                GemmaModel,
+                GptFallbackModel,
+                prompt,
+                request,
+                180,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.PatternStatus = "applying";
+        }
+    }
+
+    private static void CompletePatternApply(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || string.IsNullOrWhiteSpace(result.Content))
+        {
+            session.PatternStatus = "failed";
+            session.PatternError = result.ErrorMessage ?? "The pattern produced no output.";
+            return;
+        }
+
+        session.PatternModifiedClass = result.Content.Trim();
+        session.PatternGemmaModel = result.ModelUsed;
+
+        var request = $"<shared_prompt>\n{session.PatternPrompt}\n</shared_prompt>\n\n" +
+                      $"<change_request>\n{session.PatternRequest}\n</change_request>\n\n" +
+                      $"<original_class>\n{session.PatternSource}\n</original_class>\n\n" +
+                      $"<model_output model=\"{result.ModelUsed}\">\n{session.PatternModifiedClass}\n</model_output>\n" +
+                      "Judge whether the shared prompt did its job.";
+
+        var review = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "claude-pattern-review",
+            ClaraAuthorModel,
+            ClaudeModel,
+            Prompts.PatternReviewSystem,
+            request,
+            180,
+            DateTimeOffset.UtcNow);
+        session.Tasks[review.TaskId] = new TaskState(review);
+        session.PatternStatus = "reviewing";
+    }
+
+    private static void CompletePatternReview(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        session.PatternStatus = "completed";
+        if (!succeeded || !TryDeserialize(result.Content!, out PatternReviewDto? dto) || dto is null || string.IsNullOrWhiteSpace(dto.Verdict))
+        {
+            session.PatternError = result.ErrorMessage ?? "The review did not match the expected contract. The output above still stands on its own.";
+            return;
+        }
+
+        session.PatternReview = new PatternApplyReview(
+            Math.Clamp(dto.Fidelity, 0, 5),
+            dto.Verdict!.Trim(),
+            dto.Followed ?? [],
+            dto.Ignored ?? [],
+            dto.Risks ?? [],
+            dto.PromptRecommendation?.Trim() ?? string.Empty,
+            result.ModelUsed);
+    }
+
+    // --- Regression guidance: Gemma proposes the missing tests, Claude checks whether they would work ---
+    //
+    // The mutation report is executed evidence. Gemma is asked to close specific named survivors, not to
+    // "improve the tests", because a survivor is a falsifiable target and a vague instruction is not.
+    public void QueueRegressionGuidance(string sessionId, MutationReport report, string source, string tests)
+    {
+        if (!report.Ran)
+        {
+            throw new InvalidOperationException("Run the mutation test before asking for guidance.");
+        }
+
+        var survivors = report.Mutants.Where(mutant => !mutant.Killed).ToList();
+        if (survivors.Count == 0)
+        {
+            throw new InvalidOperationException("Every mutant was killed, so there is nothing to remediate.");
+        }
+
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.GuidanceRemediation = null;
+            session.GuidanceReview = null;
+            session.GuidanceError = null;
+            session.GuidanceSource = source;
+            session.GuidanceTests = tests;
+            session.GuidanceReport = report;
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "gemma-regression-guidance",
+                GemmaModel,
+                GptFallbackModel,
+                Prompts.RegressionGuidanceSystem,
+                BuildGuidanceRequest(report, source, tests),
+                180,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.GuidanceStatus = "advising";
+        }
+    }
+
+    private static string BuildGuidanceRequest(MutationReport report, string source, string tests)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<mutation_report>");
+        request.AppendLine($"Mutation score: {report.MutationScore}% ({report.KilledMutants} of {report.TotalMutants} injected defects caught).");
+        request.AppendLine($"Baseline tests, all passing: {string.Join(", ", report.BaselineTests)}");
+        request.AppendLine("Surviving mutants — each is a real behaviour change the suite did not notice:");
+        foreach (var survivor in report.Mutants.Where(mutant => !mutant.Killed))
+        {
+            request.AppendLine($"- line {survivor.Line}: {survivor.Description}. `{survivor.Original}` was replaced with `{survivor.Mutated}` and every test still passed.");
+        }
+
+        request.AppendLine("Mutants that were caught (do not propose tests for these):");
+        foreach (var killed in report.Mutants.Where(mutant => mutant.Killed))
+        {
+            request.AppendLine($"- line {killed.Line}: {killed.Description} — caught by {killed.Detail}");
+        }
+
+        request.AppendLine("</mutation_report>");
+        request.AppendLine("<code_under_test>");
+        request.AppendLine(source);
+        request.AppendLine("</code_under_test>");
+        request.AppendLine("<existing_tests>");
+        request.AppendLine(tests);
+        request.AppendLine("</existing_tests>");
+        request.AppendLine("Propose the tests that would close these survivors.");
+        return request.ToString();
+    }
+
+    private void CompleteRegressionGuidance(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out GuidanceDto? dto) || dto is null || (dto.Tests ?? []).Count == 0)
+        {
+            session.GuidanceStatus = "failed";
+            session.GuidanceError = result.ErrorMessage ?? "The guidance did not match the expected contract.";
+            return;
+        }
+
+        session.GuidanceRemediation = new MutationRemediation(
+            dto.Summary?.Trim() ?? string.Empty,
+            dto.Tests!.Select(test => new ProposedTest(
+                test.Name ?? "Test",
+                test.TargetsSurvivor ?? "unstated",
+                test.Behaviour ?? string.Empty,
+                test.Assertion ?? string.Empty)).ToList(),
+            dto.NotWorthTesting ?? [],
+            result.ModelUsed);
+
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<mutation_report>");
+        foreach (var survivor in session.GuidanceReport!.Mutants.Where(mutant => !mutant.Killed))
+        {
+            request.AppendLine($"- line {survivor.Line}: {survivor.Description}. `{survivor.Original}` -> `{survivor.Mutated}` survived.");
+        }
+
+        request.AppendLine("</mutation_report>");
+        request.AppendLine("<code_under_test>");
+        request.AppendLine(session.GuidanceSource);
+        request.AppendLine("</code_under_test>");
+        request.AppendLine($"<proposed_by model=\"{result.ModelUsed}\">");
+        request.AppendLine(session.GuidanceRemediation.Summary);
+        foreach (var test in session.GuidanceRemediation.Tests)
+        {
+            request.AppendLine($"- {test.Name} — targets: {test.TargetsSurvivor}; behaviour: {test.Behaviour}; assertion: {test.Assertion}");
+        }
+
+        request.AppendLine("</proposed_by>");
+        request.AppendLine("For each proposed test, decide whether it would actually kill the survivor it names.");
+
+        var review = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "claude-regression-review",
+            ClaraAuthorModel,
+            ClaudeModel,
+            Prompts.RegressionReviewSystem,
+            request.ToString(),
+            180,
+            DateTimeOffset.UtcNow);
+        session.Tasks[review.TaskId] = new TaskState(review);
+        session.GuidanceStatus = "reviewing";
+    }
+
+    private static void CompleteRegressionReview(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        session.GuidanceStatus = "completed";
+        if (!succeeded || !TryDeserialize(result.Content!, out GuidanceReviewDto? dto) || dto is null || string.IsNullOrWhiteSpace(dto.Verdict))
+        {
+            session.GuidanceError = result.ErrorMessage ?? "The review did not match the expected contract. Gemma's proposals above still stand on their own merits.";
+            return;
+        }
+
+        session.GuidanceReview = new MutationReview(
+            dto.Verdict!.Trim(),
+            (dto.Assessments ?? []).Select(assessment => new TestAssessment(
+                assessment.Name ?? "?",
+                assessment.WouldKill,
+                assessment.Reasoning ?? string.Empty)).ToList(),
+            dto.Gaps ?? [],
+            dto.Overreach ?? [],
+            dto.NextStep?.Trim() ?? string.Empty,
+            result.ModelUsed);
+    }
+
+    // --- Portfolio context tiers: discover on Tier 1, scope on Tier 2, design on Tier 3 ---
+    //
+    // Each stage receives only the tier it is meant to reason from. Handing all three at once would make
+    // the funnel unfalsifiable: you could not tell which tier supplied which conclusion.
+    public void QueuePortfolioTiers(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.TierDiscovery = null;
+            session.TierScoping = null;
+            session.TierDesigns.Clear();
+            session.TierDesignTasks.Clear();
+            session.TierModel = null;
+            session.TierError = null;
+
+            var request = $"<design_brief>\n{PortfolioTierSamples.DesignBrief}\n</design_brief>\n\n{PortfolioTierSamples.Tier1Context()}\nIdentify every service that the brief could require a change in. You have Tier 1 only.";
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                sessionId,
+                "claude-tier1-discover",
+                ClaraAuthorModel,
+                ClaudeModel,
+                Prompts.Tier1DiscoverSystem,
+                request,
+                150,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.TierStatus = "tier1";
+        }
+    }
+
+    private void CompleteTier1(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out Tier1Dto? dto) || dto is null || (dto.Candidates ?? []).Count == 0)
+        {
+            session.TierStatus = "failed";
+            session.TierError = result.ErrorMessage ?? "Tier 1 discovery did not match the expected contract.";
+            return;
+        }
+
+        session.TierModel = result.ModelUsed;
+        session.TierDiscovery = new Tier1Discovery(
+            dto.Candidates!.Select(candidate => new TierCandidate(candidate.Service ?? "?", candidate.AmpId ?? "?", candidate.Why ?? string.Empty)).ToList(),
+            dto.Excluded ?? [],
+            dto.CannotDetermineYet ?? [],
+            dto.Summary?.Trim() ?? string.Empty);
+
+        var ampIds = session.TierDiscovery.Candidates.Select(candidate => candidate.AmpId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var request = new System.Text.StringBuilder();
+        request.AppendLine($"<design_brief>\n{PortfolioTierSamples.DesignBrief}\n</design_brief>");
+        request.AppendLine("<tier1_candidates>");
+        foreach (var candidate in session.TierDiscovery.Candidates)
+        {
+            request.AppendLine($"- {candidate.Service} [{candidate.AmpId}] — {candidate.Why}");
+        }
+
+        request.AppendLine("</tier1_candidates>");
+        request.AppendLine(PortfolioTierSamples.Tier2Context(ampIds));
+        request.AppendLine("Decide which candidates are genuinely in scope. You now have Tier 2 ownership bounds.");
+
+        var task = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "claude-tier2-scope",
+            ClaraAuthorModel,
+            ClaudeModel,
+            Prompts.Tier2ScopeSystem,
+            request.ToString(),
+            150,
+            DateTimeOffset.UtcNow);
+        session.Tasks[task.TaskId] = new TaskState(task);
+        session.TierStatus = "tier2";
+    }
+
+    private void CompleteTier2(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out Tier2Dto? dto) || dto is null || (dto.Decisions ?? []).Count == 0)
+        {
+            session.TierStatus = "failed";
+            session.TierError = result.ErrorMessage ?? "Tier 2 scoping did not match the expected contract.";
+            return;
+        }
+
+        session.TierScoping = new Tier2Scoping(
+            dto.Decisions!.Select(decision => new TierScopeDecision(
+                decision.Service ?? "?",
+                decision.InScope,
+                decision.Reason ?? string.Empty,
+                decision.Evidence ?? string.Empty)).ToList(),
+            dto.SharedLibraryVerdict?.Trim() ?? string.Empty,
+            dto.Summary?.Trim() ?? string.Empty);
+
+        var inScope = session.TierScoping.Decisions
+            .Where(decision => decision.InScope)
+            .Select(decision => (decision.Service, Repository: PortfolioTierSamples.ServiceToRepository.GetValueOrDefault(decision.Service)))
+            .Where(pair => pair.Repository is not null)
+            .ToList();
+
+        if (inScope.Count == 0)
+        {
+            session.TierStatus = "completed";
+            session.TierError = "No in-scope service mapped to a repository, so there is no Tier 3 design to produce.";
+            return;
+        }
+
+        // One task per in-scope repository: Tier 3 is atomic per repo, so the design should be too.
+        foreach (var (service, repository) in inScope)
+        {
+            var request = $"<design_brief>\n{PortfolioTierSamples.DesignBrief}\n</design_brief>\n\n" +
+                          $"<scope_decision>\n{service} is in scope. {session.TierScoping.Decisions.First(decision => decision.Service == service).Reason}\n</scope_decision>\n\n" +
+                          _tradingCorpus.Tier3Context(repository!) +
+                          "\nProduce the change design for THIS repository only, using its own OKF bundle and pipeline contract.";
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                session.SessionId,
+                "claude-tier3-design",
+                ClaraAuthorModel,
+                ClaudeModel,
+                Prompts.Tier3DesignSystem,
+                request,
+                240,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.TierDesignTasks[task.TaskId] = (service, repository!);
+        }
+
+        session.TierStatus = "tier3";
+    }
+
+    private static void CompleteTier3(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!session.TierDesignTasks.TryGetValue(result.TaskId, out var target))
+        {
+            return;
+        }
+
+        if (succeeded && TryDeserialize(result.Content!, out Tier3Dto? dto) && dto is not null && !string.IsNullOrWhiteSpace(dto.Summary))
+        {
+            session.TierDesigns.Add(new ServiceDesign(
+                target.Service,
+                target.Repository,
+                dto.Summary!.Trim(),
+                (dto.Changes ?? []).Select(change => new ServiceChange(change.File ?? "?", change.Change ?? string.Empty, change.Justification ?? string.Empty)).ToList(),
+                dto.Unchanged ?? [],
+                dto.Risks ?? [],
+                dto.OpenQuestions ?? []));
+        }
+        else
+        {
+            session.TierDesigns.Add(new ServiceDesign(
+                target.Service,
+                target.Repository,
+                $"Design failed: {result.ErrorMessage ?? "the response did not match the expected contract."}",
+                [], [], [], []));
+        }
+
+        if (session.TierDesigns.Count >= session.TierDesignTasks.Count)
+        {
+            session.TierStatus = "completed";
+        }
+    }
+
     private void CompleteConsolidationDesign(SessionState session, BridgeTaskResult result, bool succeeded)
     {
         if (!succeeded)
@@ -2539,6 +3122,36 @@ public sealed class TrainingSessionStore
                 case "claude-consolidation-design":
                     session.ConsolidationStatus = "designing";
                     break;
+                case "claude-tier1-discover":
+                    session.TierStatus = "tier1";
+                    break;
+                case "gemma-regression-guidance":
+                    session.GuidanceStatus = "advising";
+                    break;
+                case "gemma-pattern-apply":
+                    session.PatternStatus = "applying";
+                    break;
+                case "claude-crypto-unaided":
+                    session.SmeStatus = "unaided";
+                    break;
+                case "gemma-crypto-sme":
+                    session.SmeStatus = "consulting";
+                    break;
+                case "claude-crypto-design":
+                    session.SmeStatus = "designing";
+                    break;
+                case "claude-pattern-review":
+                    session.PatternStatus = "reviewing";
+                    break;
+                case "claude-regression-review":
+                    session.GuidanceStatus = "reviewing";
+                    break;
+                case "claude-tier2-scope":
+                    session.TierStatus = "tier2";
+                    break;
+                case "claude-tier3-design":
+                    session.TierStatus = "tier3";
+                    break;
                 case "gemma-consolidation-build":
                     session.ConsolidationStatus = "building";
                     break;
@@ -2681,6 +3294,36 @@ public sealed class TrainingSessionStore
                     break;
                 case "claude-consolidation-design":
                     CompleteConsolidationDesign(session, result, succeeded);
+                    break;
+                case "claude-tier1-discover":
+                    CompleteTier1(session, result, succeeded);
+                    break;
+                case "gemma-regression-guidance":
+                    CompleteRegressionGuidance(session, result, succeeded);
+                    break;
+                case "gemma-pattern-apply":
+                    CompletePatternApply(session, result, succeeded);
+                    break;
+                case "claude-crypto-unaided":
+                    CompleteCryptoUnaided(session, result, succeeded);
+                    break;
+                case "gemma-crypto-sme":
+                    CompleteCryptoSme(session, result, succeeded);
+                    break;
+                case "claude-crypto-design":
+                    CompleteCryptoDesign(session, result, succeeded);
+                    break;
+                case "claude-pattern-review":
+                    CompletePatternReview(session, result, succeeded);
+                    break;
+                case "claude-regression-review":
+                    CompleteRegressionReview(session, result, succeeded);
+                    break;
+                case "claude-tier2-scope":
+                    CompleteTier2(session, result, succeeded);
+                    break;
+                case "claude-tier3-design":
+                    CompleteTier3(session, result, succeeded);
                     break;
                 case "gemma-consolidation-build":
                     CompleteConsolidationBuild(session, result, succeeded);
@@ -3054,6 +3697,38 @@ public sealed class TrainingSessionStore
         public string? EphemeralModel { get; set; }
         public string? EphemeralError { get; set; }
 
+        public string SmeStatus { get; set; } = "not-started";
+        public SmeUnaided? SmeUnaided { get; set; }
+        public SmeConsultation? SmeConsultation { get; set; }
+        public SmeDesign? SmeDesign { get; set; }
+        public int SmePackTokens { get; set; }
+        public string? SmeError { get; set; }
+
+        public string PatternStatus { get; set; } = "not-started";
+        public string? PatternPrompt { get; set; }
+        public string? PatternSource { get; set; }
+        public string? PatternRequest { get; set; }
+        public string? PatternModifiedClass { get; set; }
+        public string? PatternGemmaModel { get; set; }
+        public PatternApplyReview? PatternReview { get; set; }
+        public string? PatternError { get; set; }
+
+        public string GuidanceStatus { get; set; } = "not-started";
+        public MutationReport? GuidanceReport { get; set; }
+        public string? GuidanceSource { get; set; }
+        public string? GuidanceTests { get; set; }
+        public MutationRemediation? GuidanceRemediation { get; set; }
+        public MutationReview? GuidanceReview { get; set; }
+        public string? GuidanceError { get; set; }
+
+        public string TierStatus { get; set; } = "not-started";
+        public Tier1Discovery? TierDiscovery { get; set; }
+        public Tier2Scoping? TierScoping { get; set; }
+        public List<ServiceDesign> TierDesigns { get; } = [];
+        public Dictionary<string, (string Service, string Repository)> TierDesignTasks { get; } = [];
+        public string? TierModel { get; set; }
+        public string? TierError { get; set; }
+
         // A 31B model cannot reliably emit a whole multi-file library inside one JSON string, so the
         // build is split one task per module and the code comes back as plain text.
         public string ConsolidationStatus { get; set; } = "not-started";
@@ -3313,7 +3988,45 @@ public sealed class TrainingSessionStore
                         ConsolidationBuildOutputTokens,
                         ConsolidationCorpusTokens,
                         ConsolidationTokensExact),
-                ConsolidationError));
+                ConsolidationError),
+            new PortfolioTierState(
+                TierStatus,
+                TierDiscovery,
+                TierScoping,
+                TierDesigns.ToArray(),
+                TierModel,
+                null,
+                TierError),
+            new RegressionGuidanceState(
+                GuidanceStatus,
+                GuidanceRemediation,
+                GuidanceReview,
+                GuidanceError),
+            new PatternRunState(
+                PatternStatus,
+                PatternModifiedClass,
+                PatternGemmaModel,
+                PatternReview,
+                PatternError),
+            new CryptoSmeState(
+                SmeStatus,
+                SmeUnaided,
+                SmeConsultation,
+                SmeDesign,
+                SmeUnaided is null
+                    ? []
+                    : CryptoSmeCorpus.Trace(
+                        SmeUnaided.Attempt,
+                        string.Join(" ", SmeUnaided.Questions),
+                        SmeConsultation is null
+                            ? null
+                            : string.Join(" ", SmeConsultation.Answers.Select(answer => answer.Answer))
+                              + " " + string.Join(" ", SmeConsultation.Corrections)
+                              + " " + string.Join(" ", SmeConsultation.Unprompted),
+                        SmeDesign is null
+                            ? null
+                            : SmeDesign.Summary + " " + string.Join(" ", SmeDesign.Steps.Select(step => step.Step + " " + step.Detail))),
+                SmeError));
     }
 
     private sealed class CurveRunState(int rung, int attempt)
@@ -3375,6 +4088,49 @@ public sealed class TrainingSessionStore
     private sealed record ClaraReviewDto(int Fidelity, string? Verdict, List<string>? Strengths, List<string>? Issues, List<string>? LanguageNotes);
 
     private sealed record GeminiAdviceDto(string? Overview, List<string>? Services, List<string>? Constraints, List<string>? Citations);
+
+    private sealed record TierCandidateDto(string? Service, string? AmpId, string? Why);
+
+    private sealed record ProposedTestDto(string? Name, string? TargetsSurvivor, string? Behaviour, string? Assertion);
+
+    private sealed record PatternReviewDto(
+        int Fidelity,
+        string? Verdict,
+        List<string>? Followed,
+        List<string>? Ignored,
+        List<string>? Risks,
+        string? PromptRecommendation);
+
+    private sealed record SmeUnaidedDto(string? Attempt, List<string>? Uncertain, List<string>? Questions);
+
+    private sealed record SmeAnswerDto(string? Question, string? Answer, string? Citation, bool InPack);
+
+    private sealed record SmeConsultDto(List<SmeAnswerDto>? Answers, List<string>? Corrections, List<string>? Unprompted);
+
+    private sealed record SmeStepDto(string? Step, string? Detail, string? Source);
+
+    private sealed record SmeDesignDto(string? Summary, List<SmeStepDto>? Steps, List<string>? Risks, List<string>? OpenQuestions);
+
+    private sealed record GuidanceDto(string? Summary, List<ProposedTestDto>? Tests, List<string>? NotWorthTesting);
+
+    private sealed record TestAssessmentDto(string? Name, bool WouldKill, string? Reasoning);
+
+    private sealed record GuidanceReviewDto(
+        string? Verdict,
+        List<TestAssessmentDto>? Assessments,
+        List<string>? Gaps,
+        List<string>? Overreach,
+        string? NextStep);
+
+    private sealed record Tier1Dto(List<TierCandidateDto>? Candidates, List<string>? Excluded, List<string>? CannotDetermineYet, string? Summary);
+
+    private sealed record TierDecisionDto(string? Service, bool InScope, string? Reason, string? Evidence);
+
+    private sealed record Tier2Dto(List<TierDecisionDto>? Decisions, string? SharedLibraryVerdict, string? Summary);
+
+    private sealed record TierChangeDto(string? File, string? Change, string? Justification);
+
+    private sealed record Tier3Dto(string? Summary, List<TierChangeDto>? Changes, List<string>? Unchanged, List<string>? Risks, List<string>? OpenQuestions);
 
     private sealed record TierJudgementDto(string? Tier, int Correctness, int Grounding, string? Assessment, List<string>? Errors);
 
@@ -3778,6 +4534,206 @@ public sealed class TrainingSessionStore
             designSteps: the migration design; tag each step's source as own, gemini (advisory-sourced), or
             unverified (advisory-sourced and still unconfirmed).
             provenanceNote: one or two sentences on what a human must verify before this design is trusted.
+            """;
+
+        // Asking for the questions in the same call is what makes the next stage possible. A model that
+        // cannot say what it does not know cannot delegate.
+        public const string CryptoUnaidedSystem = """
+            You are a senior engineer given a ticket in a domain you may not work in daily. You have NO
+            reference documentation and no ability to look anything up.
+
+            Answer from your own knowledge, and be scrupulously honest about its edges. Where you would
+            normally reach for the vendor documentation, say so rather than producing a confident
+            approximation. Exact header names, exact parameter defaults, exact error semantics and exact
+            filter rules are the things most often remembered approximately.
+
+            Then list the specific questions you would put to a subject-matter expert. Make them precise
+            enough to be answered with a fact, not a discussion.
+
+            Return JSON only, no Markdown fences:
+            {"attempt":"your best design attempt, 250-400 words",
+             "uncertain":["a specific claim you are not confident is exactly right"],
+             "questions":["a precise question for the SME"]}
+            """;
+
+        // The SME is grounded but is still a model. Requiring a citation per answer, and an explicit
+        // in-pack flag, is what stops it filling gaps from its own priors and calling that grounding.
+        public const string CryptoSmeSystem = """
+            You are a subject-matter expert on crypto exchange connectivity. You have been given a
+            grounding pack assembled from vendor documentation. That pack is your ONLY source.
+
+            Answer each question directly and concretely: exact header names including any interval
+            suffix, exact defaults, exact error codes, exact filter names.
+
+            For every answer, cite the layer and the specific line of the pack that supports it. If the
+            pack does not cover a question, set inPack to false, say plainly that the pack does not
+            answer it, and do NOT substitute your own recollection.
+
+            Then review the peer attempt supplied. List anything in it that the pack CONTRADICTS, quoting
+            the pack. Do not list stylistic differences — only factual corrections.
+
+            Finally — and this matters more than the answers — scan the pack for facts that are MATERIAL to
+            the ticket and that NOBODY ASKED ABOUT. A subagent that only answers the questions put to it
+            limits the design to what the asker already suspected. List those unprompted facts with their
+            citation. If the peer's questions covered the pack well, say so rather than padding the list.
+
+            Return JSON only, no Markdown fences:
+            {"answers":[{"question":"...","answer":"...","citation":"LAYER n — the supporting line","inPack":true}],
+             "corrections":["what the peer attempt got wrong, and what the pack says instead"],
+             "unprompted":["a material pack fact nobody asked about, with its citation"]}
+            """;
+
+        public const string CryptoDesignSystem = """
+            You are the designer. You produced an earlier attempt without documentation, and you have now
+            consulted a subject-matter expert subagent that was grounded on vendor documentation.
+
+            Produce the execution adapter design. Tag every step with its source:
+              own        — you knew this without the SME
+              sme        — the SME supplied it and it is cited to the pack
+              unverified — the SME could not support it from the pack, or you are extrapolating
+
+            Do not quietly absorb the SME's answers as your own. The provenance is the deliverable as much
+            as the design is: a reader must be able to see which decisions depend on a source that has not
+            been checked against the primary documentation.
+
+            Where the SME corrected your earlier attempt, reflect the correction rather than defending the
+            original.
+
+            The SME may have volunteered facts you did not ask about. Treat those as the most valuable part
+            of the consultation — they are the gaps you did not know you had — and fold each one into the
+            design or state explicitly why it does not apply.
+
+            Return JSON only, no Markdown fences:
+            {"summary":"...","steps":[{"step":"...","detail":"...","source":"own|sme|unverified"}],
+             "risks":["..."],"openQuestions":["what a human must verify against the vendor docs"]}
+            """;
+
+        // The subject under review is the PROMPT, not the model. A weak result from a strong model is
+        // evidence the shared prompt is weak, which is the whole reason for executing a contribution.
+        public const string PatternReviewSystem = """
+            You are reviewing a contribution to a shared prompt library. A smaller model was given the
+            contributed prompt as its only instruction, plus a change request and a class, and produced the
+            output you are shown.
+
+            Judge the PROMPT by what it caused. Ask:
+            - Did the output follow each instruction the prompt actually gave?
+            - Where the output is poor, is that the prompt's fault or the model's?
+            - Did the prompt cause anything harmful — unrequested refactoring, silently repaired defects,
+              invented requirements?
+
+            Read the original class carefully before judging. If its documentation asserts a rule the code
+            does not implement, note whether the output surfaced that or built on top of it.
+
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"fidelity":0,"verdict":"2-3 sentences on whether this prompt is worth sharing",
+             "followed":["instruction the output honoured"],
+             "ignored":["instruction the output skipped or misread"],
+             "risks":["what this prompt would do badly at scale"],
+             "promptRecommendation":"the specific wording change that would fix the weakest instruction"}
+            fidelity is 0-5: how faithfully the output followed the contributed prompt.
+            """;
+
+        // A surviving mutant is a falsifiable target: either the proposed test fails against the mutated
+        // code or it does not. "Improve the tests" would not be checkable.
+        public const string RegressionGuidanceSystem = """
+            You are a test engineer reading a mutation-testing report. A mutation test compiles the code,
+            injects one small deliberate defect at a time, and re-runs the suite. A defect the suite does
+            not notice is called a SURVIVING MUTANT — it is a real behaviour change the tests accepted.
+
+            Your job is to close the named survivors. For each one, propose the test that would fail if
+            that specific defect were present. Be concrete: name the test, state the input, and state the
+            assertion precisely enough that someone could write it without asking you a question.
+
+            Do not propose tests for mutants that were already caught. Do not propose broad "add more
+            coverage" advice. If a survivor is genuinely not worth a test — an equivalent mutant that does
+            not change observable behaviour, or a boundary the business does not care about — say so under
+            notWorthTesting and explain why, rather than inventing a test to look thorough.
+
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"summary":"...",
+             "tests":[{"name":"...","targetsSurvivor":"line N — the defect it kills",
+                       "behaviour":"the input and scenario","assertion":"the exact expected value"}],
+             "notWorthTesting":["survivor — why a test is not warranted"]}
+            """;
+
+        public const string RegressionReviewSystem = """
+            You are a principal engineer reviewing another engineer's proposed tests. You are given the
+            surviving mutants from a mutation-testing run, the code under test, and the proposals.
+
+            For each proposed test, answer one falsifiable question: would this test FAIL if that specific
+            mutation were applied? Reason it through against the actual code — trace the input to the
+            asserted value. A test that exercises the right method but asserts something the mutation does
+            not change will still pass, and therefore kills nothing.
+
+            Be specific about two failure modes:
+            - gaps: survivors left unaddressed, or addressed by a test that would not actually kill them.
+            - overreach: tests that assert incidental implementation detail rather than the behaviour, and
+              would therefore break on legitimate refactoring.
+
+            Do not rewrite the tests. Assess them.
+
+            Return JSON only, no Markdown fences, in exactly this shape:
+            {"verdict":"2-3 sentences",
+             "assessments":[{"name":"...","wouldKill":true,"reasoning":"traced against the code"}],
+             "gaps":["..."],"overreach":["..."],
+             "nextStep":"what to do before trusting any of this"}
+            """;
+
+        // Each tier prompt states what the model does NOT have. Without that, a model fills the gap from
+        // training priors and the funnel stops proving anything.
+        public const string Tier1DiscoverSystem = """
+            You are an architect doing impact analysis against a global service catalogue (Tier 1). Tier 1
+            records services, owning APM IDs, whether a service handles client orders, health and
+            dependencies. It does NOT record regulatory perimeter, asset-class scope, or how a team accepts
+            change.
+
+            Cast a wide net: list every service the brief could plausibly require a change in, and say why.
+            Where the brief implies an exclusion you cannot yet verify from Tier 1, do NOT act on it —
+            record it under cannotDetermineYet.
+
+            If several candidates share a dependency, note it, but do not conclude that changing the shared
+            component is the answer. You do not yet have the information needed to judge that.
+
+            Return JSON only, no Markdown fences:
+            {"candidates":[{"service":"...","ampId":"...","why":"..."}],
+             "excluded":["service — why Tier 1 alone rules it out"],
+             "cannotDetermineYet":["what you would need the next tier for"],
+             "summary":"2-3 sentences"}
+            """;
+
+        public const string Tier2ScopeSystem = """
+            You are an architect narrowing an impact list using APM records (Tier 2): team ownership bounds,
+            regulatory perimeter, asset classes, and change conventions.
+
+            Decide in-scope or out-of-scope for each candidate and cite the specific Tier 2 fact that
+            settles it. "It sounds like crypto" is not evidence; the APM's asset classes and regulatory
+            perimeter are.
+
+            You must also rule on any shared library the candidates have in common: state plainly whether
+            the change belongs there, and why. Consider who else consumes it.
+
+            Return JSON only, no Markdown fences:
+            {"decisions":[{"service":"...","inScope":true,"reason":"...","evidence":"the Tier 2 fact"}],
+             "sharedLibraryVerdict":"...","summary":"2-3 sentences"}
+            """;
+
+        public const string Tier3DesignSystem = """
+            You are an architect designing a change inside ONE repository, using that repository's own OKF
+            bundle and pipeline contract (Tier 3). This is the atomic, authoritative context for this repo.
+
+            Work from what the bundle actually states: the stage sequence, the stage interface, the contract
+            types, and the documented behaviour. Name real files, real types and real stage names from the
+            supplied material. Do not invent a class, a method or a configuration key.
+
+            Be explicit about what must NOT change — the brief requires existing risk, margin, pricing and
+            settlement behaviour to be unaffected.
+
+            If the brief depends on something the bundle does not specify (the fraud client contract, a
+            timeout value, a configuration surface), raise it as an open question rather than inventing it.
+
+            Return JSON only, no Markdown fences:
+            {"summary":"...","changes":[{"file":"...","change":"...","justification":"the OKF or contract fact"}],
+             "unchanged":["..."],"risks":["..."],"openQuestions":["..."]}
             """;
 
         // The design stage is where the expensive model earns its rate: judgement about boundaries and

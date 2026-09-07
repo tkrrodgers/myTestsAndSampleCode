@@ -2,136 +2,98 @@ using PocInteractiveTraining.Server.Models;
 
 namespace PocInteractiveTraining.Server.Services;
 
-// Objective 6: score context readiness at three tiers and make the precedence rule explicit.
-// R4 — Tier 3 (the repo) is closest to the code and is authoritative on specifics; Tier 1 exists for
-// routing only. Staleness does not cascade downward: a fresh-looking parent never implies a fresh child.
+// Deterministic view of the three context tiers. It supplies the structure and the token cost of each
+// tier; it never decides scope. That judgement is the model's job, and keeping the two apart is the
+// point of the scene.
 public sealed class PortfolioContextService
 {
-    public PortfolioReport Build(DateTimeOffset asOf)
+    private readonly TradingCorpus _corpus;
+    private readonly EmbeddingGemmaEncoder _encoder;
+
+    public PortfolioContextService(TradingCorpus corpus, EmbeddingGemmaEncoder encoder)
     {
-        var repos = PortfolioSamples.Repos.Select(repo =>
-        {
-            var (score, present, missing) = ScoreRepo(repo);
-            var stale = repo.StaleAfter <= asOf;
-            return new PortfolioRepo(
-                repo.Name,
-                repo.AmpId,
-                repo.RepoPurpose,
-                repo.RepoOwner,
-                score,
-                stale,
-                repo.StaleAfter.ToString("yyyy-MM-dd"),
-                present,
-                missing);
-        }).ToList();
+        _corpus = corpus;
+        _encoder = encoder;
+    }
 
-        var amps = PortfolioSamples.Amps.Select(amp =>
-        {
-            var members = repos.Where(repo => repo.AmpId == amp.AmpId).ToList();
-            return new PortfolioAmp(
-                amp.AmpId,
-                amp.Name,
-                amp.Convention,
-                members.Count == 0 ? 0 : (int)Math.Round(members.Average(member => member.Score)),
-                members.Count == 0 ? 0 : members.Min(member => member.Score),
-                amp.StaleAfter <= asOf,
-                amp.StaleAfter.ToString("yyyy-MM-dd"),
-                members.Count,
-                members.Count(member => member.Stale));
-        }).ToList();
+    public PortfolioReport Build()
+    {
+        var services = PortfolioTierSamples.Tier1Services
+            .Select(service => new TierService(
+                service.Name,
+                service.AmpId,
+                service.Domain,
+                service.HandlesClientOrders,
+                service.Health,
+                service.Sla,
+                service.DependsOn,
+                PortfolioTierSamples.ServiceToRepository.GetValueOrDefault(service.Name)))
+            .ToList();
 
-        var conflicts = FindConflicts(repos);
-        var cascades = FindStalenessCascades(repos, amps, asOf);
+        var amps = PortfolioTierSamples.Tier2Amps
+            .Select(amp => new TierAmp(amp.AmpId, amp.Name, amp.Team, amp.RegulatoryPerimeter, amp.AssetClasses, amp.Repositories, amp.ScopeNote))
+            .ToList();
 
-        // The portfolio number is the weakest link, not the average: an agent routed to the worst repo
-        // gets the worst experience, and an average hides exactly that.
-        var portfolioScore = repos.Count == 0 ? 0 : (int)Math.Round(repos.Average(repo => repo.Score));
-        var weakest = repos.OrderBy(repo => repo.Score).FirstOrDefault();
+        var repositories = TradingCorpus.Repos
+            .Select(repo =>
+            {
+                var service = PortfolioTierSamples.ServiceToRepository.FirstOrDefault(pair => pair.Value == repo.Name).Key ?? repo.Name;
+                var documents = _corpus.OkfDocuments.Where(document => document.Repo == repo.Name).ToList();
+                return new TierRepository(
+                    repo.Name,
+                    services.FirstOrDefault(item => item.Repository == repo.Name)?.AmpId ?? "unknown",
+                    service,
+                    documents.Count,
+                    _corpus.Files.Count(file => file.Repo == repo.Name),
+                    documents.Select(document => document.Type).Distinct(StringComparer.Ordinal).OrderBy(type => type, StringComparer.Ordinal).ToList(),
+                    documents.Count > 0);
+            })
+            .ToList();
 
         return new PortfolioReport(
-            PortfolioSamples.CortexName,
-            portfolioScore,
-            weakest?.Score ?? 0,
-            weakest?.Name ?? "n/a",
-            PortfolioSamples.CortexStaleAfter <= asOf,
-            PortfolioSamples.CortexStaleAfter.ToString("yyyy-MM-dd"),
+            _corpus.IsAvailable,
+            _corpus.StatusMessage,
+            services,
             amps,
-            repos,
-            conflicts,
-            cascades);
+            repositories,
+            MeasureCost(),
+            BuildSharedDependencyWarning(services));
     }
 
-    private static (int Score, List<string> Present, List<string> Missing) ScoreRepo(PortfolioSamples.RepoEntry repo)
+    // The cost of progressive disclosure, stated in tokens: what the funnel actually saves.
+    public TierCost MeasureCost()
     {
-        var artifacts = new (string Name, bool Has, int Weight)[]
-        {
-            ("OKF bundle", repo.HasOkf, 30),
-            ("README", repo.HasReadme, 15),
-            ("ADRs", repo.HasAdr, 20),
-            ("Code map", repo.HasCodeMap, 20),
-            ("Tests", repo.HasTests, 15)
-        };
-
-        var score = artifacts.Where(artifact => artifact.Has).Sum(artifact => artifact.Weight);
-        return (score,
-            artifacts.Where(artifact => artifact.Has).Select(artifact => artifact.Name).ToList(),
-            artifacts.Where(artifact => !artifact.Has).Select(artifact => artifact.Name).ToList());
+        var (tier1, exact) = _encoder.CountTokens(PortfolioTierSamples.Tier1Context());
+        var tier2 = _encoder.CountTokens(PortfolioTierSamples.Tier2Context([])).Tokens;
+        var inScope = TradingCorpus.Repos
+            .Where(repo => repo.Name is "EquityTradingPipeline" or "FixedIncomeOptionsEngine")
+            .Sum(repo => _encoder.CountTokens(_corpus.Tier3Context(repo.Name)).Tokens);
+        var everything = TradingCorpus.Repos.Sum(repo => _encoder.CountTokens(_corpus.Tier3Context(repo.Name)).Tokens);
+        return new TierCost(tier1, tier2, inScope, everything, exact);
     }
 
-    private static List<TierConflict> FindConflicts(List<PortfolioRepo> repos)
+    // Surfaced deterministically because it is a structural fact, not an opinion: every trading service
+    // shares one library, so a Tier-1-only reading will propose changing it.
+    private static List<string> BuildSharedDependencyWarning(IReadOnlyList<TierService> services)
     {
-        var conflicts = new List<TierConflict>();
-        foreach (var claim in PortfolioSamples.CortexClaims)
+        var orderHandlers = services.Where(service => service.HandlesClientOrders).ToList();
+        var shared = orderHandlers
+            .SelectMany(service => service.DependsOn)
+            .GroupBy(dependency => dependency, StringComparer.Ordinal)
+            .Where(group => group.Count() == orderHandlers.Count)
+            .Select(group => group.Key)
+            .ToList();
+
+        if (shared.Count == 0)
         {
-            var repo = repos.FirstOrDefault(candidate => candidate.Name == claim.Repo);
-            if (repo is null)
-            {
-                continue;
-            }
-
-            if (!string.Equals(claim.ClaimedOwner, repo.Owner, StringComparison.OrdinalIgnoreCase))
-            {
-                conflicts.Add(new TierConflict(
-                    repo.Name,
-                    "Ownership",
-                    claim.ClaimedOwner,
-                    repo.Owner,
-                    "Tier 3 wins. The repo is closest to the code; update the Cortex entry, do not 'correct' the repo."));
-            }
-
-            if (!string.Equals(claim.ClaimedPurpose, repo.Purpose, StringComparison.OrdinalIgnoreCase))
-            {
-                conflicts.Add(new TierConflict(
-                    repo.Name,
-                    "Purpose",
-                    claim.ClaimedPurpose,
-                    repo.Purpose,
-                    "Tier 3 wins on specifics. Routing an agent on the Tier 1 description would send it to the wrong repo."));
-            }
+            return [];
         }
 
-        return conflicts;
-    }
-
-    private static List<string> FindStalenessCascades(List<PortfolioRepo> repos, List<PortfolioAmp> amps, DateTimeOffset asOf)
-    {
-        var cascades = new List<string>();
-
-        foreach (var amp in amps.Where(amp => !amp.Stale && amp.StaleRepos > 0))
-        {
-            cascades.Add($"{amp.AmpId} ({amp.Name}) looks fresh until {amp.StaleAfter}, but {amp.StaleRepos} of its {amp.RepoCount} repos are already stale. Freshness does not cascade downward.");
-        }
-
-        if (PortfolioSamples.CortexStaleAfter <= asOf)
-        {
-            cascades.Add($"The Cortex tier itself expired on {PortfolioSamples.CortexStaleAfter:yyyy-MM-dd}. Portfolio-level routing is running on knowledge nobody has re-verified.");
-        }
-
-        foreach (var repo in repos.Where(repo => repo.Stale && repo.Score < 50))
-        {
-            cascades.Add($"{repo.Name} is both stale (since {repo.StaleAfter}) and thin ({repo.Score}/100). An agent sent here has neither current nor sufficient context.");
-        }
-
-        return cascades;
+        return
+        [
+            $"All {orderHandlers.Count} order-handling services depend on {string.Join(" and ", shared)}.",
+            "Tier 1 alone makes that look like the obvious place to add the fraud call — one change, every service covered.",
+            "It is the wrong answer, and Tier 1 does not contain the fact that makes it wrong."
+        ];
     }
 }

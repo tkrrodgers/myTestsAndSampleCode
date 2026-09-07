@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 interface BridgeTask {
 	taskId: string;
 	sessionId: string;
-	kind: 'coach-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis' | 'context-curve-plan' | 'framing-arm' | 'framing-judge' | 'claude-consolidation-design' | 'gemma-consolidation-build' | 'claude-curve-judge';
+	kind: 'coach-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis' | 'context-curve-plan' | 'framing-arm' | 'framing-judge' | 'claude-consolidation-design' | 'gemma-consolidation-build' | 'claude-curve-judge' | 'claude-tier1-discover' | 'claude-tier2-scope' | 'claude-tier3-design' | 'gemma-regression-guidance' | 'claude-regression-review' | 'gemma-pattern-apply' | 'claude-pattern-review' | 'claude-crypto-unaided' | 'gemma-crypto-sme' | 'claude-crypto-design';
 	preferredModel: string;
 	fallbackModel?: string;
 	systemPrompt: string;
@@ -207,6 +207,26 @@ function taskLabel(task: BridgeTask): string {
 			return `${task.preferredModel} plan (context tier)`;
 		case 'claude-curve-judge':
 			return 'Claude context comparison';
+		case 'claude-tier1-discover':
+			return 'Claude Tier 1 discovery';
+		case 'claude-tier2-scope':
+			return 'Claude Tier 2 scoping';
+		case 'claude-tier3-design':
+			return 'Claude Tier 3 design';
+		case 'gemma-regression-guidance':
+			return `${task.preferredModel} test proposals`;
+		case 'claude-regression-review':
+			return 'Claude test review';
+		case 'gemma-pattern-apply':
+			return `${task.preferredModel} pattern run`;
+		case 'claude-pattern-review':
+			return 'Claude prompt review';
+		case 'claude-crypto-unaided':
+			return 'Claude unaided attempt';
+		case 'gemma-crypto-sme':
+			return `${task.preferredModel} SME answers`;
+		case 'claude-crypto-design':
+			return 'Claude grounded design';
 		case 'framing-arm':
 			return 'Framing arm';
 		case 'framing-judge':

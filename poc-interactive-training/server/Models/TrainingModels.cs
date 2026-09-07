@@ -757,6 +757,52 @@ public sealed record MutationReport(
     string Verdict,
     string? Error);
 
+// One row of QA's condition-permutation data, run through both the production baseline and the
+// candidate. Classification is what turns a raw diff into a decision.
+public sealed record VectorComparison(
+    int Row,
+    string Inputs,
+    string BaselineResult,
+    string CandidateResult,
+    bool Differs,
+    string Classification,
+    string Note);
+
+public sealed record DifferentialReport(
+    bool Ran,
+    int VectorCount,
+    int Identical,
+    int Intended,
+    int Unintended,
+    int NotImplemented,
+    IReadOnlyList<VectorComparison> Comparisons,
+    IReadOnlyList<string> DeclaredChanges,
+    string Verdict,
+    string? Error);
+
+public sealed record PredicateCoverage(
+    string Expression,
+    int Line,
+    bool TrueSeen,
+    bool FalseSeen,
+    bool Evaluable);
+
+public sealed record ConditionCoverageReport(
+    bool Ran,
+    int Predicates,
+    int FullyExercised,
+    int CoveragePercent,
+    IReadOnlyList<PredicateCoverage> Details,
+    IReadOnlyList<string> Gaps,
+    int SkippedPredicates,
+    string Verdict,
+    string? Error);
+
+public sealed record RegressionAuditReport(
+    DifferentialReport Differential,
+    ConditionCoverageReport Coverage,
+    MutationReport Mutation);
+
 public sealed record ProposedTest(
     string Name,
     string TargetsSurvivor,

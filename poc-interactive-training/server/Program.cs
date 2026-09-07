@@ -258,11 +258,26 @@ app.Logger.LogInformation("Context-tier scorer self-check: grounded plan {Rich}/
 
 // Mutation testing is only meaningful if surviving mutants are actually found; the fixture is built to
 // leave the enhanced behaviour uncovered, so a 100% score here would mean the harness is broken.
-var mutationProbe = app.Services.GetRequiredService<RegressionAdequacyService>()
-    .Analyse(RegressionSamples.Source, RegressionSamples.Tests);
+var auditProbe = app.Services.GetRequiredService<RegressionAdequacyService>().Audit(
+    RegressionSamples.Baseline,
+    RegressionSamples.Source,
+    RegressionSamples.Tests,
+    RegressionSamples.TestVectors,
+    RegressionSamples.IntendedChanges);
+var mutationProbe = auditProbe.Mutation;
 app.Logger.LogInformation("Regression adequacy self-check: ran={Ran}, score {Score}%, {Killed}/{Total} mutants killed.{Error}",
     mutationProbe.Ran, mutationProbe.MutationScore, mutationProbe.KilledMutants, mutationProbe.TotalMutants,
     mutationProbe.Error is null ? string.Empty : " " + mutationProbe.Error);
+app.Logger.LogInformation(
+    "Differential self-check: {Vectors} vectors, {Identical} identical, {Intended} intended, {Regression} regression(s), {Missing} not implemented.{Error}",
+    auditProbe.Differential.VectorCount, auditProbe.Differential.Identical, auditProbe.Differential.Intended,
+    auditProbe.Differential.Unintended, auditProbe.Differential.NotImplemented,
+    auditProbe.Differential.Error is null ? string.Empty : " " + auditProbe.Differential.Error);
+app.Logger.LogInformation(
+    "Condition coverage self-check: {Full}/{Total} predicates driven both ways ({Percent}%), {Gaps} gap(s), {Skipped} skipped.{Error}",
+    auditProbe.Coverage.FullyExercised, auditProbe.Coverage.Predicates, auditProbe.Coverage.CoveragePercent,
+    auditProbe.Coverage.Gaps.Count, auditProbe.Coverage.SkippedPredicates,
+    auditProbe.Coverage.Error is null ? string.Empty : " " + auditProbe.Coverage.Error);
 
 var portfolioProbe = app.Services.GetRequiredService<PortfolioContextService>().Build();
 app.Logger.LogInformation("Portfolio tier self-check: {Services} services, {Amps} APM records, {Repos} repo(s) with OKF, funnel {InScope} vs {All} tokens, shared-dependency trap detected={Trap}.",
@@ -325,7 +340,6 @@ var streamProbe = TrainingSessionStore.HumaniseStreamFragment(
 app.Logger.LogInformation("Review stream humaniser self-check: clean={Clean}, sample=\"{Sample}\".",
     !streamProbe.Contains('{') && !streamProbe.Contains('"') && !streamProbe.Contains("\":"), streamProbe);
 
-// A demo must never start against a stale script, so a manifest mismatch disables auto-run.
 var autopilotProbe = app.Services.GetRequiredService<AutopilotContract>().Verify();
 app.Logger.LogInformation(
     "Autopilot manifest self-check: {Steps} steps, {Selectors} selectors, {Resolved} resolved, {Missing} missing, {Violations} invariant violation(s), manifest v{Version}.",

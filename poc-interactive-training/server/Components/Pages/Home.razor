@@ -2447,60 +2447,149 @@ cobol85  -&gt; 000000</pre>
 					<section>
 						<p class="kicker">GREEN TESTS ARE NOT COVERAGE</p>
 						<h2 id="scene-title">Does the suite cover the risk this change adds?</h2>
-						<p class="rt-intro">Line coverage asks <em>"did a test execute this line?"</em> — a test with no assertions satisfies it. Mutation testing asks the question that actually matters: <strong>"would a test have noticed if this line were wrong?"</strong></p>
+						<p class="rt-intro">Three questions, three different techniques. <strong>Does the candidate still agree with production?</strong> Only executing both against real condition data can answer that. <strong>Does the data reach the whole logic space?</strong> Static analysis finds the branches; execution proves which ones fired. <strong>Would a test notice if a line were wrong?</strong> That is mutation testing. Passing any one of the three proves nothing about the other two.</p>
 
 						<section class="rt-box">
-							<header class="rt-head"><span class="rt-step">?</span><div><strong>What a mutation score is</strong><small>and why it is called that</small></div></header>
+							<header class="rt-head"><span class="rt-step">?</span><div><strong>What Roslyn can and cannot tell you</strong><small>the limit that makes the rest of this tab necessary</small></div></header>
 							<div class="audit-body">
-								<p class="rt-reco">The technique dates to the 1970s and the name is a biological metaphor. You breed small variants of a working program — <strong>mutants</strong> — and see how many the tests can detect.</p>
+								<p class="rt-reco"><strong>Roslyn is a static analyser. It does not run the code.</strong> It parses source into a syntax tree and can tell you, with certainty, what the code <em>says</em>. It cannot tell you what the code <em>does</em> with your data.</p>
+								<table class="audit-table">
+									<thead><tr><th>Roslyn answers this</th><th>Roslyn cannot answer this</th></tr></thead>
+									<tbody>
+										<tr><td>Which branch predicates exist, and on which lines</td><td>Which of those branches your test data actually reaches</td></tr>
+										<tr><td>Where the operators and literals are, so defects can be injected</td><td>Whether the enhanced service still agrees with production</td></tr>
+										<tr><td>That a method is unreachable or a variable unused</td><td>Whether a passing test asserted anything meaningful</td></tr>
+										<tr><td>Structural shape of the change</td><td>Whether a behaviour difference was requested or is a regression</td></tr>
+									</tbody>
+								</table>
+								<p class="rt-reco">So this tab uses Roslyn for exactly what it is good at &mdash; <strong>finding the predicates and the mutation sites</strong> &mdash; and then <strong>executes</strong> code to answer everything else.</p>
+								<h4>Why a production baseline is the reference</h4>
+								<p>Consider a service taking <code>A</code>, <code>B</code>, <code>C</code> with logic <code>if (A &gt; 0)</code>, <code>if (B &lt; 2)</code>, <code>if (C == 0)</code>. Reading that tells you three predicates exist. It does not tell you what the service returns for <code>0, 1, 4</code>. The only trustworthy answer to <em>"did we break anything?"</em> is the behaviour of the version already running in production &mdash; the <strong>golden baseline</strong> &mdash; run against the same inputs.</p>
 								<div class="pipeline-chain">
-									<span>compile</span><span>run baseline</span><span>inject one defect</span><span>re-run tests</span><span>killed or survived</span><span>score</span>
+									<span>production baseline</span><span>QA candidate</span><span>same condition data</span><span>compare responses</span><span>classify each difference</span>
 								</div>
-								<table class="audit-table">
-									<thead><tr><th>Outcome</th><th>What happened</th><th>What it means</th></tr></thead>
-									<tbody>
-										<tr class="p0-opt"><td><strong>Killed</strong></td><td>At least one test failed against the mutated code.</td><td>The suite would have caught this defect in review or CI.</td></tr>
-										<tr class="p0-req"><td><strong>Survived</strong></td><td>Every test still passed against code that is measurably wrong.</td><td>The suite is blind to this defect. It would ship green.</td></tr>
-									</tbody>
-								</table>
-								<p class="rt-reco"><strong>Mutation score = killed ÷ viable mutants.</strong> A score of 100% does not mean the code is correct — it means the suite noticed every defect <em>this tool knows how to inject</em>. It is a lower bound on test sensitivity, not a proof of correctness.</p>
-								<h4>The defects injected here</h4>
-								<table class="audit-table">
-									<thead><tr><th>Operator</th><th>Mutation</th><th>The real bug it stands in for</th></tr></thead>
-									<tbody>
-										<tr><td>Boundary widened</td><td><code>&gt;</code> → <code>&gt;=</code>, <code>&lt;</code> → <code>&lt;=</code></td><td>Off-by-one at a threshold — the classic fee, tier and limit defect.</td></tr>
-										<tr><td>Boundary narrowed</td><td><code>&gt;=</code> → <code>&gt;</code>, <code>&lt;=</code> → <code>&lt;</code></td><td>An eligible case silently excluded at the edge.</td></tr>
-										<tr><td>Arithmetic flipped</td><td><code>+</code> → <code>-</code>, <code>-</code> → <code>+</code></td><td>A sign error in a money calculation.</td></tr>
-										<tr><td>Threshold shifted</td><td>numeric literal → value + 1</td><td>A rate, cap or grace period that quietly drifted from policy.</td></tr>
-									</tbody>
-								</table>
-								<h4>Two rules that keep the number honest</h4>
-								<ul class="rt-list warn">
-									<li><strong>The baseline must be green first.</strong> If the unmutated suite already fails, every mutant looks killed and the score is meaningless. This refuses to run in that state.</li>
-									<li><strong>Mutants that will not compile are excluded, not counted as kills.</strong> No test could ever have caught them, so counting them would inflate the score for free — a common way mutation tools flatter a suite.</li>
-								</ul>
-								<p class="ctx-method">A timeout also counts as a kill: an infinite loop caused by a flipped operator is a detected defect, just detected slowly.</p>
+								<p class="rt-reco">A difference is not automatically a defect. If the business asked for it, the team records it as a <strong>signed-off change</strong> and writes a new functional test &mdash; which then joins the regression suite permanently. A difference matching no signed-off rule is a <strong>regression</strong> until someone says otherwise.</p>
+								<h4>What this tab does not measure</h4>
+								<pre class="rt-code">@RegressionSamples.FaultInjectionNote</pre>
+								<p class="ctx-method">Recorded so nobody mistakes condition-permutation agreement for complete regression assurance. Fault injection is a separate discipline and is not executed here.</p>
 							</div>
 						</section>
 
 						<section class="rt-box">
-							<header class="rt-head"><span class="rt-step">1</span><div><strong>The enhancement</strong><small>what the change is meant to add</small></div></header>
-							<div class="audit-body"><pre class="rt-code">@RegressionSamples.Enhancement</pre></div>
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Production baseline</strong><small>the golden reference &middot; what runs today</small></div></header>
+							<textarea class="rt-code-input tall" spellcheck="false" maxlength="8000" @bind="_regressionBaseline" @bind:event="oninput" disabled="@_mutationRunning" aria-label="Baseline"></textarea>
 						</section>
 
 						<section class="rt-box">
-							<header class="rt-head"><span class="rt-step">2</span><div><strong>Code under test</strong><small>editable</small></div></header>
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>The enhancement</strong><small>what the business asked for</small></div></header>
+							<div class="audit-body">
+								<pre class="rt-code">@RegressionSamples.Enhancement</pre>
+								<h4>Signed-off behaviour changes</h4>
+								<table class="audit-table">
+									<thead><tr><th>Applies when</th><th>Authority</th></tr></thead>
+									<tbody>
+										@foreach (var signedOff in RegressionSamples.IntendedChanges)
+										{
+											<tr><td><code>@signedOff.Rule</code></td><td>@signedOff.Description</td></tr>
+										}
+									</tbody>
+								</table>
+								<p class="ctx-method">These are the only differences the comparison will accept without escalation.</p>
+							</div>
+						</section>
+
+						<section class="rt-box">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Enhanced candidate</strong><small>the QA build &middot; editable</small></div></header>
 							<textarea class="rt-code-input tall" spellcheck="false" maxlength="8000" @bind="_regressionSource" @bind:event="oninput" disabled="@_mutationRunning" aria-label="Source"></textarea>
 						</section>
+
 						<section class="rt-box">
-							<header class="rt-head"><span class="rt-step">3</span><div><strong>Existing test suite</strong><small>currently passing</small></div></header>
+							<header class="rt-head"><span class="rt-step">4</span><div><strong>Existing test suite</strong><small>currently passing</small></div></header>
 							<textarea class="rt-code-input tall" spellcheck="false" maxlength="8000" @bind="_regressionTests" @bind:event="oninput" disabled="@_mutationRunning" aria-label="Tests"></textarea>
 						</section>
 
+						<section class="rt-box" data-auto="s26.vectors">
+							<header class="rt-head"><span class="rt-step">5</span><div><strong>QA condition data</strong><small>one row per permutation &middot; columns bind to the parameters in order</small></div></header>
+							<textarea class="rt-code-input" spellcheck="false" maxlength="4000" @bind="_regressionVectors" @bind:event="oninput" disabled="@_mutationRunning" aria-label="Test vectors"></textarea>
+							<div class="audit-body"><p class="ctx-method">This is the artefact QA maintains: every combination of conditions the business logic distinguishes, including the boundaries. Coverage of the logic space is a property of this file, not of the code.</p></div>
+						</section>
+
 						<div class="rt-actions">
-							<small>Deterministic &mdash; compiles and runs in-process, no model call.</small>
-							<button class="primary-command compact" type="button" data-auto="s26.mutate" disabled="@_mutationRunning" @onclick="RunMutation">@(_mutationRunning ? "Running mutants…" : "Run mutation test")</button>
+							<small>Deterministic &mdash; compiles and executes both versions in-process, no model call.</small>
+							<button class="primary-command compact" type="button" data-auto="s26.mutate" disabled="@_mutationRunning" @onclick="RunMutation">@(_mutationRunning ? "Running…" : "Run mutation and compare test")</button>
 						</div>
+
+						@if (_audit is { } regressionAudit)
+						{
+							<span data-auto="s26.audit-result" hidden></span>
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">6</span><div><strong>Comparison against production</strong><small>every row executed through both versions</small></div></header>
+								<div class="audit-body">
+									@if (!regressionAudit.Differential.Ran)
+									{
+										<div class="compare-status failed" role="alert">@regressionAudit.Differential.Error</div>
+									}
+									else
+									{
+										<div class="audit-scoreline">
+											<span class="ctx-label @(regressionAudit.Differential.Unintended > 0 ? "ctx-poor" : regressionAudit.Differential.NotImplemented > 0 ? "ctx-adequate" : "ctx-rich")">@regressionAudit.Differential.Unintended</span>
+											<div><strong>Unexplained differences</strong><small>@regressionAudit.Differential.VectorCount rows &middot; @regressionAudit.Differential.Identical identical &middot; @regressionAudit.Differential.Intended intended &middot; @regressionAudit.Differential.NotImplemented to adjudicate</small></div>
+											<p>@regressionAudit.Differential.Verdict</p>
+										</div>
+										<table class="audit-table">
+											<thead><tr><th>#</th><th>Inputs</th><th>Production</th><th>Candidate</th><th>Classification</th><th>Basis</th></tr></thead>
+											<tbody>
+												@foreach (var row in regressionAudit.Differential.Comparisons)
+												{
+													<tr class="@(row.Classification switch { "REGRESSION" => "p0-req", "adjudicate" => "p0-req", "intended" => "p0-opt", _ => null })">
+														<td>@row.Row</td>
+														<td><code>@row.Inputs</code></td>
+														<td><code>@row.BaselineResult</code></td>
+														<td><code>@row.CandidateResult</code></td>
+														<td><strong>@row.Classification</strong></td>
+														<td>@row.Note</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+										<p class="ctx-method">Every row classified <em>intended</em> should already have a functional test naming it. If it does not, that test is the deliverable &mdash; and it becomes part of the regression suite from then on.</p>
+									}
+								</div>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">7</span><div><strong>Condition coverage of the data</strong><small>Roslyn finds the predicates &middot; execution proves which fired</small></div></header>
+								<div class="audit-body">
+									@if (!regressionAudit.Coverage.Ran)
+									{
+										<div class="compare-status failed" role="alert">@regressionAudit.Coverage.Error</div>
+									}
+									else
+									{
+										<div class="audit-scoreline">
+											<span class="ctx-label @(regressionAudit.Coverage.CoveragePercent >= 100 ? "ctx-rich" : regressionAudit.Coverage.CoveragePercent >= 50 ? "ctx-adequate" : "ctx-poor")">@regressionAudit.Coverage.CoveragePercent%</span>
+											<div><strong>Predicates driven both ways</strong><small>@regressionAudit.Coverage.FullyExercised of @regressionAudit.Coverage.Predicates@(regressionAudit.Coverage.SkippedPredicates > 0 ? $" · {regressionAudit.Coverage.SkippedPredicates} not evaluable in isolation" : string.Empty)</small></div>
+											<p>@regressionAudit.Coverage.Verdict</p>
+										</div>
+										<table class="audit-table">
+											<thead><tr><th>Line</th><th>Condition</th><th>Driven true</th><th>Driven false</th></tr></thead>
+											<tbody>
+												@foreach (var predicate in regressionAudit.Coverage.Details)
+												{
+													<tr class="@(predicate.Evaluable && predicate.TrueSeen && predicate.FalseSeen ? "p0-opt" : "p0-req")">
+														<td>@predicate.Line</td>
+														<td><code>@predicate.Expression</code></td>
+														<td>@(!predicate.Evaluable ? "not evaluable" : predicate.TrueSeen ? "yes" : "NEVER")</td>
+														<td>@(!predicate.Evaluable ? "not evaluable" : predicate.FalseSeen ? "yes" : "NEVER")</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+										<p class="ctx-method">A predicate driven only one way means the QA data never takes the other branch. That is a gap in the <em>data</em>, and no amount of extra assertions on existing rows will close it.</p>
+									}
+								</div>
+							</section>
+						}
 
 						@if (_mutation is { } mutation)
 						{
@@ -2512,7 +2601,18 @@ cobol85  -&gt; 000000</pre>
 							else
 							{
 								<section class="rt-box">
-									<header class="rt-head"><span class="rt-step">4</span><div><strong>Result</strong><small>@mutation.KilledMutants of @mutation.TotalMutants defects caught</small></div></header>
+									<header class="rt-head"><span class="rt-step">8</span><div><strong>Mutation score</strong><small>@mutation.KilledMutants of @mutation.TotalMutants defects caught</small></div></header>
+									<div class="audit-body">
+										<p class="rt-reco">A different question from the comparison above. Comparison asks <em>"does the candidate still agree with production?"</em>. Mutation asks <strong>"would a test have noticed if this line were wrong?"</strong> — you breed small variants of the working program and count how many the suite detects. <strong>Score = killed ÷ viable mutants.</strong> 100% would mean the suite noticed every defect <em>this tool knows how to inject</em>, not that the code is correct.</p>
+										<div class="pipeline-chain">
+											<span>compile</span><span>run baseline</span><span>inject one defect</span><span>re-run tests</span><span>killed or survived</span><span>score</span>
+										</div>
+										<ul class="rt-list warn">
+											<li><strong>The baseline suite must be green first.</strong> If it already fails, every mutant looks killed and the score is meaningless. This refuses to run in that state.</li>
+											<li><strong>Mutants that will not compile are excluded, not counted as kills.</strong> No test could ever have caught them, so counting them would inflate the score for free.</li>
+											<li><strong>Some survivors may be equivalent programs.</strong> The tool cannot detect equivalence, so a survivor is a candidate gap, not a proven one.</li>
+										</ul>
+									</div>
 									<div class="audit-scoreline">
 										<span class="ctx-label @(mutation.MutationScore >= 80 ? "ctx-rich" : mutation.MutationScore >= 50 ? "ctx-adequate" : "ctx-poor")">@mutation.MutationScore%</span>
 										<div><strong>Mutation score</strong><small>baseline suite: @string.Join(", ", mutation.BaselineTests)</small></div>
@@ -2536,7 +2636,7 @@ cobol85  -&gt; 000000</pre>
 								</section>
 
 								<section class="rt-box">
-									<header class="rt-head"><span class="rt-step">5</span><div><strong>Gemma 4 proposes the missing tests</strong><small>closing named survivors, not "more coverage"</small></div></header>
+									<header class="rt-head"><span class="rt-step">9</span><div><strong>Gemma 4 proposes the missing tests</strong><small>closing named survivors, not "more coverage"</small></div></header>
 									<div class="audit-body">
 										<p class="rt-reco">A surviving mutant is a <strong>falsifiable target</strong>: either a proposed test fails against the mutated code or it does not. That is why the model is asked to close specific survivors rather than to improve the suite in general — the instruction can be checked.</p>
 										<div class="rt-actions">
@@ -2582,7 +2682,7 @@ cobol85  -&gt; 000000</pre>
 								</section>
 
 								<section class="rt-qa">
-									<header class="rt-head"><span class="rt-step">6</span><div><strong>Claude Opus 4.8 checks the proposals</strong><small>would each test actually kill what it claims?</small></div></header>
+									<header class="rt-head"><span class="rt-step">10</span><div><strong>Claude Opus 4.8 checks the proposals</strong><small>would each test actually kill what it claims?</small></div></header>
 									@if (_session?.RegressionGuidance.Review is { } guidanceReview)
 									{
 										<div class="coach-label">Reviewed by @guidanceReview.Model</div>
@@ -3931,6 +4031,9 @@ Finish with the verification path: the tests you would add or change, and how I 
 	}
 
 	private string _regressionSource = RegressionSamples.Source;
+	private string _regressionBaseline = RegressionSamples.Baseline;
+	private string _regressionVectors = RegressionSamples.TestVectors;
+	private RegressionAuditReport? _audit;
 	private string _regressionTests = RegressionSamples.Tests;
 	private MutationReport? _mutation;
 	private bool _mutationRunning;
@@ -3939,8 +4042,14 @@ Finish with the verification path: the tests you would add or change, and how I 
 	private async Task RunMutation()
 	{
 		_mutationRunning = true;
-		// Compiling and executing every mutant blocks; keep the circuit responsive.
-		_mutation = await Task.Run(() => Regression.Analyse(_regressionSource, _regressionTests));
+		// Compiling and executing both versions plus every mutant blocks; keep the circuit responsive.
+		_audit = await Task.Run(() => Regression.Audit(
+			_regressionBaseline,
+			_regressionSource,
+			_regressionTests,
+			_regressionVectors,
+			RegressionSamples.IntendedChanges));
+		_mutation = _audit.Mutation;
 		_mutationRunning = false;
 	}
 

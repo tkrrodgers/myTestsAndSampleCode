@@ -269,7 +269,7 @@ app.Logger.LogInformation("Regression adequacy self-check: ran={Ran}, score {Sco
     mutationProbe.Ran, mutationProbe.MutationScore, mutationProbe.KilledMutants, mutationProbe.TotalMutants,
     mutationProbe.Error is null ? string.Empty : " " + mutationProbe.Error);
 app.Logger.LogInformation(
-    "Differential self-check: {Vectors} vectors, {Identical} identical, {Intended} intended, {Regression} regression(s), {Missing} not implemented.{Error}",
+    "Differential self-check: {Vectors} vectors, {Identical} identical, {Intended} intended, {Regression} regression(s), {Adjudicate} to adjudicate.{Error}",
     auditProbe.Differential.VectorCount, auditProbe.Differential.Identical, auditProbe.Differential.Intended,
     auditProbe.Differential.Unintended, auditProbe.Differential.NotImplemented,
     auditProbe.Differential.Error is null ? string.Empty : " " + auditProbe.Differential.Error);

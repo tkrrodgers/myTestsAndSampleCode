@@ -74,8 +74,13 @@ elsewhere, and conflating them will produce wrong conclusions:
 | Context sufficiency | The same fixed-income repository at three documentation tiers | Identical source, three levels of surrounding knowledge |
 | Model comparison | Google Cloud documentation fetched over HTTPS at judging time | Genuinely authoritative, retrieved live, and shown with its retrieval status |
 | Making Gemma 4 an SME | A three-layer vendor documentation pack for crypto execution | Transcribed from public vendor documentation on a stated date; a dated snapshot, not a live feed |
+| Regression audit | The production baseline plus QA's condition-permutation data | The baseline is the reference of record — correctness is defined as agreement with it, not with any document |
 | Auto-run narration | The step fact packs in `AutopilotManifest` | Authored by a human, contract-tested against the markup, and the only thing narration may assert |
 | Everything deterministic | Fixtures compiled into the server | Synthetic, versioned with the code |
 
 Only the last two rows are versioned inside this repository. The first four can change or become unavailable
 underneath a demonstration, which is why each reports its own availability rather than failing quietly.
+
+> **A golden baseline is an artifact with the same failure mode as a stale bundle.** It certifies against
+> yesterday's correct behaviour with full authority. It needs a named owner, a version, and a retirement
+> rule, or it will eventually be confidently wrong.

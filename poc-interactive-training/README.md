@@ -44,7 +44,7 @@ These produce their numbers from executed code, not from an opinion. They work w
 | Agent registry & risk tiering | Derives R0–R3 from blast radius × autonomy × data tier; refuses to register an agent missing a non-negotiable field or running an unpinned model |
 | Data-tier gate | Regex + Luhn detection of credentials, PAN, national IDs and hosts; BLOCK / SCRUB / ALLOW with an incident path. Restricted content is withheld rather than scrubbed |
 | Action authority | Decides AUTO / APPROVE / PROPOSE / DENY per exact action against the registered envelope |
-| Regression adequacy | Real mutation testing — compiles the fixture with Roslyn, executes it, injects one defect at a time, re-runs the tests. A surviving mutant is a defect the suite would ship |
+| Regression audit | Three independent techniques, none of which is sufficient alone. **Differential comparison**: the production baseline and the QA candidate are both executed over every row of condition-permutation data and their responses compared; a difference matching a signed-off business rule is intended, a difference matching none is a regression. **Condition coverage**: Roslyn extracts the branch predicates, a compiled probe evaluates each against the real data, and a predicate driven only one way is a gap in the *data*. **Mutation testing**: compiles the fixture, executes it, injects one defect at a time, re-runs the tests — a surviving mutant is a defect the suite would ship |
 | Context audit | ML.NET classifier over real embeddinggemma-300m vectors, rating whether a repo carries usable context |
 | Portfolio context tiers | Weighted artifact scoring across an AMP/repo fixture, with tier-conflict and staleness-cascade detection |
 | Common code audit | embeddinggemma clustering over three real repositories; threshold measured with `--calibrate-corpus`, not guessed |
@@ -64,7 +64,7 @@ The rule that makes it safe: **no model ever infers what the application does.**
 | Profile | Scope |
 | --- | --- |
 | Deterministic | The 87 steps that need no bridge model. Narration is the fact list, read verbatim. Works offline |
-| Full | All 111 steps including every model stage, with Gemma 4 authoring narration |
+| Full | All 116 steps including every model stage, with Gemma 4 authoring narration |
 
 Narration falls back **Gemma 4 → Claude Opus 4.8 → the fact list**. Claude is used only on a mechanical failure of Gemma — unavailable, timeout, empty, or unparseable — never because someone judged Gemma's prose to be worse, and every substitution is disclosed on screen. Failures are narrated rather than hidden. **Escape** aborts at any point.
 
@@ -141,6 +141,11 @@ dotnet run --project .\server\... -- --score-facts <file>    # score saved model
 - Keyword coverage on the comparison tab counts vocabulary, not correctness.
 - Cost figures in the token-economics scene are **illustrative rates**, not contract pricing.
 - Mutation testing compiles and executes fixture code in-process. That is acceptable on a developer machine and is not safe on a shared host without sandboxing.
+- **Roslyn is a static analyser and never runs the code.** It can name every branch predicate but cannot say which the data reaches, whether a passing test asserted anything, or whether a candidate still agrees with production. Everything beyond structure on the regression tab comes from execution, not analysis.
+- **A surviving mutant is a candidate gap, not a proven one.** The tool cannot detect equivalent mutants — a mutation that produces a genuinely identical program will always survive, and no test could kill it.
+- **"Adjudicate" is a question, not a verdict.** When a signed-off rule applies to an input but behaviour did not change, that may be a missing implementation *or* a higher-precedence rule legitimately suppressing it. The harness deliberately reports both as needing a human decision rather than guessing.
+- **Intended-change rules are C# expressions over the entry-point parameters.** A rule that depends on internal state will not compile in isolation and is reported as skipped rather than silently passing.
+- **Fault injection is described on the regression tab and not executed.** Condition permutations establish that the logic still agrees with production; malformed payloads, truncated fields, duplicate messages, downstream timeouts and partial failures are a separate discipline. A suite can be strong at the first and blind to the second.
 - Similarity thresholds are properties of the corpus they were measured on. Re-measure before pointing a control at a different estate.
 - The streamed review trace is the reviewer narrating its own steps. It is **not** private chain-of-thought, and it is not evidence the review is correct.
 - Autopilot narration is model-authored prose over verified facts. The facts are checked; the phrasing is constrained but not verified. Read the generated pack before showing it to an external audience.

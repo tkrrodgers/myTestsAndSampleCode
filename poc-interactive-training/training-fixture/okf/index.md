@@ -4,7 +4,7 @@ title: Fulfillment Training Knowledge Bundle
 description: Entry point for the synthetic FUL-1842 delivery-estimate lesson.
 status: stable
 generated: { by: "human:ces-training-author", at: "2026-09-02T00:00:00Z" }
-verified: { by: "human:ces-training-reviewer", at: "2026-09-07T00:00:00Z" }
+verified: { by: "human:ces-training-reviewer", at: "2026-09-08T00:00:00Z" }
 stale_after: "2027-01-31T00:00:00Z"
 ---
 # Fulfillment Training Knowledge Bundle

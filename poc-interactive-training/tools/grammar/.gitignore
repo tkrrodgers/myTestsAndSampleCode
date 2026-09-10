@@ -1,0 +1,13 @@
+# Grammar tooling is a deliberate, occasional step — not part of `dotnet build`.
+#
+# Regenerate with (Node 20+, no JDK required):
+#   npm install
+#   npx antlr-ng -D language=CSharp -p PocInteractiveTraining.Server.Cobol.Generated -o .\out Cobol85.g4 Cobol85Preprocessor.g4
+#
+# The .g4 files are vendored and tracked. Everything below is reproducible output.
+
+node_modules/
+package-lock.json
+out/
+probe/bin/
+probe/obj/

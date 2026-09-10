@@ -1851,6 +1851,20 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     max-height: 520px;
 }
 
+/* Single-line query box: same monospace treatment, none of the textarea height. */
+.rt-code-input.cortex-input {
+    min-height: 0;
+    max-height: none;
+    height: 34px;
+    flex: 1 1 260px;
+    padding: 6px 10px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, .25);
+    color: inherit;
+    white-space: nowrap;
+}
+
 .rt-actions {
     display: flex;
     align-items: center;
@@ -1864,6 +1878,16 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
+}
+
+/* Full-width stacked panes: vertical space is cheaper here than horizontal scrolling. */
+.rt-flow-stacked {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.rt-flow-stacked .rt-story,
+.rt-flow-stacked .rt-code {
+    max-height: 460px;
 }
 
 .rt-story, .rt-code {

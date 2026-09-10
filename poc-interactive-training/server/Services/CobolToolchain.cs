@@ -154,6 +154,54 @@ public sealed partial class CobolToolchain
         return runs;
     }
 
+    // Independent COPY resolution. cobc -E runs the preprocessor only, expanding COPY/REPLACING against
+    // the -I path list in order — the same semantics as SYSLIB concatenation on z/OS — and emits #line
+    // directives naming the exact member each expanded line came from. Used to corroborate our own
+    // resolver rather than to replace it: two mechanisms agreeing is evidence, one asserting is not.
+    public CopyResolution ResolveCopybooks(string sourceFile, string copyDirectory)
+    {
+        if (!IsAvailable)
+        {
+            return new CopyResolution(false, [], [], [], StatusMessage);
+        }
+
+        var workingDirectory = Path.GetDirectoryName(sourceFile) ?? Path.GetTempPath();
+        var result = Run(_cobc!, $"-E -std=ibm -I \"{copyDirectory}\" \"{sourceFile}\"", workingDirectory, null);
+        var self = Path.GetFileNameWithoutExtension(sourceFile);
+        var bundled = _copyDir is null ? null : Path.GetFullPath(_copyDir);
+
+        var included = LineDirectivePattern().Matches(result.StdOut)
+            .Select(match => match.Groups["file"].Value)
+            .Where(path => !Path.GetFileNameWithoutExtension(path).Equals(self, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // cobc satisfying SQLCA from its own copy library is a substitution, not evidence that the
+        // estate's member was found. GnuCOBOL's SQLCA is not IBM's.
+        bool IsBundled(string path) =>
+            bundled is not null && Path.GetFullPath(path).StartsWith(bundled, StringComparison.OrdinalIgnoreCase);
+
+        List<string> Names(IEnumerable<string> paths) => paths
+            .Select(path => Path.GetFileNameWithoutExtension(path).ToUpperInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+
+        var resolved = Names(included.Where(path => !IsBundled(path)));
+        var substituted = Names(included.Where(IsBundled));
+
+        var missing = MissingCopyPattern().Matches(result.StdErr)
+            .Select(match => match.Groups["name"].Value.ToUpperInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+
+        // A non-zero exit is expected here: GnuCOBOL has no DB2 precompiler, so EXEC SQL is a syntax
+        // error even though COPY expansion already succeeded. Only the copy verdicts are read.
+        return new CopyResolution(true, resolved, substituted, missing,
+            $"cobc -E resolved {resolved.Count}, substituted {substituted.Count}, missing {missing.Count}");
+    }
+
     private string ProbeVersion()
     {
         var result = Run(_cobc!, "--version", Path.GetTempPath(), null);
@@ -283,6 +331,12 @@ public sealed partial class CobolToolchain
         process.WaitForExit();
         return (process.ExitCode, stdout.ToString(), stderr.ToString());
     }
+
+    [GeneratedRegex(@"^#line\s+\d+\s+""(?<file>[^""]+)""", RegexOptions.Multiline)]
+    private static partial Regex LineDirectivePattern();
+
+    [GeneratedRegex(@"(?<name>[A-Za-z0-9$#@_-]+):\s*No such file or directory")]
+    private static partial Regex MissingCopyPattern();
 
     [GeneratedRegex(@"static cob_field (?<id>f_\d+)\s*=\s*\{(?<size>\d+),\s*(?<base>b_\d+)(?:\s*\+\s*(?<offset>\d+))?,\s*&(?<attr>a_\d+)\};\s*/\*\s*(?<name>[^*]+?)\s*\*/")]
     private static partial Regex FieldPattern();

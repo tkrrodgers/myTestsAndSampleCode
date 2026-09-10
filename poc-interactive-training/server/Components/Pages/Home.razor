@@ -11,6 +11,7 @@
 @inject TokenEconomicsService Economics
 @inject PatternLibraryService Library
 @inject AutopilotContract Contract
+@inject CobolDomainService CobolDomains
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 
@@ -89,6 +90,11 @@
 			</div>
 		}
 
+		@if (!string.IsNullOrWhiteSpace(_speechNotice))
+		{
+			<div class="model-banner warning" role="status">@_speechNotice</div>
+		}
+
 		@if (_session is not null && _session.CoachFallbackUsed)
 		{
 			<div class="model-banner warning" role="status">Gemma was unavailable. Narration text was authored by <strong>@_session.CoachModel</strong>; browser speech remains the audio provider.</div>
@@ -111,7 +117,7 @@
 							<p class="kicker">DIRECTOR OF AI &middot; PROGRAMME OVERVIEW</p>
 							<h2 id="scene-title">Help teams adopt AI<br /><em>without asking them to take it on trust.</em></h2>
 							<p class="lede">
-								Six priorities, thirty-three working demonstrations. Every scene ends in a number, and every scene
+								Six priorities, thirty-four working demonstrations. Every scene ends in a number, and every scene
 								says whether that number came from running something or from asking a model. Where the honest answer
 								is &ldquo;we have not built this yet&rdquo;, it is listed at the bottom of this page rather than left out.
 							</p>
@@ -252,7 +258,7 @@
 						<section class="rt-box" data-auto="s01.gaps">
 							<header class="rt-head"><span class="rt-step">!</span><div><strong>What the role calls for and this lab does not yet do</strong><small>stated here so nobody has to discover it in a demo</small></div></header>
 							<div class="audit-body">
-								<p class="rt-reco">Thirty-three scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
+								<p class="rt-reco">Thirty-four scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
 								<table class="audit-table">
 									<thead><tr><th>Missing capability</th><th>Nearest scene</th><th>Why the scene is not sufficient</th></tr></thead>
 									<tbody>
@@ -940,7 +946,7 @@
 							}
 						</section>
 
-						<div class="rt-flow">
+						<div class="rt-flow rt-flow-stacked">
 							<section class="rt-box">
 								<header class="rt-head"><span class="rt-step">2</span><div><strong>JIRA story</strong><small>@(_session?.RoundTrip.StoryModel ?? "Gemma 4")@(_session?.RoundTrip.StoryFallbackUsed == true ? " · substitute" : string.Empty)</small></div></header>
 								@if (!string.IsNullOrEmpty(_session?.RoundTrip.Story))
@@ -1780,6 +1786,734 @@ cobol85  -&gt; 000000</pre>
 					break;
 				case 18:
 					<section>
+						<p class="kicker">MAP THE ESTATE BEFORE MIGRATING IT</p>
+						<h2 id="scene-title">Identify COBOL domains</h2>
+						<p class="rt-intro">
+							Before a large COBOL estate can be modernised, someone has to answer a simple question that nobody can
+							answer today: <strong>what business areas is this code actually made of, and where are the seams between
+							them?</strong> This scene shows a tool that reads the COBOL programs, the shared record layouts
+							(copybooks), the batch job control (JCL), the online transaction definitions (CICS) and the programmers'
+							own notes, and produces a <strong>proposed domain map with the evidence attached</strong> &mdash; every
+							claim points to a file and a line number.
+						</p>
+						<p class="rt-intro">
+							<strong>No AI model decides anything on this page.</strong> Every step is ordinary, repeatable code that
+							produces the same answer every time it runs. The only place a model could be used is to write a
+							plain-English label for a group it did not create &mdash; and on this sample even that was not needed.
+							Where the tool is not sure, it says so and hands the question to a person.
+						</p>
+
+						@{ var domains = CobolDomains.Run(); }
+
+						@if (!domains.Available)
+						{
+							<div class="compare-status failed" role="alert">@domains.StatusMessage</div>
+						}
+						else
+						{
+							<div class="rt-box">
+								<header class="rt-head"><span class="rt-step">?</span><div><strong>How to read this page</strong><small>each step answers three questions</small></div></header>
+								<div class="audit-body">
+									<p>
+										Every numbered step below says <strong>what we did</strong>, <strong>why it matters</strong>, and
+										<strong>what it found in this sample</strong>. The tables underneath each step are the evidence. You do not
+										need to read them to follow the story; they are there so that anyone who wants to check a claim can.
+									</p>
+									<p>
+										The sample is IBM's <strong>Global Auto Mart</strong> demonstration &mdash; a small car-dealership
+										application, written in real IBM Enterprise COBOL for the mainframe, published by IBM on GitHub. A user
+										picks a make of car, then a model, then sees the cars in stock and can pick one to see its details. It is
+										five programs, five copybooks and two JCL decks: small enough that every line of the result can be checked
+										by hand, which is exactly why it was chosen. <strong>Five programs cannot show us a real domain
+										boundary</strong>; what they show is that every part of the machine works and reports honestly.
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>Member</th><th>What it is</th><th>What it does, in plain terms</th></tr></thead>
+										<tbody>
+											<tr><td><code>GAM0VMI</code></td><td>Online screen program</td><td>The &ldquo;choose a make, then a model&rdquo; screens. Asks <code>GAM0VMM</code> for the lists, then hands the user over to <code>GAM0VII</code>.</td></tr>
+											<tr><td><code>GAM0VMM</code></td><td>Database lookup</td><td>Reads the <code>MAKE_MODEL</code> table: which makes exist and which models each make has &mdash; the <em>vehicle catalogue</em>.</td></tr>
+											<tr><td><code>GAM0VII</code></td><td>Online screen program</td><td>The &ldquo;cars in stock&rdquo; screen. Asks <code>GAM0VSI</code> for the list; when a car is picked, hands over to <code>GAM0VDI</code> &mdash; a program IBM did not include in the sample.</td></tr>
+											<tr><td><code>GAM0VSI</code></td><td>Database lookup</td><td>Reads the <code>EASTINVNTRY</code> table: the vehicles actually on the lot, with VIN, year, price and new/used &mdash; the <em>vehicle inventory</em>.</td></tr>
+											<tr><td><code>GAM0VDB</code></td><td>Batch loader</td><td>Fills the database tables from data held in copybooks. Builds its SQL as text at run time, which matters later.</td></tr>
+											<tr><td><code>GAM0BCA</code></td><td>Copybook</td><td>The <em>commarea</em>: the handful of fields (make chosen, model chosen, VIN chosen) carried from screen to screen. Shared by all four online programs.</td></tr>
+											<tr><td><code>GAM0BMT</code>, <code>GAM0BET</code>, <code>GAM0BDT</code></td><td>Copybooks</td><td>Field-by-field layouts of the <code>MAKE_MODEL</code>, <code>EASTINVNTRY</code> and <code>DEALERSHIP</code> tables, generated by DB2's DCLGEN tool.</td></tr>
+											<tr><td><code>GAM0BMD</code></td><td>Copybook</td><td>The make/model reference data the loader inserts.</td></tr>
+											<tr><td><code>GAM0VCDB</code>, <code>GAMCSDUP</code></td><td>JCL</td><td>The batch job that creates the tables and runs the loader; the deck that defines the online transactions and tells CICS which program each one starts.</td></tr>
+										</tbody>
+									</table>
+									<p class="rt-note">
+										This table was written by a person after reading the source, so you know what you are looking at. Everything
+										from Step 1 onward was produced by the tool, and you can check the two against each other.
+									</p>
+								</div>
+							</div>
+
+							<section class="rt-box" data-auto="dom.coverage">
+								<header class="rt-head"><span class="rt-step">1</span><div><strong>How much of the code did we actually see?</strong><small>answered first, because every conclusion below depends on it</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> Before drawing any map, the tool counts what it could and could not read:
+										programs, shared record layouts, database statements, and calls to other programs.
+									</p>
+									<p>
+										<strong>Why it matters.</strong> A map drawn from 70% of the code is a claim about 70% of the code. If a
+										program cannot be read it simply vanishes from the map, and a missing program makes the boundaries look
+										cleaner than they really are. Putting these numbers first, in the same place every time, is how we stop
+										a good-looking result from being an incomplete one.
+									</p>
+									<p>
+										<strong>What it found here.</strong> Every program was read in full. The lower numbers are not failures
+										of the tool: they are things IBM left out of the sample (system copybooks, screen layouts, one program) and
+										one program that builds its database statements at run time. Each gap is named and explained in Step 2
+										and Step 3, and each carries through to the map.
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>What we measured</th><th>Found</th><th>%</th><th>Why a gap here matters</th></tr></thead>
+										<tbody>
+											@foreach (var metric in domains.Coverage)
+											{
+												<tr class="@(metric.Percent >= 90 ? null : "p0-req")">
+													<td>@metric.Name</td>
+													<td>@metric.Resolved / @metric.Total</td>
+													<td><strong>@metric.Percent%</strong></td>
+													<td>@metric.Consequence</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="rt-note">
+										Sample: @domains.Members.Count member(s) from the IBM Global Auto Mart sample &mdash;
+										@domains.Members.Count(m => m.Kind == "program") program(s),
+										@domains.Members.Count(m => m.Kind == "copybook") copybook(s),
+										@domains.Members.Count(m => m.Kind == "jcl") JCL. Pipeline ran in @domains.ElapsedMs ms.
+									</p>
+								</div>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Read the source the way the mainframe does</strong><small>pipeline stages S1&ndash;S3 &middot; @CobolFrontEnd.FrontEndName</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> Mainframe COBOL is written in a fixed 80-column card layout: columns 1&ndash;6
+										are a line number, column 7 says whether the line is a comment or a continuation, columns 8&ndash;72 are the
+										code, and columns 73&ndash;80 are a scratch area where programmers often park change-ticket numbers. The
+										tool strips the layout, joins continued lines, keeps the column 73&ndash;80 text as metadata, and then
+										pulls in every shared record layout (copybook) each program asks for &mdash; in the same search order the
+										mainframe compiler would use.
+									</p>
+									<p>
+										<strong>Why it matters.</strong> The parser we use expects modern free-format text, so skipping this step
+										makes a perfectly good program look like hundreds of syntax errors. Copybook order matters too: if two
+										libraries hold a copybook with the same name, the mainframe takes the first one it finds and says nothing.
+										Get that wrong and every field offset in the analysis is wrong, silently. Most importantly, <strong>every
+										line the tool produces remembers exactly which original line it came from</strong> &mdash; that is what
+										lets every later claim cite a file and line number.
+									</p>
+									<p>
+										<strong>What it found here.</strong> All @domains.Normalisation.Count members round-tripped cleanly. Of the
+										@domains.Copies.Count copybook requests, @domains.Copies.Count(c => c.Resolved) were found in the sample. The
+										other @domains.Copies.Count(c => !c.Resolved) requests (@domains.Copies.Where(c => !c.Resolved).Select(c => c.Requested).Distinct(StringComparer.OrdinalIgnoreCase).Count()
+										distinct copybooks) are listed individually with the reason: large data-population files we deliberately left out
+										of the fixture, IBM system copybooks that live in the CICS and DB2 libraries on the mainframe rather than in
+										application source, and generated screen layouts. &ldquo;We chose to leave it out&rdquo; and &ldquo;we could
+										not find it&rdquo; are different things, and the tool never blurs them.
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>Member</th><th>Lines</th><th>Code</th><th>Comment</th><th>Continuations joined</th><th>Cols 73&ndash;80 used</th><th>Traceable to source</th></tr></thead>
+										<tbody>
+											@foreach (var line in domains.Normalisation.OrderBy(r => r.Member, StringComparer.Ordinal))
+											{
+												<tr>
+													<td><code>@line.Member</code></td>
+													<td>@line.RawLines</td><td>@line.CodeLines</td><td>@line.CommentLines</td>
+													<td>@line.ContinuationsJoined</td><td>@line.IdAreaPopulated</td>
+													<td>@(line.RoundTripOk ? "yes" : line.Detail)</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+
+									<h4>Shared record layouts (copybooks) each program asked for</h4>
+									<table class="audit-table">
+										<thead><tr><th>Program</th><th>Copybook</th><th>Line</th><th>Found?</th></tr></thead>
+										<tbody>
+											@foreach (var copy in domains.Copies.OrderBy(c => c.Program, StringComparer.Ordinal).ThenBy(c => c.OriginalLine))
+											{
+												<tr class="@(copy.Resolved ? null : "p0-req")">
+													<td><code>@copy.Program</code></td><td><code>@copy.Requested</code></td><td>@copy.OriginalLine</td>
+													<td>@(copy.Resolved ? "yes" : copy.Reason)</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+
+									@if (domains.CopyOracle is { } oracle)
+									{
+										<div class="@(oracle.Passed ? "compare-status" : "compare-status failed")" role="status">
+											<strong>Second opinion from a real COBOL compiler:</strong> @oracle.Detail
+										</div>
+										<p class="rt-note">
+											We do not take our own word for the copybook results. An independent COBOL compiler (GnuCOBOL) is asked
+											to find the same copybooks in the same folders, and its answer is compared with ours. Two different
+											mechanisms agreeing is evidence; one mechanism asserting is not. The compiler cannot raise the percentage
+											above, because it cannot find a file that is not on disk either.
+										</p>
+									}
+								</div>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>Find every database table and screen each program touches</strong><small>pipeline stage S2b &middot; @domains.ExecBlocks.Count embedded SQL / CICS command(s) read</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> Mainframe COBOL talks to the database (DB2) and to the online screen system
+										(CICS) through embedded commands that the COBOL grammar itself treats as opaque text. The tool pulls
+										those commands out and reads them with two small dedicated readers: one for SQL, one for CICS. From SQL it
+										records which table each program <em>reads</em>, <em>writes</em>, <em>updates</em> or <em>deletes</em>.
+										From CICS it records which programs call which, which screens they display, and which files they touch.
+									</p>
+									<p>
+										<strong>Why it matters.</strong> <strong>Who writes which data is the single strongest clue to where a
+										business domain begins and ends.</strong> A domain is the set of programs that owns and changes a set of
+										data. A plan that assumes the COBOL parser will give you this table would produce an empty one, and
+										nobody would notice until the domain boundaries looked absurd.
+									</p>
+									<p>
+										<strong>What it found here.</strong> Two programs read two tables: <code>GAM0VMM</code> reads the vehicle
+										catalogue (<code>MAKE_MODEL</code>) and <code>GAM0VSI</code> reads the vehicle inventory
+										(<code>EASTINVNTRY</code>). The loader <code>GAM0VDB</code> shows up as <em>unknown</em>: it assembles its
+										INSERT statements as text while running, so no amount of reading the source can say which tables it
+										writes. The tool reports that honestly rather than guessing &mdash; and it means <strong>write ownership is
+										unproven for every table in this sample</strong>, which is exactly the kind of gap a real estate will have
+										and must be told about.
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>Program</th><th>Table or file</th><th>Does what</th><th>How sure</th><th>Evidence (file:line)</th></tr></thead>
+										<tbody>
+											@foreach (var entry in domains.Crud.OrderBy(c => c.Program, StringComparer.Ordinal).ThenBy(c => c.Artifact, StringComparer.Ordinal))
+											{
+												<tr class="@(entry.Confidence == "unresolved" ? "p0-req" : null)">
+													<td><code>@entry.Program</code></td><td><code>@entry.Artifact</code></td>
+													<td>@entry.Access</td><td>@entry.Confidence</td>
+													<td><small>@entry.EvidenceMember:@entry.EvidenceLine</small></td>
+												</tr>
+											}
+										</tbody>
+									</table>
+								</div>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">4</span><div><strong>Draw the map: who calls whom, who shares what</strong><small>pipeline stage S5 &middot; @domains.Nodes.Count things &middot; @domains.Edges.Count connections</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> Everything found so far is joined into one map. The <em>things</em> on the
+										map are programs, copybooks, tables, screens and transactions. The <em>connections</em> are facts such as
+										&ldquo;program A calls program B&rdquo;, &ldquo;program A includes copybook C&rdquo;, &ldquo;program A reads
+										table T&rdquo;. Each connection carries a weight: a call that passes a large block of shared data couples
+										two programs far more tightly than a call that passes a single return code, and the map reflects that.
+									</p>
+									<p>
+										<strong>Why it matters.</strong> This map is what the grouping in Step 8 works from. Two things keep it
+										honest. First, <strong>every connection names the file and line that proves it</strong>; a connection
+										with no evidence is thrown out as a defect, not kept as a weak guess. Second, two kinds of CICS call that
+										look similar are kept apart: <code>LINK</code> means &ldquo;call and come back&rdquo;, <code>XCTL</code>
+										means &ldquo;hand over and do not come back&rdquo;. They shape the application differently.
+									</p>
+									<p>
+										<strong>What it found here.</strong> The two screen programs each call their own database helper and never
+										the other's &mdash; <code>GAM0VMI</code> calls <code>GAM0VMM</code>, <code>GAM0VII</code> calls
+										<code>GAM0VSI</code>. The only link between the two halves is the hand-over from the make/model screens to
+										the inventory screen. That is already the shape of two domains. One road leaves the map:
+										<code>GAM0VII</code> hands over to <code>GAM0VDI</code>, which IBM did not include in the sample.
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>Kind of connection</th><th>Count</th><th>Proven exactly</th><th>Could not be resolved</th></tr></thead>
+										<tbody>
+											@foreach (var group in domains.Edges.GroupBy(e => e.Kind).OrderByDescending(g => g.Count()))
+											{
+												<tr>
+													<td><code>@group.Key</code> &mdash; @EdgeKindGloss(group.Key)</td><td>@group.Count()</td>
+													<td>@group.Count(e => e.Confidence == "exact")</td>
+													<td>@group.Count(e => e.Confidence == "unresolved")</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<h4>Program-to-program calls</h4>
+									<table class="audit-table">
+										<thead><tr><th>From</th><th>How</th><th>To</th><th>Coupling weight</th><th>Evidence (file:line)</th></tr></thead>
+										<tbody>
+											@foreach (var edge in domains.Edges.Where(e => e.Kind is "CICS_LINK" or "CICS_XCTL" or "CALLS_STATIC" or "CALLS_DYNAMIC").OrderBy(e => e.Source, StringComparer.Ordinal).ThenBy(e => e.EvidenceLine))
+											{
+												<tr>
+													<td><code>@edge.Source.Replace("program:", "")</code></td>
+													<td>@EdgeKindGloss(edge.Kind)</td>
+													<td><code>@edge.Target.Replace("program:", "")</code></td>
+													<td>@edge.Weight</td>
+													<td><small>@edge.EvidenceMember:@edge.EvidenceLine</small></td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="rt-note">
+										Weight is <em>kind of call &times; log(1 + bytes of shared data passed)</em>. All four online programs pass the
+										same commarea, so the weights here are uniform; on a real estate they are not, and an unweighted map lies.
+									</p>
+								</div>
+							</section>
+
+							<section class="rt-box" data-auto="dom.jcl">
+								<header class="rt-head"><span class="rt-step">5</span><div><strong>Read the JCL and the CICS definitions too</strong><small>@domains.Jcl.Count fact(s) from @domains.Members.Count(m => m.Kind == "jcl") member(s) &middot; not in the COBOL at all</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> Some of the most important facts about a mainframe application are not
+										written in COBOL. The batch job control (JCL) says which job step runs which program and in what order,
+										and which database tables the job creates. The CICS resource deck says which screen transaction a user
+										types to start which program. The tool reads both and lists what they say next to the COBOL.
+									</p>
+									<p>
+										<strong>Why it matters.</strong> The COBOL cannot tell you that <code>GAM0VDB</code> is a batch program run
+										once to load data, or that a user reaches <code>GAM0VMI</code> by typing <code>GBMI</code>. Without the
+										JCL you would have the pieces but not the order they run in or the doors a user comes through. On a real
+										estate, comparing the CICS deck with the source library is also the fastest way to find programs that are
+										defined but missing, or present but never started.
+									</p>
+									<p>
+										<strong>What it found here.</strong> Four transactions start the four online programs, confirming which
+										programs are the entry points. The batch job creates five tables, but only two are read by anything in
+										the sample; the loader is run as a batch step after the tables are created. The CICS deck also defines six
+										programs described as PL/I that we were not given, and it does <em>not</em> define <code>GAM0VDI</code>
+										&mdash; the program the inventory screen hands over to. These facts are folded into the findings at the end.
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>Source</th><th>Fact</th><th>Subject</th><th>Program / table</th><th>What that tells us</th><th>Line</th></tr></thead>
+										<tbody>
+											@foreach (var fact in domains.Jcl.Where(f => f.Kind is not "STEP").OrderBy(f => f.Member, StringComparer.Ordinal).ThenBy(f => f.OriginalLine))
+											{
+												<tr class="@(fact.Detail.Contains("not in the sample") || fact.Detail.Contains("no program") ? "p0-req" : null)">
+													<td><code>@fact.Member</code></td><td>@JclKindGloss(fact.Kind)</td>
+													<td><code>@fact.Subject</code></td><td><code>@fact.Target</code></td>
+													<td>@fact.Detail</td><td>@fact.OriginalLine</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="rt-note">
+										At this size the JCL confirms what the COBOL already showed, so these facts are listed beside the map rather
+										than weighted into the grouping. On a real estate, job-step order and transaction routing become their own
+										grouping signals.
+									</p>
+								</div>
+							</section>
+
+							<section class="rt-box" data-auto="dom.pdg-box">
+								<header class="rt-head"><span class="rt-step">6</span><div><strong>Look inside one program, on request</strong><small>pipeline stages S6&ndash;S7 &middot; built when you click, never stored</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> For any single program, the tool can build a statement-by-statement view:
+										which lines only run when a particular condition is true, and which fields feed which other fields. Pick a
+										program and press the button; it is computed in memory now and thrown away afterwards.
+									</p>
+									<p>
+										<strong>Why it matters.</strong> This level of detail answers questions about <em>statements</em>, not about
+										<em>domains</em>. Building it for every program in a 62-million-line estate would cost hundreds of millions of
+										records and would not move a single boundary. So it is built only where it earns its keep: for a program
+										the grouping could not place, or for a program about to be migrated. Doing it on demand here proves the
+										machinery works without pretending it should run everywhere.
+									</p>
+									<p>
+										<strong>What it found here.</strong> Whatever program you choose, the result lists its decision points and
+										data flows with line numbers, and states plainly which COBOL constructs it does <em>not</em> model yet.
+									</p>
+									<div class="rt-actions">
+										<select class="auto-profile" aria-label="Program for PDG" data-auto="dom.pdg-select" @onchange="OnPdgProgramChanged">
+											@foreach (var candidate in CobolDomains.PdgCandidates())
+											{
+												<option value="@candidate" selected="@(candidate == _pdgProgram)">@candidate</option>
+											}
+										</select>
+										<button class="primary-command compact" type="button" data-auto="dom.pdg" @onclick="BuildPdg">Look inside this program</button>
+									</div>
+
+									@if (_pdg is { } pdg)
+									{
+										<div class="compare-status" role="status" data-auto="dom.pdg-result">
+											@pdg.Program &mdash; @pdg.Nodes.Count statement(s), @pdg.ControlEdges.Count depend on a condition,
+											@pdg.DataEdges.Count field-to-field data flow(s), deepest nesting @pdg.MaxDepth.
+										</div>
+										<h4>Statements that only run when a condition holds (first 14)</h4>
+										<table class="audit-table">
+											<thead><tr><th>#</th><th>Paragraph</th><th>Statement</th><th>Runs only if</th><th>Line</th></tr></thead>
+											<tbody>
+												@foreach (var node in pdg.Nodes.Where(n => n.ControlParent >= 0).Take(14))
+												{
+													<tr>
+														<td>@node.Ordinal</td><td><code>@node.Paragraph</code></td><td>@node.Verb</td>
+														<td><small>@node.ControlCondition</small></td><td>@node.OriginalLine</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+										<h4>Which fields feed which (first 12)</h4>
+										<table class="audit-table">
+											<thead><tr><th>From</th><th>To</th><th>Through</th><th>Line</th></tr></thead>
+											<tbody>
+												@foreach (var edge in pdg.DataEdges.Take(12))
+												{
+													<tr><td><code>@edge.From</code></td><td><code>@edge.To</code></td><td>@edge.Via</td><td>@edge.OriginalLine</td></tr>
+												}
+											</tbody>
+										</table>
+										<h4>What this view does not yet model</h4>
+										<ul class="rt-list warn">
+											@foreach (var caveat in pdg.Caveats)
+											{
+												<li>@caveat</li>
+											}
+										</ul>
+									}
+								</div>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">7</span><div><strong>Read the programmers' notes</strong><small>pipeline stage S9 &middot; @domains.CommentReport.UsableBlocks of @domains.CommentReport.TotalBlocks comment blocks describe the code</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> Every comment block in the source is sorted into kinds: a program's header
+										description, a note above a paragraph, an inline remark, a maintenance log entry (date, author, ticket,
+										description), <em>old code that was commented out</em>, and licence or copyright boilerplate. Commented-out
+										code is spotted by a simple trick: strip the comment marker and see if what is left parses as COBOL. If it
+										does, it is dead code, not documentation.
+									</p>
+									<p>
+										<strong>Why it matters.</strong> On our own estate the notes are known to be good &mdash; the 200-program
+										pilot showed that. But notes have to be filtered before they are trusted. Dead code in comments carries the
+										vocabulary of logic that no longer runs, and a copyright banner repeated in every program says nothing
+										about the business. The maintenance logs are the hidden asset: <strong>programs that share a change-ticket
+										number were changed together for a business reason</strong>, decades of it, which is an independent
+										check on any grouping the tool proposes.
+									</p>
+									<p>
+										<strong>What it found here.</strong> IBM's sample has @domains.CommentReport.Paragraph short notes above
+										paragraphs and @domains.CommentReport.Inline inline remarks, but no program-level descriptions and no
+										maintenance log; @domains.CommentReport.Boilerplate of @domains.CommentReport.TotalBlocks blocks are licence
+										boilerplate and @domains.CommentReport.CommentedOutCode are commented-out code. That is too thin to name a
+										domain from, so on this sample the notes contribute nothing to the domain names, and the tool says so
+										instead of pretending. On the real estate this is expected to be one of the strongest signals available.
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>Program headers</th><th>Paragraph notes</th><th>Inline remarks</th><th>Maintenance log entries</th><th>Commented-out code</th><th>Boilerplate</th><th>Share that were duplicates</th></tr></thead>
+										<tbody>
+											<tr>
+												<td>@domains.CommentReport.Header</td><td>@domains.CommentReport.Paragraph</td>
+												<td>@domains.CommentReport.Inline</td><td>@domains.CommentReport.MaintenanceEntries</td>
+												<td>@domains.CommentReport.CommentedOutCode</td><td>@domains.CommentReport.Boilerplate</td>
+												<td>@domains.CommentReport.DedupRatio</td>
+											</tr>
+										</tbody>
+									</table>
+								</div>
+							</section>
+
+							<section class="rt-box" data-auto="dom.fields">
+								<header class="rt-head"><span class="rt-step">8</span><div><strong>Turn cryptic field names into plain English</strong><small>pipeline stage S10 &middot; @domains.FieldCards.Count field(s) described &middot; @domains.FieldCards.Count(c => c.ColumnBinding is not null) tied to a database column</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> A COBOL field declaration such as <code>05 CUST-ID PIC X(10).</code> tells a
+										program the size and shape of a field but tells a reader almost nothing. For every field in every copybook,
+										the tool writes a short plain-English description &mdash; a &ldquo;card&rdquo; &mdash; assembled entirely
+										from facts already in the source: the group the field sits in, the database column it maps to (from DB2's
+										DCLGEN layouts), its named values, and its exact type and size.
+									</p>
+										<p>
+										<strong>Why it matters.</strong> Later, people will search this estate by meaning &mdash; &ldquo;where is the
+										vehicle identification number?&rdquo; A search engine given the raw declaration would group it with every
+										other ten-character field in the estate, because it matches on <em>shape</em>, not on <em>subject</em>. The
+										card gives the field words first, so the search finds what people mean. <strong>No AI model wrote these
+										cards.</strong> Each one is built by rules, and each cites where its words came from.
+									</p>
+									<p>
+										<strong>What it found here.</strong> @domains.FieldCards.Count fields were described;
+										@domains.FieldCards.Count(c => c.ColumnBinding is not null) of them could be tied to a named column of a
+										named table, which is where the richest wording comes from. Compare the left and right columns below.
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>Raw declaration (what the source says)</th><th>Plain-English card (what the tool writes, by rule)</th><th>Where the words came from</th></tr></thead>
+										<tbody>
+											@foreach (var card in domains.FieldCards.Where(c => c.ColumnBinding is not null).Take(6))
+											{
+												<tr>
+													<td><code>@card.Declaration</code></td>
+													<td>@card.CardText</td>
+													<td><small>@string.Join("; ", card.Sources)</small></td>
+												</tr>
+											}
+											@foreach (var card in domains.FieldCards.Where(c => c.ColumnBinding is null && c.GroupPath.Contains('>')).Take(3))
+											{
+												<tr>
+													<td><code>@card.Declaration</code></td>
+													<td>@card.CardText</td>
+													<td><small>@string.Join("; ", card.Sources)</small></td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<ul class="rt-list warn">
+										<li><strong>A compiler gives us the shape, not the meaning.</strong> A real COBOL compiler tells us a field's exact position, length and number format &mdash; things you cannot reliably get by reading. It cannot tell us that <code>CUST-ID</code> means a customer. That has to come from somewhere that already holds a name.</li>
+										<li><strong>DB2's DCLGEN layouts are the richest source of names.</strong> They pair each database column with the COBOL field that holds it, so <code>VIN-TEXT</code> stops being a code and becomes &ldquo;the VIN column of the inventory table&rdquo;.</li>
+										<li><strong>The abbreviation glossary is hand-written for now.</strong> At scale it should be learned from the estate's own notes and then reviewed, because a wrong expansion is confident, wrong prose &mdash; worse than an opaque name.</li>
+										<li><strong>Not yet used:</strong> the labels users see on screen. In a CICS estate the screen layouts attach the words a person actually reads to the field behind them. That is the strongest naming signal there is, and this sample's screen layouts were not included by IBM.</li>
+									</ul>
+								</div>
+							</section>
+
+							<section class="rt-box" data-auto="dom.neurons">
+								<header class="rt-head"><span class="rt-step">9</span><div><strong>Group the programs into business domains</strong><small>pipeline stage S12 &middot; @domains.Neurons.Count proposed domain(s) &middot; @domains.BoundaryObjects.Count item(s) referred to a person</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> A standard community-detection method (Leiden) looks at the map from Step 4
+										and finds groups of programs that are more connected to each other &mdash; through calls, shared
+										copybooks and shared data &mdash; than to the rest. The method has a &ldquo;how fine&rdquo; dial. Rather
+										than picking one setting and calling it the answer, the tool runs it at seven settings and asks, for every
+										pair of programs, <em>how often did these two land in the same group?</em>
+									</p>
+									<p>
+										<strong>Why it matters.</strong> A single run at a single setting is one opinion. Programs that stay
+										together at every setting are a <strong>stable core</strong>: a domain you can defend. Programs that
+										move between groups depending on the setting are <strong>boundary objects</strong>: genuinely shared
+										things that belong to no single domain, or eroded seams. <strong>The tool does not force those into a
+										group. It names them and refers them to a person who knows the business.</strong> That is the same rule
+										used throughout this programme: when the evidence is ambiguous, say so rather than guess.
+									</p>
+									<p>
+										<strong>What it found here.</strong> @domains.Neurons.Count group(s), which match the story in the introduction:
+									</p>
+									<ul class="rt-list">
+										@foreach (var neuron in domains.Neurons)
+										{
+											<li><strong>@neuron.Label</strong> &mdash; @DomainGloss(neuron) Members: @string.Join(", ", neuron.Members.Select(m => m.Program)).</li>
+										}
+									</ul>
+									<p>
+										The batch loader <code>GAM0VDB</code> touches every table, so it is genuinely hard to place; the tool
+										flags it for a person rather than deciding. The shared commarea copybook <code>GAM0BCA</code> is included by
+										programs on both sides of the line &mdash; it is the contract between the two domains, and it is the file
+										a careless repository split would duplicate. The <em>names</em> of the groups were taken from the database
+										tables each group reads, because this sample's notes were too thin to name them (Step 7); a person turns
+										&ldquo;Eastinvntry&rdquo; into &ldquo;Vehicle inventory&rdquo; in a minute. Naming is the cheap part;
+										finding the seam with evidence is the expensive part.
+									</p>
+
+									<h4>Same map, seven &ldquo;how fine&rdquo; settings</h4>
+									<table class="audit-table">
+										<thead><tr><th>Setting (&gamma;)</th><th>Groups found</th><th>Quality score (modularity)</th></tr></thead>
+										<tbody>
+											@foreach (var run in domains.Sweep)
+											{
+												<tr><td>@run.Resolution</td><td>@run.Communities</td><td>@run.Modularity</td></tr>
+											}
+										</tbody>
+									</table>
+									<p class="rt-note">
+										Read down the middle column: one group at coarse settings, two in the middle, three when pushed. The two-group
+										answer is where the map naturally rests. The quality score is a mathematical measure, not a business argument;
+										it is shown for completeness and is never what we rank domains by.
+									</p>
+
+									@foreach (var neuron in domains.Neurons)
+									{
+										<h4>Proposed domain @neuron.Id &mdash; @neuron.Label</h4>
+										<p class="rt-note">Named from: @neuron.LabelSource. Data it is proven to write: @(neuron.OwnedArtifacts.Count == 0 ? "none provable in this sample (the loader's writes are built at run time)" : string.Join(", ", neuron.OwnedArtifacts)). Data it reads: @(neuron.ReadArtifacts.Count == 0 ? "none" : string.Join(", ", neuron.ReadArtifacts)).</p>
+										<table class="audit-table">
+											<thead><tr><th>Program</th><th>How often it stayed with this group (0&ndash;1)</th><th>Verdict</th></tr></thead>
+											<tbody>
+												@foreach (var member in neuron.Members)
+												{
+													<tr class="@(member.BoundaryObject ? "p0-req" : null)">
+														<td><code>@member.Program</code></td><td>@member.Stability</td>
+														<td>@(member.BoundaryObject ? "uncertain — referred to a person who knows the business" : "stable core")</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+									}
+
+									@if (domains.BoundaryObjects.Count > 0)
+									{
+										<h4>Shared things the tool declined to assign</h4>
+										<table class="audit-table">
+											<thead><tr><th>Item</th><th>Kind</th><th>Used by</th><th>Why it cannot be placed</th></tr></thead>
+											<tbody>
+												@foreach (var boundary in domains.BoundaryObjects)
+												{
+													<tr>
+														<td><code>@boundary.Artifact</code></td><td>@boundary.Kind</td>
+														<td>@string.Join(", ", boundary.TouchedBy)</td><td>@boundary.Why</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+									}
+
+									@if (domains.Synapses.Count > 0)
+									{
+										<h4>What crosses the line between the domains &mdash; and what it would cost to cut</h4>
+										<table class="audit-table">
+											<thead><tr><th>Shared item</th><th>Kind of crossing</th><th>Who writes it</th><th>Who uses it</th><th>What cutting here costs</th></tr></thead>
+											<tbody>
+												@foreach (var synapse in domains.Synapses)
+												{
+													<tr>
+														<td><code>@synapse.Artifact</code></td><td>@synapse.Direction</td>
+														<td>@synapse.Writer</td><td>@string.Join(", ", synapse.Readers)</td><td>@synapse.Cost</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+										<p class="rt-note">
+											On a real estate this table is the one leadership decides from. A crossing where one side only
+											<em>reads</em> the other's data is cheap to cut: a feed or a view. A crossing where both sides
+											<em>write</em> the same data is expensive: it becomes a synchronisation contract for the whole
+											migration. Domains are ranked for migration by this cost, never by the quality score above.
+										</p>
+									}
+
+									<ul class="rt-list warn">
+										<li><strong>Five programs cannot show a real domain boundary.</strong> This step proves the grouping machinery runs, reports its uncertainty, and produces a sensible answer on a case a person can check by hand. The first result that could actually be <em>wrong</em> comes when it is run over the 200 programs our SMEs have already classified.</li>
+									</ul>
+								</div>
+							</section>
+
+							<section class="rt-box" data-auto="dom.cortex-box">
+								<header class="rt-head"><span class="rt-step">10</span><div><strong>Ask the estate a question</strong><small>pipeline stage S13 &middot; @CobolDomains.EmbeddingStatus</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> Everything gathered above &mdash; programs, paragraphs, notes and the
+										plain-English field cards &mdash; is made searchable. A question is answered three ways at once and the
+										answers are merged: an exact word match (for names such as <code>GAM0VMM</code> or
+										<code>CA-MAKE-SELECTED</code>, which people type verbatim), an optional meaning-based match (using a small
+										local language model to find text that is <em>about</em> the same thing), and a direct look-up in the map
+										for structural questions such as &ldquo;who reads MAKE_MODEL?&rdquo;.
+									</p>
+									<p>
+										<strong>Why it matters.</strong> This is how the map becomes useful day to day &mdash; for an analyst, a
+										developer, or an AI assistant that has been told to check before it guesses. A meaning-based search on its
+										own is poor at exact program names; an exact-word search on its own cannot answer &ldquo;where is the
+										price stored?&rdquo;; and a question like &ldquo;who writes this table?&rdquo; has a precise answer in the
+										map that no search should approximate. Using all three, <strong>every answer cites the file and line it
+										came from</strong>. An answer that cannot be cited is not an answer; it is a plausible sentence.
+									</p>
+									<p>
+										<strong>Try it.</strong> Press <em>Search</em> with the question already filled in, then try
+										&ldquo;who calls GAM0VMM&rdquo; or &ldquo;vehicle price&rdquo;. The meaning-based arm is switched on
+										separately because it takes a few seconds of real computation the first time.
+									</p>
+									<div class="rt-actions">
+										<input class="rt-code-input cortex-input" data-auto="dom.cortex-input" placeholder="who reads MAKE_MODEL" aria-label="Cortex query" @bind="_cortexQuery" @bind:event="oninput" />
+										<button class="primary-command compact" type="button" data-auto="dom.cortex" @onclick="AskCortex">Search</button>
+										<button class="secondary-command compact" type="button" data-auto="dom.warm" disabled="@_cortexWarming" @onclick="WarmCortex">@(CobolDomains.VectorsReady ? "Meaning-based search ready" : _cortexWarming ? "Preparing…" : "Enable meaning-based search")</button>
+									</div>
+
+									@if (_cortex is { } cortex)
+									{
+										@if (cortex.GraphAnswer is not null)
+										{
+											<div class="compare-status" role="status"><strong>Exact answer from the map:</strong> @cortex.GraphAnswer</div>
+										}
+										<p class="rt-note" data-auto="dom.cortex-result">How this was answered: @cortex.Method</p>
+										<table class="audit-table">
+											<thead><tr><th>Kind</th><th>Match</th><th>Word score</th><th>Meaning score</th><th>Map score</th><th>Combined</th><th>Domain</th><th>Evidence (file:line)</th></tr></thead>
+											<tbody>
+												@foreach (var hit in cortex.Hits)
+												{
+													<tr>
+														<td>@hit.Kind</td><td><code>@hit.Title</code></td>
+														<td>@hit.LexicalScore</td><td>@hit.VectorScore</td><td>@hit.GraphScore</td>
+														<td><strong>@hit.Fused</strong></td><td>@hit.Neuron</td>
+														<td><small>@hit.Member:@hit.Line</small></td>
+													</tr>
+												}
+											</tbody>
+										</table>
+									}
+								</div>
+							</section>
+
+							<section class="rt-box">
+								<header class="rt-head"><span class="rt-step">11</span><div><strong>Publish the map as reviewable knowledge</strong><small>pipeline stage S14 &middot; @domains.Okf.Count file(s) generated</small></div></header>
+								<div class="audit-body">
+									<p>
+										<strong>What we did.</strong> The result is written out as a small set of plain-text files in the Open
+										Knowledge Format (OKF) used across this programme: one file per proposed domain, one per shared item the
+										tool could not place, and an index that repeats the coverage numbers from Step 1 at the top.
+									</p>
+									<p>
+										<strong>Why it matters.</strong> A map in a database is invisible; a map in reviewable text files can be
+										read by a person, diffed in source control, and handed to an AI assistant as trusted context. Each file
+										says who generated it and when, and carries <code>verified: null</code> &mdash; meaning <strong>no
+										subject-matter expert has signed this off yet</strong>. Sign-off is a human act, recorded in the file.
+										When the pipeline is re-run, the generated files are regenerated and compared; a difference nobody
+										expected fails the build. That is how the map is kept from going quietly stale.
+									</p>
+									<p>
+										<strong>What it found here.</strong> Below are the first files as generated. Notice the coverage line in the
+										index and the <code>verified: null</code> on every file.
+									</p>
+									@foreach (var file in domains.Okf.Take(4))
+									{
+										<h4>@file.Path</h4>
+										<pre class="rt-code">---
+@file.Frontmatter
+---
+@file.Body</pre>
+									}
+								</div>
+							</section>
+
+							<section class="rt-qa" data-auto="dom.findings">
+								<header class="rt-head"><span class="rt-step">&#10003;</span><div><strong>What this run found, in plain English</strong><small>every sentence below was produced from the evidence above, not written in advance</small></div></header>
+								<ul class="rt-list">
+									@foreach (var finding in domains.Findings)
+									{
+										<li>@finding</li>
+									}
+								</ul>
+
+								<h4>The tool checked itself</h4>
+								<p class="rt-note">
+									Every stage runs a check on its own output and prints the result. A broken step is visible here before anyone
+									presents it. &ldquo;Attention&rdquo; means a step found something worth a look, not that it failed.
+								</p>
+								<table class="audit-table">
+									<thead><tr><th>Stage</th><th>What was checked</th><th>Result</th><th>Detail</th></tr></thead>
+									<tbody>
+										@foreach (var check in domains.Checks)
+										{
+											<tr>
+												<td>@check.Stage</td><td>@check.Name</td>
+												<td>@(check.Passed ? "pass" : "attention")</td><td><small>@check.Detail</small></td>
+											</tr>
+										}
+									</tbody>
+								</table>
+
+								<h4>What this does and does not prove</h4>
+								<ul class="rt-list warn">
+									<li><strong>It proves the machinery.</strong> Real IBM COBOL, real copybooks, real JCL and real CICS definitions were read end to end by the industry-standard COBOL grammar, and every fact on this page can be traced to a file and a line. That is the part that has to work before anything else can.</li>
+									<li><strong>It does not prove a domain boundary.</strong> Five programs are one small application. The two groups found here are correct and checkable by hand, but the first result that could actually be wrong &mdash; and therefore the first real test &mdash; is the run over the 200 programs our own SMEs have already classified.</li>
+									<li><strong>A proposed domain is a hypothesis.</strong> Sign-off is a human act. The tool's job is to make the hypothesis cheap to test and its evidence easy to check, and to say clearly where it is unsure.</li>
+									<li><strong>The coverage numbers are part of the result.</strong> On a real estate some programs will not parse, some copybooks will be missing, and some SQL will be built at run time. The map will be presented as a claim about the part of the estate that was read, with the percentages attached, every time.</li>
+									<li><strong>This sample's notes were thin</strong> (mostly IBM licence text and one-line paragraph labels). Our own estate's notes are known to be good, which is why the pipeline treats them as a first-class signal &mdash; and why their accuracy will be measured on a sample before they are trusted at scale.</li>
+									<li><strong>Repositories should be split only after the map is agreed</strong>, one domain at a time, as it is migrated. A wrong line on the map costs an edit; a wrong repository split costs severed history and duplicated copybooks that drift apart silently.</li>
+									<li>The sample is the IBM Global Auto Mart demonstration, used under its as-is sample licence with copyright notices intact. The full design is in <code>migrateCOBOLprojectToJAVA.md</code>.</li>
+								</ul>
+							</section>
+						}
+					</section>
+					break;
+				case 19:
+					<section>
 						<p class="kicker">STOP BAD WORK BEFORE IT STARTS</p>
 						<h2 id="scene-title">A ticket an agent cannot act on</h2>
 						<p class="rt-intro">Most agent failures are underspecified tickets, not weak models. A <strong>deterministic pre-check</strong> scores the ticket before any model sees it. Claude then grades it against the same rubric and rewrites it so it would pass.</p>
@@ -1862,7 +2596,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 19:
+				case 20:
 					<section>
 						<p class="kicker">FIND WHAT WAS PLANTED</p>
 						<h2 id="scene-title">Auditing a cloud design an AI helped write</h2>
@@ -1942,7 +2676,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 20:
+				case 21:
 					<section>
 						<p class="kicker">IS THE AGENT STILL DOING THE JOB?</p>
 						<h2 id="scene-title">One golden case, three layers of drift</h2>
@@ -1953,7 +2687,7 @@ cobol85  -&gt; 000000</pre>
 							<section class="rt-box">
 								<header class="rt-head"><span class="rt-step">1</span><div><strong>The golden case</strong><small>ticket + frozen commit + the human patch</small></div></header>
 								<pre class="rt-story">@drift.Ticket</pre>
-								<div class="rt-flow">
+								<div class="rt-flow rt-flow-stacked">
 									<div><h4>Frozen baseline</h4><pre class="rt-code">@drift.FrozenCode</pre></div>
 									<div><h4>Human patch</h4><pre class="rt-code">@drift.HumanPatch</pre></div>
 								</div>
@@ -2032,7 +2766,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 21:
+				case 22:
 					<section>
 						<p class="kicker">PHASE 0 — BEFORE ANY OF THIS IS SAFE</p>
 						<h2 id="scene-title">Name it, tier it, and gate what it sees</h2>
@@ -2147,7 +2881,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 22:
+				case 23:
 					<section>
 						<p class="kicker">HOW MUCH CONTEXT DOES THE CHEAP MODEL NEED?</p>
 						<h2 id="scene-title">Same ticket, same code, three levels of documentation</h2>
@@ -2319,7 +3053,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 23:
+				case 24:
 					<section>
 						<p class="kicker">AUTHORITY IS PER ACTION, NOT PER AGENT</p>
 						<h2 id="scene-title">"Approve deploy" is not approval</h2>
@@ -2365,7 +3099,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 24:
+				case 25:
 					<section>
 						<p class="kicker">THE BIAS YOU BRING</p>
 						<h2 id="scene-title">The same question, asked three ways</h2>
@@ -2443,7 +3177,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 25:
+				case 26:
 					<section>
 						<p class="kicker">GREEN TESTS ARE NOT COVERAGE</p>
 						<h2 id="scene-title">Does the suite cover the risk this change adds?</h2>
@@ -2735,7 +3469,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 26:
+				case 27:
 					<section>
 						<p class="kicker">REAL DATA, NEVER COMMITTED</p>
 						<h2 id="scene-title">The best test data is also the worst leak</h2>
@@ -2821,7 +3555,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 27:
+				case 28:
 					<section>
 						<p class="kicker">DISCOVER WIDE, SCOPE NARROW, DESIGN DEEP</p>
 						<h2 id="scene-title">Each tier answers a question the tier below it cannot</h2>
@@ -3058,7 +3792,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 28:
+				case 29:
 					<section>
 						<p class="kicker">THREE REAL SERVICES, ONE SHARED SPINE</p>
 						<h2 id="scene-title">Find the duplication by meaning, then let the right model do each job</h2>
@@ -3275,7 +4009,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 29:
+				case 30:
 					<section>
 						<p class="kicker">FREE IS THE WRONG WORD</p>
 						<h2 id="scene-title">Budget in cost per outcome, not cost per token</h2>
@@ -3324,7 +4058,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 30:
+				case 31:
 					<section>
 						<p class="kicker">A LIBRARY THAT SCALES WHAT WORKS</p>
 						<h2 id="scene-title">Contributions are admitted on evidence, then run</h2>
@@ -3351,7 +4085,7 @@ cobol85  -&gt; 000000</pre>
 							}
 						</section>
 
-						<div class="rt-flow">
+						<div class="rt-flow rt-flow-stacked">
 							<section class="rt-box">
 								<header class="rt-head"><span class="rt-step">2</span><div><strong>The class the pattern runs against</strong><small>Billing.Pricing</small></div></header>
 								<pre class="rt-code">@PatternLibrarySamples.SourceClass</pre>
@@ -3455,7 +4189,7 @@ cobol85  -&gt; 000000</pre>
 						</section>
 					</section>
 					break;
-				case 31:
+				case 32:
 					<section>
 						<p class="kicker">PLAN BEFORE CODE</p>
 						<h2 id="scene-title">A summary leadership reads, a diagram engineers check</h2>
@@ -3491,7 +4225,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 32:
+				case 33:
 					<section>
 						<p class="kicker">THE ORDER TO WALK IT IN</p>
 						<h2 id="scene-title">Six acts, each ending in a number</h2>
@@ -3523,7 +4257,7 @@ cobol85  -&gt; 000000</pre>
 						</section>
 					</section>
 					break;
-				case 33:
+				case 34:
 					<section>
 						<p class="kicker">GROUND THE CHEAP MODEL, THEN DELEGATE TO IT</p>
 						<h2 id="scene-title">Making Gemma 4 a crypto SME</h2>
@@ -3758,7 +4492,7 @@ cobol85  -&gt; 000000</pre>
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME")];
+	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -3776,7 +4510,7 @@ cobol85  -&gt; 000000</pre>
 	];
 	private static readonly string[] BuiltInNarration =
 	[
-		"Six priorities, thirty-three working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
+		"Six priorities, thirty-four working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
 		"A JIRA story names the desired outcome, but not always the system boundary or implementation path. This lesson follows governed evidence before code.",
 		"Search can find matching words. OKF adds concepts, ownership, decisions, and links that make those matches meaningful and reviewable.",
 		"The index is the entry point. Small linked artifacts disclose only the context needed for this task, while retaining provenance and freshness.",
@@ -3794,6 +4528,7 @@ cobol85  -&gt; 000000</pre>
 		"What if the core business logic lived in a language built for models? CLARA is a deterministic, auditable rule language: the model writes it from a requirement, it compiles and runs, and a second model reviews it — logic a human and an LLM read the same way.",
 		"The same ticket, the same model, no context either way. One arm sees an ordinary C# class where the local policy knowledge lives only in people's heads; the other sees a CLARA policy that carries that knowledge inline. Claude then grades both against sealed criteria neither arm ever saw.",
 		"Three migrations of the same COBOL program, with increasing amounts of grounding — none, static analysis, and facts resolved by the COBOL compiler itself. Every answer is compiled and executed against outputs captured from the real legacy program. Nothing here is graded by a model.",
+		"Sixty-two million lines is a mapping problem before it is a migration problem. This runs the whole segmentation pipeline over real IBM Enterprise COBOL: normalise the fixed format, resolve the copybooks, parse, build the call graph, the data-dependency graph and a program-dependence graph on demand, mine the notes, then partition into domains with Leiden and a resolution sweep. Coverage is published with the map rather than after it, because a partition computed over part of an estate is a claim about that part only.",
 		"Most agent failures are underspecified tickets, not weak models. A deterministic pre-check scores the ticket before any model sees it, then Claude grades it against the rubric and rewrites it so it would pass.",
 		"A proposed cloud sandbox with defects planted in it. Gemma audits the design against the five-pillar checklist, and Claude grades the audit against the sealed list of what was actually planted.",
 		"One golden case: a frozen commit, the ticket, and the patch a human wrote. A candidate patch is scored across three layers — functional, structural and semantic. The first two are deterministic; only the last asks a model.",
@@ -3857,6 +4592,88 @@ Finish with the verification path: the tests you would add or change, and how I 
 	private ClaraConformanceReport? _conformance;
 	private bool _benchmarkRunning;
 	private bool _drawerOpen = true;
+
+	private string _pdgProgram = "";
+	private PdgResult? _pdg;
+	private string? _speechNotice;
+	private string _cortexQuery = "who reads MAKE_MODEL";
+	private CortexAnswer? _cortex;
+	private bool _cortexWarming;
+
+	private void OnPdgProgramChanged(ChangeEventArgs args)
+	{
+		_pdgProgram = args.Value?.ToString() ?? "";
+		_pdg = null;
+	}
+
+	// Built fresh on every click. Estate-wide PDG is out of scope by design, so nothing here is cached.
+	private void BuildPdg()
+	{
+		if (string.IsNullOrWhiteSpace(_pdgProgram))
+		{
+			_pdgProgram = CobolDomains.PdgCandidates().FirstOrDefault() ?? "";
+		}
+
+		_pdg = CobolDomains.BuildPdg(_pdgProgram);
+	}
+
+	private void AskCortex() => _cortex = CobolDomains.Ask(_cortexQuery);
+
+	private static string EdgeKindGloss(string kind) => kind switch
+	{
+		"INCLUDES" => "includes a shared record layout",
+		"READS" => "reads a table or file",
+		"WRITES" or "UPDATES" or "DELETES" => "changes a table or file",
+		"USES_MAP" => "displays a screen",
+		"CICS_LINK" => "calls and comes back",
+		"CICS_XCTL" => "hands over and does not come back",
+		"CICS_START" => "starts another transaction",
+		"NEXT_TRANSID" => "names the next transaction to run",
+		"CALLS_STATIC" => "calls a named program",
+		"CALLS_DYNAMIC" => "calls a program named at run time",
+		_ => kind
+	};
+
+	private static string JclKindGloss(string kind) => kind switch
+	{
+		"RUNS" => "batch job runs program",
+		"STEP" => "job step",
+		"CREATES_TABLE" => "creates database table",
+		"ROUTES_TO" => "transaction starts program",
+		"DEFINES_PROGRAM" => "program defined to CICS",
+		_ => kind
+	};
+
+	// Human reading of the fixture's two groups. Authored for the GAM sample only; the label itself is derived.
+	private static string DomainGloss(Neuron neuron)
+	{
+		var reads = string.Join(" ", neuron.ReadArtifacts).ToUpperInvariant();
+		if (reads.Contains("EASTINVNTRY"))
+		{
+			return "the vehicle inventory: the cars actually on the lot, and the screen and lookup that show them.";
+		}
+
+		if (reads.Contains("MAKE_MODEL"))
+		{
+			return "the vehicle catalogue: which makes and models exist, and the screens and lookup that let a user choose one.";
+		}
+
+		return "a group the tool found; a person names it.";
+	}
+
+	private async Task WarmCortex()
+	{
+		_cortexWarming = true;
+		try
+		{
+			await Task.Run(() => CobolDomains.WarmVectors());
+			_cortex = CobolDomains.Ask(_cortexQuery);
+		}
+		finally
+		{
+			_cortexWarming = false;
+		}
+	}
 
 	private string CurrentNarration => _session?.Coach?.Scenes.FirstOrDefault(scene => scene.SceneId == Scenes[_scene].Id)?.Narration ?? BuiltInNarration[_scene];
 	private string ReviewButtonText => !_bridgeConnected ? "Connect VSIX to request Claude" : _session?.ReviewStatus is "queued" or "running" ? "Claude is reviewing…" : "Request Claude feedback";
@@ -4481,12 +5298,13 @@ Finish with the verification path: the tests you would add or change, and how I 
 	// Only deterministic, already-computed values reach the narrator; never raw fixture payloads.
 	private string? ObservedValues(AutoStep step) => step.SceneNumber switch
 	{
-		22 when _tier is { } tier => $"Derived risk tier: {tier.Tier}. Registrable: {tier.Registrable}. Missing fields: {tier.MissingFields.Count}.",
-		24 when _decision is { } decision => $"Verdict: {decision.VerdictLabel}. Reasons: {string.Join("; ", decision.Reasons)}.",
-		26 when _mutation is { } mutation && mutation.Ran => $"Mutation score {mutation.MutationScore}%, {mutation.KilledMutants} of {mutation.TotalMutants} mutants killed.",
-		29 when _commonCode is { } audit => $"{audit.DuplicatedClusters} duplicated cluster(s) across {audit.UnitCount} units, threshold {audit.Threshold:0.000}.",
-		30 when _economics is { } econ => $"Cheapest per attempt: {econ.CheapestPerAttempt}. Cheapest per success: {econ.CheapestPerSuccess}.",
-		32 when _planReview is { } plan => $"Plan score {plan.Score}%.",
+		19 when _pdg is { } pdg => $"PDG for {pdg.Program}: {pdg.Nodes.Count} statement node(s), {pdg.ControlEdges.Count} control edge(s), {pdg.DataEdges.Count} data edge(s).",
+		23 when _tier is { } tier => $"Derived risk tier: {tier.Tier}. Registrable: {tier.Registrable}. Missing fields: {tier.MissingFields.Count}.",
+		25 when _decision is { } decision => $"Verdict: {decision.VerdictLabel}. Reasons: {string.Join("; ", decision.Reasons)}.",
+		27 when _mutation is { } mutation && mutation.Ran => $"Mutation score {mutation.MutationScore}%, {mutation.KilledMutants} of {mutation.TotalMutants} mutants killed.",
+		30 when _commonCode is { } audit => $"{audit.DuplicatedClusters} duplicated cluster(s) across {audit.UnitCount} units, threshold {audit.Threshold:0.000}.",
+		31 when _economics is { } econ => $"Cheapest per attempt: {econ.CheapestPerAttempt}. Cheapest per success: {econ.CheapestPerSuccess}.",
+		33 when _planReview is { } plan => $"Plan score {plan.Score}%.",
 		_ => null
 	};
 
@@ -4526,7 +5344,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 		_autoNarration = spoken;
 		_autoNarrationSource = source;
 		await InvokeAsync(StateHasChanged);
-		await JS.InvokeVoidAsync("autopilot.speak", spoken, 1.0);
+		_speechNotice ??= Describe(await JS.InvokeAsync<string>("autopilot.speak", spoken, 1.0));
 		await Task.Delay(Math.Min(12000, 1500 + spoken.Length * 55));
 	}
 
@@ -4571,8 +5389,29 @@ Finish with the verification path: the tests you would add or change, and how I 
 	private void ToggleDrawer() => _drawerOpen = !_drawerOpen;	private void Next() => GoTo(_scene + 1);
 	private void Previous() => GoTo(_scene - 1);
 	private void ReplayAnimation() => _animationRun++;
-	private async Task Speak() => await JS.InvokeVoidAsync("trainingSpeech.speak", CurrentNarration);
-	private async Task StopSpeaking() => await JS.InvokeVoidAsync("trainingSpeech.stop");
+	private async Task Speak()
+	{
+		_speechNotice = Describe(await JS.InvokeAsync<string>("trainingSpeech.speak", CurrentNarration));
+	}
+
+	private async Task StopSpeaking()
+	{
+		_speechNotice = null;
+		await JS.InvokeVoidAsync("trainingSpeech.stop");
+	}
+
+	// The Web Speech API reports success while producing no audio in several browsers:
+	// speechSynthesis.speaking goes true and no event ever fires. "Supported" and "audible" are
+	// different questions, and only the second one matters to a listener.
+	private static string? Describe(string status) => status switch
+	{
+		"speaking" or "empty" => null,
+		"stalled" => "The browser accepted the narration and then produced no audio. Check the tab is not muted (right-click the tab → Unmute site) and that the system output device is correct, then press play again. VS Code's embedded browser never plays speech at all — use Edge or Chrome.",
+		"no-voices" => "No speech voices are installed in this browser, so narration produced silence. The narration text on screen is unaffected.",
+		"unsupported" => "This browser does not implement speech synthesis. The narration text on screen is unaffected.",
+		"silent" => "Narration did not start. Check the system output device and that the page is not muted.",
+		_ => $"Narration did not start ({status})."
+	};
 	private async Task CopyToken() => await JS.InvokeVoidAsync("trainingSpeech.copy", _session?.BridgeToken ?? string.Empty);
 
 	public ValueTask DisposeAsync()

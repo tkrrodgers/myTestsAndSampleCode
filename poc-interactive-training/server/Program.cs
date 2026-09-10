@@ -210,6 +210,7 @@ builder.Services.AddSingleton<AutopilotContract>();
 builder.Services.AddSingleton(_ => new EmbeddingGemmaEncoder(
     Path.Combine(builder.Environment.ContentRootPath, "..", "models", "embeddinggemma-300m-onnx")));
 builder.Services.AddSingleton<ContextAuditService>();
+builder.Services.AddSingleton<CobolDomainService>();
 builder.Services.AddSingleton<ClaraBenchmark>();
 builder.Services.AddSingleton<CobolToolchain>();
 builder.Services.AddSingleton<MigrationSandbox>();
@@ -339,6 +340,34 @@ var streamProbe = TrainingSessionStore.HumaniseStreamFragment(
     "{\"trace\":{\"sequence\":1,\"stage\":\"Index first\",\"evidence\":\"Start at okf/index.md\",\"decision\":\"Correctly forces index-first");
 app.Logger.LogInformation("Review stream humaniser self-check: clean={Clean}, sample=\"{Sample}\".",
     !streamProbe.Contains('{') && !streamProbe.Contains('"') && !streamProbe.Contains("\":"), streamProbe);
+
+// The domain map is only as good as its coverage, so the coverage numbers are printed at startup rather
+// than discovered during a demonstration.
+var cobolDomainProbe = app.Services.GetRequiredService<CobolDomainService>().Run();
+app.Logger.LogInformation(
+    "COBOL domain self-check: {Status}; {Programs} program(s), {Nodes} node(s), {Edges} edge(s), {Neurons} neuron(s), {Synapses} synapse(s); coverage {Coverage}; front end = {FrontEnd}.",
+    cobolDomainProbe.Available ? "fixture loaded" : cobolDomainProbe.StatusMessage,
+    cobolDomainProbe.Programs.Count, cobolDomainProbe.Nodes.Count, cobolDomainProbe.Edges.Count,
+    cobolDomainProbe.Neurons.Count, cobolDomainProbe.Synapses.Count,
+    string.Join(", ", cobolDomainProbe.Coverage.Select(metric => $"{metric.Name} {metric.Percent}%")),
+    CobolFrontEnd.FrontEndName);
+
+foreach (var check in cobolDomainProbe.Checks.Where(check => !check.Passed))
+{
+    app.Logger.LogWarning("COBOL domain stage {Stage} check failed: {Name} — {Detail}", check.Stage, check.Name, check.Detail);
+}
+
+if (cobolDomainProbe.CopyOracle is { } copyOracle)
+{
+    app.Logger.LogInformation("COBOL COPY oracle: {Result} — {Detail}",
+        copyOracle.Passed ? "resolvers agree" : "DISAGREEMENT", copyOracle.Detail);
+}
+
+app.Logger.LogInformation("COBOL field cards: {Cards} synthesised, {Bound} bound to a DB2 column, {Conditions} carrying level-88 states. Sample: {Sample}",
+    cobolDomainProbe.FieldCards.Count,
+    cobolDomainProbe.FieldCards.Count(card => card.ColumnBinding is not null),
+    cobolDomainProbe.FieldCards.Count(card => card.Conditions.Count > 0),
+    cobolDomainProbe.FieldCards.FirstOrDefault(card => card.ColumnBinding is not null)?.CardText ?? "none");
 
 var autopilotProbe = app.Services.GetRequiredService<AutopilotContract>().Verify();
 app.Logger.LogInformation(

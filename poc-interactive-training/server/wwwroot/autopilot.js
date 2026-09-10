@@ -50,12 +50,51 @@ window.autopilot = {
         document.querySelectorAll('.autopilot-target').forEach(el => el.classList.remove('autopilot-target'));
     },
 
+    // Returns whether audio actually started. An auto-run that appears to narrate but is silent is
+    // worse than one that says it cannot. Same Chromium workarounds as trainingSpeech.speak.
     speak: function (text, rate) {
-        if (!window.speechSynthesis) { return; }
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = rate || 1;
-        window.speechSynthesis.speak(utterance);
+        if (!window.speechSynthesis || !text) { return Promise.resolve('unsupported'); }
+
+        const synth = window.speechSynthesis;
+        synth.cancel();
+
+        return new Promise(function (resolve) {
+            let settled = false;
+            let keepAlive = 0;
+
+            const settle = function (value) {
+                if (!settled) { settled = true; resolve(value); }
+            };
+
+            const stopKeepAlive = function () {
+                if (keepAlive) { clearInterval(keepAlive); keepAlive = 0; }
+            };
+
+            setTimeout(function () {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = rate || 1;
+                utterance.onstart = function () { settle('speaking'); };
+                utterance.onend = stopKeepAlive;
+                utterance.onerror = function (event) {
+                    stopKeepAlive();
+                    settle('error:' + (event.error || 'unknown'));
+                };
+
+                synth.speak(utterance);
+                synth.resume();
+
+                keepAlive = setInterval(function () {
+                    if (!synth.speaking) { stopKeepAlive(); return; }
+                    synth.pause();
+                    synth.resume();
+                }, 10000);
+            }, 150);
+
+            setTimeout(function () {
+                if (synth.getVoices().length === 0) { settle('no-voices'); return; }
+                settle(synth.speaking || synth.pending ? 'stalled' : 'silent');
+            }, 5000);
+        });
     },
 
     stopSpeaking: function () {

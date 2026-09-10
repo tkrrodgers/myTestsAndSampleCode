@@ -1,6 +1,6 @@
 # POC Interactive Training
 
-A runnable, 34-scene AI-governance training platform: an ASP.NET Core Blazor server, a VS Code model bridge, and a set of deterministic controls that run with no model at all.
+A runnable, 35-scene AI-governance training platform: an ASP.NET Core Blazor server, a VS Code model bridge, and a set of deterministic controls that run with no model at all.
 
 The organising principle throughout: **prerequisite and assurance controls are deterministic; models supply judgement and narrative only.** A gate that depends on a model is not a gate. Every deterministic service has a startup self-check that prints its result to the console, so a broken control is visible before anyone demonstrates it.
 
@@ -53,7 +53,8 @@ These produce their numbers from executed code, not from an opinion. They work w
 | Plan-first check | Six structural checks on a plan, including "no code yet" |
 | CLARA compiler | Lex → parse → bind/type-check → expression tree → CIL → JIT. Conformance suite plus a measured benchmark against hand-written C# |
 | COBOL migration oracle | GnuCOBOL compiles and executes the legacy program to produce ground truth; candidate migrations are executed against it |
-| Autopilot manifest contract | Diffs the 111-step walkthrough manifest against the markup at startup; a missing selector disables auto-run rather than failing at the click |
+| Autopilot manifest contract | Diffs the 124-step walkthrough manifest against the markup at startup; a missing selector disables auto-run rather than failing at the click |
+| COBOL domain segmentation | Parses real IBM Enterprise COBOL with the ANTLR `Cobol85.g4` grammar, resolves copybooks in SYSLIB order, builds the call graph, CRUD matrix and DDG, builds a PDG on demand, then partitions with Leiden over a resolution sweep. Publishes parse, grammar, copybook, SQL and program-reference coverage with every run |
 
 ## Auto-run: the whole programme, unattended
 
@@ -63,8 +64,8 @@ The rule that makes it safe: **no model ever infers what the application does.**
 
 | Profile | Scope |
 | --- | --- |
-| Deterministic | The 87 steps that need no bridge model. Narration is the fact list, read verbatim. Works offline |
-| Full | All 116 steps including every model stage, with Gemma 4 authoring narration |
+| Deterministic | The 100 steps that need no bridge model. Narration is the fact list, read verbatim. Works offline |
+| Full | All 124 steps including every model stage, with Gemma 4 authoring narration |
 
 Narration falls back **Gemma 4 → Claude Opus 4.8 → the fact list**. Claude is used only on a mechanical failure of Gemma — unavailable, timeout, empty, or unparseable — never because someone judged Gemma's prose to be worse, and every substitution is disclosed on screen. Failures are narrated rather than hidden. **Escape** aborts at any point.
 

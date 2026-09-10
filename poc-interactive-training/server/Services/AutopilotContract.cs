@@ -101,7 +101,7 @@ public sealed partial class AutopilotContract(IWebHostEnvironment environment)
         }
 
         var covered = AutopilotManifest.Steps.Select(step => step.SceneNumber).Distinct().ToList();
-        for (var scene = 1; scene <= 34; scene++)
+        for (var scene = 1; scene <= 35; scene++)
         {
             if (!covered.Contains(scene))
             {

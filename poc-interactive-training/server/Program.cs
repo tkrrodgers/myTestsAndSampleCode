@@ -215,6 +215,7 @@ builder.Services.AddSingleton<ClaraBenchmark>();
 builder.Services.AddSingleton<CobolToolchain>();
 builder.Services.AddSingleton<MigrationSandbox>();
 builder.Services.AddSingleton<ContextClassifierService>();
+builder.Services.AddSingleton<LlmShootoutService>();
 builder.Services.AddSingleton<TrainingSessionStore>();
 
 var app = builder.Build();
@@ -228,6 +229,7 @@ app.Logger.LogInformation("Context audit self-check: {Label}, score {Score}, con
 
 // The classifier and the oracle must both hold before the Classify Context scene is shown to anyone.
 app.Logger.LogInformation("Classify Context self-check: {Detail}", app.Services.GetRequiredService<ContextClassifierService>().SelfCheck());
+app.Logger.LogInformation("LLM shootout self-check: {Detail}", app.Services.GetRequiredService<LlmShootoutService>().SelfCheck());
 
 var claraProbe = ClaraCompiler.Run(RoundTripSamples.ClaraSample);
 app.Logger.LogInformation("CLARA compiler self-check: compiled={Compiled} in {Milliseconds:N2} ms, {Passed}/{Total} examples passed, {Warnings} warnings.",

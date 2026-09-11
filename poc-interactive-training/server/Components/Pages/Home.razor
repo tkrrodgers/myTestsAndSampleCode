@@ -13,6 +13,7 @@
 @inject AutopilotContract Contract
 @inject CobolDomainService CobolDomains
 @inject ContextClassifierService Classifier
+@inject LlmShootoutService Shootout
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 
@@ -118,7 +119,7 @@
 							<p class="kicker">DIRECTOR OF AI &middot; PROGRAMME OVERVIEW</p>
 							<h2 id="scene-title">Help teams adopt AI<br /><em>without asking them to take it on trust.</em></h2>
 							<p class="lede">
-								Six priorities, thirty-five working demonstrations. Every scene ends in a number, and every scene
+								Six priorities, thirty-six working demonstrations. Every scene ends in a number, and every scene
 								says whether that number came from running something or from asking a model. Where the honest answer
 								is &ldquo;we have not built this yet&rdquo;, it is listed at the bottom of this page rather than left out.
 							</p>
@@ -191,7 +192,9 @@
 							<div class="audit-body">
 								<p>
 									@SceneLink("model-comparison") asks three models the same question and has a judge blind-score them against
-									live vendor documentation. @SceneLink("token-economics") makes the harder argument: free is the wrong word and
+									live vendor documentation. @SceneLink("llm-shootout") is the engineering version: four models design the same
+									COBOL-to-Java conversion and a real COBOL compiler marks the checkable part before any judge speaks &mdash; the
+									right model for a job is rarely the one that is best at everything. @SceneLink("token-economics") makes the harder argument: free is the wrong word and
 									cost per token is the wrong unit, because a model that fails a third of the time is billed for every failure.
 									Budget in cost per successful outcome.
 								</p>
@@ -259,7 +262,7 @@
 						<section class="rt-box" data-auto="s01.gaps">
 							<header class="rt-head"><span class="rt-step">!</span><div><strong>What the role calls for and this lab does not yet do</strong><small>stated here so nobody has to discover it in a demo</small></div></header>
 							<div class="audit-body">
-								<p class="rt-reco">Thirty-five scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
+								<p class="rt-reco">Thirty-six scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
 								<table class="audit-table">
 									<thead><tr><th>Missing capability</th><th>Nearest scene</th><th>Why the scene is not sufficient</th></tr></thead>
 									<tbody>
@@ -5106,6 +5109,286 @@ cobol85  -&gt; 000000</pre>
 						</section>
 					</section>
 					break;
+				case 36:
+					<section>
+						<p class="kicker">THE RIGHT LLM FOR THE RIGHT JOB</p>
+						<h2 id="scene-title">Four models, one hard question, one compiler</h2>
+						<p class="rt-intro">
+							Leadership is asked to standardise on a model. The honest answer is that <strong>different models are good at
+							different jobs</strong>, and the only way to know which is which is to give several the same job and score them
+							against something that cannot be argued with. This scene does that for one job the programme cares about &mdash;
+							designing a COBOL-to-Java conversion &mdash; and lets a real COBOL compiler decide the part it can decide.
+						</p>
+						<p class="rt-intro">
+							<strong>How it works.</strong> The same brief goes to four models in parallel through the VS Code bridge. Each returns
+							a fixed-shape answer: byte offsets, record lengths, the five screen rows the legacy program would print, the hex of
+							three packed and binary fields, a design, and &mdash; only if confident &mdash; Java. GnuCOBOL has already compiled and run
+							the legacy logic, so every checkable value is marked right or wrong by code. A sealed SME checklist then looks for the
+							insights an experienced migration lead would expect. Only after that does a fifth model, seeing anonymised slots, judge
+							the design quality. Cost, speed and honesty about uncertainty sit beside the score, because the right model for a job
+							is rarely the one that is best at everything.
+						</p>
+
+						@{
+							var ls = _session?.Shootout;
+							var lsOracle = ls?.Oracle ?? Shootout.Oracle;
+						}
+
+						<section class="rt-box" data-auto="ls.brief">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>The brief every model receives, word for word</strong><small>IBM Global Auto Mart sample &middot; DCLGEN copybook + one paragraph &middot; no hints about layout or truncation</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>Why this question.</strong> It looks easy and is not. A DB2 copybook mixes two-byte binary lengths,
+									four-byte binary integers, a packed-decimal price and fixed text. The formatting paragraph moves a signed six-digit
+									price into an unsigned five-digit field and a five-digit year into a four-digit one, then moves numbers into text.
+									A model that reasons about IBM COBOL semantics gets the bytes right; a model that pattern-matches gets them
+									plausibly wrong. Every team migrating COBOL meets exactly this.
+								</p>
+								<details class="cc-arm">
+									<summary><strong>Show the brief</strong> &mdash; DDL, copybook, paragraph 1400, five rows, compiler options</summary>
+									<pre class="rt-story">@LlmShootoutSamples.Brief</pre>
+								</details>
+								<details class="cc-arm">
+									<summary><strong>Show the answer contract</strong> &mdash; the JSON shape that makes the answers comparable</summary>
+									<pre class="rt-story">@LlmShootoutSamples.AnswerContract</pre>
+								</details>
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="ls.oracle">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>Ground truth from GnuCOBOL, not from a model</strong><small>@lsOracle.Status</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>What we did.</strong> The copybook and the MOVE chain were lifted verbatim into a small harness with no SQL
+									and no CICS, compiled with <code>cobc -x -free -std=ibm</code> and run once at server start. Its output is the
+									answer key. Offsets are arithmetic over the declared layout and cross-checked against the compiler's
+									<code>LENGTH OF</code>. Nothing in this step involves a language model.
+								</p>
+								@if (lsOracle.Available)
+								{
+									<div class="audit-scoreline" data-auto="ls.oracle-result">
+										<span class="ctx-label ctx-rich">@(2 + lsOracle.Offsets.Count + lsOracle.CaseLines.Count + lsOracle.Hex.Count)</span>
+										<div>
+											<strong>compiler-checkable facts</strong>
+											<small>2 lengths &middot; @lsOracle.Offsets.Count field offsets &middot; @lsOracle.CaseLines.Count output rows &middot; @lsOracle.Hex.Count hex dumps &middot; record @lsOracle.RecordLength bytes, OUTPUS @lsOracle.OutpusLength bytes</small>
+										</div>
+									</div>
+									<table class="audit-table">
+										<thead><tr><th>Row</th><th>What the legacy program prints (VINO | YEARO | MODELO | PRICEO | NEWAUTOO)</th><th>Why it matters</th></tr></thead>
+										<tbody>
+											@foreach (var (line, index) in lsOracle.CaseLines.Select((line, index) => (line, index)))
+											{
+												<tr><td>CASE@(index + 1)</td><td><code>@line</code></td><td><small>@LsCaseWhy(index)</small></td></tr>
+											}
+										</tbody>
+									</table>
+									<table class="audit-table">
+										<thead><tr><th>Bytes</th><th>Hex from the compiler</th><th>Reading</th></tr></thead>
+										<tbody>
+											<tr><td>PRICE = 123456</td><td><code>@lsOracle.Hex.GetValueOrDefault("PRICE_123456")</code></td><td><small>COMP-3, 4 bytes, sign nibble C = positive</small></td></tr>
+											<tr><td>PRICE = -1500</td><td><code>@lsOracle.Hex.GetValueOrDefault("PRICE_NEG1500")</code></td><td><small>sign nibble D = negative &mdash; the sign the MOVE then throws away</small></td></tr>
+											<tr><td>AUTOYEAR = 2024</td><td><code>@lsOracle.Hex.GetValueOrDefault("AUTOYEAR_2024")</code></td><td><small>COMP, 4 bytes, big-endian</small></td></tr>
+											<tr><td>VIN-LEN = 4</td><td><code>@lsOracle.Hex.GetValueOrDefault("VINLEN_4")</code></td><td><small>2-byte binary length prefix of a VARCHAR host variable</small></td></tr>
+										</tbody>
+									</table>
+									<details class="cc-arm">
+										<summary><strong>Show the harness and its raw output</strong></summary>
+										<pre class="rt-code">@lsOracle.RawOutput</pre>
+										<pre class="rt-code">@Shootout.HarnessSource</pre>
+									</details>
+								}
+								else
+								{
+									<div class="compare-status failed" role="alert">The oracle could not be built: @lsOracle.Status Without it there is nothing to score against, so Step 3 is disabled.</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="ls.run-box">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Ask four models the same question</strong><small>@string.Join(" · ", LlmShootoutSamples.Contestants) &middot; same brief, same system prompt, blind to each other</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>What we did.</strong> Four bridge tasks are queued at once, each pinned to a named model. If a model is
+									not installed the bridge substitutes one and the table says so &mdash; a substituted result is still a result, but
+									it is not a result <em>for that model</em>. Prompt tokens are identical by construction; output tokens and wall-clock
+									time are measured per model.
+								</p>
+								<div class="rt-actions">
+									<small>Four model calls over the bridge, then one blinded judge call. Models are not deterministic; this is one run each.</small>
+									<button class="primary-command compact" type="button" data-auto="ls.run" disabled="@(!_bridgeConnected || !lsOracle.Available || ShootoutBusy)" @onclick="RunShootout">@ShootoutButtonText</button>
+								</div>
+								@if (!_bridgeConnected)
+								{
+									<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge to run Step 3.</p>
+								}
+								@if (ShootoutBusy)
+								{
+									<div class="rt-pending cc-progress" role="status" aria-live="polite" data-auto="ls.progress">
+										<span></span>
+										<div>
+											<strong>@ShootoutProgressHeadline</strong>
+											<small>@ShootoutProgressDetail</small>
+										</div>
+									</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="ls.results-box">
+							<header class="rt-head"><span class="rt-step">4</span><div><strong>The scorecard &mdash; decided by code</strong><small>compiler facts &middot; sealed SME insights &middot; output tokens &middot; seconds &middot; whether Java was offered</small></div></header>
+							<div class="audit-body">
+								@if (ls is { Entries.Count: > 0 })
+								{
+									<table class="audit-table" data-auto="ls.results">
+										<thead><tr><th>Model</th><th>Compiler checks</th><th>SME insights</th><th>Output tokens</th><th>Seconds</th><th>Java</th><th>Confidence</th><th>Status</th></tr></thead>
+										<tbody>
+											@foreach (var entry in ls.Entries.OrderByDescending(e => e.Status == "completed").ThenByDescending(e => e.CheckablePassed).ThenByDescending(e => e.InsightsFound))
+											{
+												<tr class="@(entry.Status == "completed" && entry.CheckablePassed == entry.CheckableTotal ? "p0-opt" : entry.Status == "failed" ? "p0-req" : null)">
+													<td><strong>@entry.RequestedModel</strong>@if (entry.ModelUsed is not null && !string.Equals(entry.ModelUsed, entry.RequestedModel, StringComparison.OrdinalIgnoreCase)) { <br /><small class="warn">answered by @entry.ModelUsed (substituted)</small> }</td>
+													<td>@(entry.Status == "completed" ? $"{entry.CheckablePassed} / {entry.CheckableTotal}" : "—")</td>
+													<td>@(entry.Status == "completed" ? $"{entry.InsightsFound} / {entry.Insights.Count}" : "—")</td>
+													<td>@(entry.Status == "completed" ? entry.OutputTokens.ToString("N0") : "—")</td>
+													<td>@(entry.DurationMs > 0 ? (entry.DurationMs / 1000.0).ToString("0") : "—")</td>
+													<td>@(entry.Status == "completed" ? (entry.JavaProvided ? "provided" : "declined") : "—")</td>
+													<td>@(entry.JavaConfidence ?? "—")</td>
+													<td>@(entry.Status == "pending" ? "queued" : entry.Status == "running" ? "thinking…" : entry.Status == "failed" ? entry.Error : "scored")</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="rt-note">
+										<strong>How to read it.</strong> <em>Compiler checks</em> are exact matches against Step 2 &mdash; a model either knows
+										how IBM COBOL lays out storage or it does not. <em>SME insights</em> is a keyword floor: it can miss an insight
+										phrased unusually, but it cannot award one that is absent. <em>Java declined</em> with an honest low confidence is a
+										better engineering answer than confident Java that gets the bytes wrong; read the two columns together. Seconds and
+										output tokens are the cost side: a model that scores the same for a third of the tokens is the right model for
+										the routine version of this job.
+									</p>
+
+									@foreach (var entry in ls.Entries.Where(e => e.Status == "completed").OrderByDescending(e => e.CheckablePassed).ThenByDescending(e => e.InsightsFound))
+									{
+										<details class="cc-arm">
+											<summary><strong>@entry.RequestedModel</strong> &mdash; @entry.CheckablePassed of @entry.CheckableTotal compiler checks, @entry.InsightsFound of @entry.Insights.Count insights &middot; slot @entry.Slot for the judge</summary>
+											@if (entry.Checks.Any(c => !c.Passed))
+											{
+												<h4>Compiler checks missed</h4>
+												<table class="audit-table">
+													<thead><tr><th>Check</th><th>Compiler says</th><th>Model said</th></tr></thead>
+													<tbody>
+														@foreach (var check in entry.Checks.Where(c => !c.Passed))
+														{
+															<tr class="p0-req"><td>@check.Name</td><td><code>@check.Expected</code></td><td><code>@(check.Given ?? "(missing)")</code></td></tr>
+														}
+													</tbody>
+												</table>
+											}
+											else
+											{
+												<p class="rt-note">Every compiler-checkable value matched.</p>
+											}
+											<h4>SME insights</h4>
+											<table class="audit-table">
+												<thead><tr><th></th><th>Insight</th><th>Why an SME looks for it</th></tr></thead>
+												<tbody>
+													@foreach (var insight in entry.Insights)
+													{
+														<tr class="@(insight.Present ? null : "p0-req")"><td>@(insight.Present ? "found" : "not found")</td><td>@insight.Name</td><td><small>@insight.Why</small></td></tr>
+													}
+												</tbody>
+											</table>
+											@if (entry.Design.Count > 0)
+											{
+												<h4>Design</h4>
+												<dl class="rt-dl">
+													@foreach (var (key, value) in entry.Design)
+													{
+														<dt>@key</dt><dd>@value</dd>
+													}
+												</dl>
+											}
+											@if (entry.Observations.Count > 0)
+											{
+												<h4>Observations</h4>
+												<ul class="rt-list">@foreach (var item in entry.Observations) { <li>@item</li> }</ul>
+											}
+											@if (!string.IsNullOrWhiteSpace(entry.NotWritten))
+											{
+												<h4>What it chose not to write</h4>
+												<p class="rt-note">@entry.NotWritten</p>
+											}
+											@if (entry.Java is not null)
+											{
+												<h4>Java offered (not compiled here &mdash; read it against the compiler facts above)</h4>
+												<pre class="rt-code">@entry.Java</pre>
+											}
+										</details>
+									}
+								}
+								else
+								{
+									<div class="rt-placeholder">The scorecard appears here as each model answers. Run Step 3.</div>
+								}
+								@if (ls?.Error is { } lsError)
+								{
+									<div class="compare-status failed" role="alert">@lsError</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-qa" data-auto="ls.verdict">
+							<header class="rt-head"><span class="rt-step">5</span><div><strong>A blinded judge on the part a compiler cannot score</strong><small>@(ls?.Verdict?.JudgeModel ?? "Claude Opus 4.8 sees slot letters, never vendor names — and none of the contestants judges itself")</small></div></header>
+							@if (ls?.Verdict is { } lsVerdict)
+							{
+								<p class="rt-reco">@lsVerdict.Summary</p>
+								<table class="audit-table">
+									<thead><tr><th>Slot</th><th>Revealed</th><th>Design score</th><th>Verdict</th><th>Strengths</th><th>Weaknesses</th></tr></thead>
+									<tbody>
+										@foreach (var judged in lsVerdict.Slots.OrderByDescending(s => s.DesignScore))
+										{
+											<tr>
+												<td><strong>@judged.Slot</strong></td>
+												<td>@(ls.SlotToModel.GetValueOrDefault(judged.Slot) ?? "?")</td>
+												<td>@judged.DesignScore / 10</td>
+												<td>@judged.Verdict</td>
+												<td><ul class="rt-list good">@foreach (var item in judged.Strengths) { <li>@item</li> }</ul></td>
+												<td><ul class="rt-list warn">@foreach (var item in judged.Weaknesses) { <li>@item</li> }</ul></td>
+											</tr>
+										}
+									</tbody>
+								</table>
+								@if (lsVerdict.Ranking.Count > 0)
+								{
+									<p class="rt-note"><strong>Judge's ranking:</strong> @string.Join(" › ", lsVerdict.Ranking.Select(slot => $"{slot} ({ls.SlotToModel.GetValueOrDefault(slot) ?? "?"})"))</p>
+								}
+								<h4>Recommendation</h4>
+								<p class="rt-reco">@lsVerdict.Recommendation</p>
+							}
+							else if (ls?.Status == "judging")
+							{
+								<div class="rt-pending cc-progress" role="status" aria-live="polite"><span></span><div><strong>All four answers are scored. The judge is reading the anonymised slots…</strong><small>@ShootoutElapsed since the run started</small></div></div>
+							}
+							else
+							{
+								<div class="rt-placeholder">The verdict appears here after all four answers are scored. The slot-to-model mapping is revealed only at this point.</div>
+							}
+
+							<h4>What to take to the leadership meeting</h4>
+							<ul class="rt-list">
+								<li><strong>Pick models per job, not per vendor.</strong> The scorecard separates <em>knows the domain</em> (compiler checks), <em>thinks like an SME</em> (insights), <em>knows what it does not know</em> (confidence and declined Java) and <em>costs</em> (tokens, seconds). A model can lead one column and trail another; the job decides which column matters.</li>
+							<li><strong>Make the checkable part decide first.</strong> Anything a compiler, a test or a diff can settle should never be settled by a model's opinion &mdash; including a judge model's. Here the judge only ranks what is left after the compiler has spoken.</li>
+								<li><strong>Repeat this whenever the job or the model changes.</strong> The whole run is one button; the brief, the oracle and the checks are sealed in code. That is what makes it a governance tool rather than a demo.</li>
+							</ul>
+							<h4>What this does and does not prove</h4>
+							<ul class="rt-list warn">
+								<li><strong>One run each.</strong> Models are not deterministic. A production selection should run this several times and look at the spread, not one row.</li>
+								<li><strong>One job.</strong> This brief tests IBM COBOL storage semantics and migration judgement. A model that wins here may lose on UI code or on summarising a meeting; run the equivalent scene for each job that matters.</li>
+								<li><strong>The judge is a model.</strong> Its design scores are an opinion, blinded and constrained, and they sit below the compiler's row for that reason. The keyword insights are a floor: they never award what is absent, but they can miss what is phrased unusually.</li>
+								<li><strong>Substitutions are disclosed.</strong> If the bridge could not find a named model it says which model actually answered; a substituted row is not evidence about the named model.</li>
+							</ul>
+						</section>
+					</section>
+					break;
 			}
 		</article>
 
@@ -5139,7 +5422,7 @@ cobol85  -&gt; 000000</pre>
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME"), ("classify-context", "Classify Context"), ("focus-ignore", "Tell LLM to Focus/Ignore")];
+	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME"), ("classify-context", "Classify Context"), ("focus-ignore", "Tell LLM to Focus/Ignore"), ("llm-shootout", "Right LLM for the job")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -5151,7 +5434,7 @@ cobol85  -&gt; 000000</pre>
 	];
 	private static readonly string[] BuiltInNarration =
 	[
-		"Six priorities, thirty-five working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
+		"Six priorities, thirty-six working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
 		"A JIRA story names the desired outcome, but not always the system boundary or implementation path. This lesson follows governed evidence before code.",
 		"Search can find matching words. OKF adds concepts, ownership, decisions, and links that make those matches meaningful and reviewable.",
 		"The index is the entry point. Small linked artifacts disclose only the context needed for this task, while retaining provenance and freshness.",
@@ -5186,7 +5469,8 @@ cobol85  -&gt; 000000</pre>
 		"Six acts, each answering a question leadership actually asks and each ending in a number. This is the order to walk the programme in, not the order it was built in.",
 		"A strong generalist is not the same as an expert on exact header names and exact defaults. Claude answers unaided first, then consults a Gemma grounded on vendor documentation, then designs — and the improvement is measured against verified facts rather than asserted.",
 		"People change subject in a long session, and every later question pays for every earlier paragraph. A design document that mixes two unrelated services is separated back out by a classifier that runs on this machine, section by section, keeping whole sections verbatim and dropping the rest. Then Gemma builds the service from everything, from what the classifier kept, and from what Claude kept, and each build is compiled and run against a reference answer. If the filtered builds pass and cost less, the saving is real; if one fails a case the full build passed, the page names the section the filter should not have dropped.",
-		"Remove the noise, or name it? This scene keeps the whole mixed document and prepends an instruction, written by code from the classifier's decisions, that tells the model exactly which sections to ignore. Claude Opus 5 builds the bond settlement service from the mixed document alone, from the mixed document with that instruction, and from the filtered document as the reference. Every build is compiled and executed, and prompt and output tokens are counted, because an instruction that stops the model hedging saves on the way out rather than the way in. The future enhancement, applying the same idea to a live VS Code chat, is documented on the page and not yet built."
+		"Remove the noise, or name it? This scene keeps the whole mixed document and prepends an instruction, written by code from the classifier's decisions, that tells the model exactly which sections to ignore. Claude Opus 5 builds the bond settlement service from the mixed document alone, from the mixed document with that instruction, and from the filtered document as the reference. Every build is compiled and executed, and prompt and output tokens are counted, because an instruction that stops the model hedging saves on the way out rather than the way in. The future enhancement, applying the same idea to a live VS Code chat, is documented on the page and not yet built.",
+		"Which model for which job? Four models receive the same COBOL-to-Java design brief and return the same fixed-shape answer. GnuCOBOL has already compiled and run the legacy logic, so every byte offset, output row and hex dump is marked right or wrong by code, a sealed SME checklist counts the insights an experienced migration lead expects, and only then does a blinded judge rank the design quality of anonymised slots. Cost, speed and honesty about uncertainty sit beside the score, because the right model for a job is rarely the one that is best at everything."
 	];
 
 	private TrainingSession? _session;
@@ -5652,6 +5936,49 @@ Finish with the verification path: the tests you would add or change, and how I 
 	private void RunFocusClassifier() { if (_session is null) return; Store.RunFocusClassifier(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
 	private void RunFocusImplementations() { if (_session is null) return; _focusStartedAt = DateTimeOffset.UtcNow; Store.QueueFocusImplementations(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
 
+	private bool ShootoutBusy => _session?.Shootout.Status is "running" or "judging";
+
+	private string ShootoutButtonText => _session?.Shootout.Status switch
+	{
+		"running" => "Models are answering…",
+		"judging" => "Judge is reading…",
+		"completed" => "Run the shootout again",
+		_ => "Ask all four models, score and judge"
+	};
+
+	private DateTimeOffset? _shootoutStartedAt;
+
+	private string ShootoutElapsed => _shootoutStartedAt is { } started ? $"{(int)(DateTimeOffset.UtcNow - started).TotalSeconds}s" : "0s";
+
+	private string ShootoutProgressHeadline => _session?.Shootout.Status switch
+	{
+		"running" when _session.Shootout.Entries.FirstOrDefault(e => e.Status == "running") is { } running => $"{running.RequestedModel} is answering the brief…",
+		"running" => "Waiting for the bridge to pick up the next model…",
+		"judging" => "All answers scored by code. The blinded judge is ranking the design quality…",
+		_ => "Working…"
+	};
+
+	private string ShootoutProgressDetail
+	{
+		get
+		{
+			var entries = _session?.Shootout.Entries ?? [];
+			var done = entries.Count(e => e.Status is "completed" or "failed");
+			return $"{done} of {entries.Count} models finished · {ShootoutElapsed} elapsed · the bridge runs one model call at a time";
+		}
+	}
+
+	private void RunShootout() { if (_session is null) return; _shootoutStartedAt = DateTimeOffset.UtcNow; Store.QueueShootout(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
+
+	private static string LsCaseWhy(int index) => index switch
+	{
+		0 => "Ordinary row: price fits, year fits. The baseline every model should get.",
+		1 => "Six-digit price into PIC 9(5): the leading 1 is silently dropped — 123456 prints as 23456.",
+		2 => "Five-digit year into PIC 9(4): 12024 becomes 2024. Price 5 pads to 00005 then left-justifies in X(10).",
+		3 => "Negative price into an unsigned field: the sign is lost, -1500 prints as 01500.",
+		_ => "Zero price: 00000, not blanks — a numeric move, not an edited picture."
+	};
+
 	// Highlight disagreements with the sealed label; a crypto section kept by reference is correct, not a miss.
 	private static string? DecisionClass(SegmentDecision decision)
 	{
@@ -6062,6 +6389,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 		},
 		"ClassifyContext" => _session.ClassifyContext.Status,
 		"Focus" => _session.Focus.Status,
+		"Shootout" => _session.Shootout.Status,
 		_ => null
 	};
 
@@ -6077,6 +6405,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 		32 when _planReview is { } plan => $"Plan score {plan.Score}%.",
 		35 when _session?.ClassifyContext.Classifier is { } cc => $"Classifier kept {cc.KeptSegments} of {cc.TotalSegments} sections: fixed income {cc.FixedIncomeKept}/{cc.FixedIncomeTotal}, crypto dropped {cc.CryptoDropped}/{cc.CryptoTotal}, traps honoured {cc.TrapsHonoured}/{cc.TrapsTotal}, {cc.PromptTokens} tokens kept."
 			+ (_session.ClassifyContext.Arms.Count > 0 ? " Builds: " + string.Join("; ", _session.ClassifyContext.Arms.Where(a => a.Status == "completed").Select(a => $"arm {a.Arm} {a.PromptTokens} tokens, compiled {a.Compiled}, {a.Passed}/{ClassifyContextSamples.TestVectors.Length} cases")) : ""),
+		37 when _session?.Shootout is { Entries.Count: > 0 } ls => "Scorecard: " + string.Join("; ", ls.Entries.Where(e => e.Status == "completed").Select(e => $"{e.RequestedModel} {e.CheckablePassed}/{e.CheckableTotal} compiler checks, {e.InsightsFound}/{e.Insights.Count} insights, {e.OutputTokens} output tokens, {e.DurationMs / 1000} s, Java {(e.JavaProvided ? "provided" : "declined")}")),
 		_ => null
 	};
 

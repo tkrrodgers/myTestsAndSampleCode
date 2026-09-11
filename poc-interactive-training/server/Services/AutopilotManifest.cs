@@ -561,7 +561,27 @@ public static class AutopilotManifest
             facts: ["If the instructed arm matches the filtered arm on cases and beats the unguided arm on output tokens, naming the noise paid for its input cost.",
                     "If it fails a case the unguided arm passed, the instruction confused the model, which is worth knowing before anyone writes 'ignore the following' into a production prompt.",
                     "The future enhancement, applying this to a live VS Code chat, is documented on the page and not built."],
-            mustNot: ["that the VS Code chat integration exists"])
+            mustNot: ["that the VS Code chat integration exists"]),
+
+        // ---- 37 llm-shootout --------------------------------------------------------------
+        S("ls.01", "llm-shootout", 37, AutoKind.Scroll, selector: "[data-auto='ls.brief']",
+            facts: ["Four models receive the same COBOL-to-Java design brief: a DB2 DCLGEN copybook, one row-formatting paragraph and five rows to predict.",
+                    "The brief contains no hints about storage layout, truncation or sign loss; that is what the comparison measures."]),
+        S("ls.02", "llm-shootout", 37, AutoKind.Scroll, selector: "[data-auto='ls.oracle']",
+            facts: ["GnuCOBOL compiled and ran the legacy MOVE chain at server start; its output is the answer key.",
+                    "Record lengths, field offsets, five output rows and four hex dumps are facts from the compiler, not from any model."],
+            mustNot: ["that a model produced the ground truth"]),
+        S("ls.03", "llm-shootout", 37, AutoKind.Click, selector: "[data-auto='ls.run']", bridge: true,
+            wait: AutoWait.State, waitKey: "Shootout", timeout: 1200,
+            facts: ["Four bridge tasks are queued at once, each pinned to a named model; a substitution is disclosed in the table.",
+                    "Every checkable value is marked right or wrong by code, a sealed SME checklist counts insights, then a blinded judge ranks anonymised slots."]),
+        S("ls.04", "llm-shootout", 37, AutoKind.Scroll, selector: "[data-auto='ls.results-box']", result: true,
+            facts: ["Read compiler checks, SME insights, output tokens, seconds and whether Java was offered together; a model can lead one column and trail another.",
+                    "Declining to write Java with honest low confidence is a better engineering answer than confident Java that gets the bytes wrong."]),
+        S("ls.05", "llm-shootout", 37, AutoKind.Scroll, selector: "[data-auto='ls.verdict']", result: true,
+            facts: ["The judge sees slot letters, never vendor names, and may not change the compiler's numbers; the mapping is revealed only after the verdict.",
+                    "This is one run on one job; pick models per job, repeat the run when the job or the model changes, and never let a model settle what a compiler can."],
+            mustNot: ["that one run settles the choice of model for every job"])
     ];
 
     public static IEnumerable<AutoStep> ForProfile(AutoProfile profile, bool allowInProcessExecution) =>

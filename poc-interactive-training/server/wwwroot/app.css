@@ -1902,6 +1902,12 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 .cc-progress strong { font-size: .86rem; }
 .cc-progress small { color: var(--muted); font-size: .76rem; }
 
+/* Shootout design answers: key/value pairs from the fixed JSON contract. */
+.rt-dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 8px 0 0; font-size: .84rem; }
+.rt-dl dt { font-weight: 600; color: #2f6f9f; }
+.rt-dl dd { margin: 0; }
+.audit-table small.warn { color: #9a4a00; }
+
 .rt-pending, .rt-placeholder {
     display: flex;
     align-items: center;

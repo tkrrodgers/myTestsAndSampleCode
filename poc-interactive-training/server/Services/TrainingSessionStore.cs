@@ -27,6 +27,7 @@ public sealed class TrainingSessionStore
     private readonly CobolToolchain _cobol;
     private readonly MigrationSandbox _sandbox;
     private readonly ContextClassifierService _classifier;
+    private readonly LlmShootoutService _shootout;
 
     // Measured once: what each representation of the same logic actually costs in context.
     private static int CSharpSourceTokens;
@@ -58,7 +59,7 @@ public sealed class TrainingSessionStore
         "The fee is rounded to whole dollars, but rule 6 requires 2 decimal places."
     ];
 
-    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox, DataTierClassifier dataTier, TradingCorpus tradingCorpus, DocumentationFetcher documentation, ContextClassifierService classifier)
+    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox, DataTierClassifier dataTier, TradingCorpus tradingCorpus, DocumentationFetcher documentation, ContextClassifierService classifier, LlmShootoutService shootout)
     {
         _fixture = fixture;
         _auditAnalyzer = auditAnalyzer;
@@ -67,6 +68,7 @@ public sealed class TrainingSessionStore
         _cobol = cobol;
         _sandbox = sandbox;
         _classifier = classifier;
+        _shootout = shootout;
         _dataTier = dataTier;
         _tradingCorpus = tradingCorpus;
         _documentation = documentation;
@@ -94,12 +96,12 @@ public sealed class TrainingSessionStore
                 .Replace('/', '_')
                 .TrimEnd('='));
         _sessions[state.SessionId] = state;
-        return state.Snapshot();
+        return state.Snapshot(_shootout.Oracle);
     }
 
     public TrainingSession GetSession(string sessionId) =>
         _sessions.TryGetValue(sessionId, out var state)
-            ? state.Snapshot()
+            ? state.Snapshot(_shootout.Oracle)
             : throw new InvalidOperationException("Training session was not found.");
 
     public bool IsValidToken(string token) =>
@@ -2179,6 +2181,166 @@ public sealed class TrainingSessionStore
 
     private sealed record ContextReviewDto(string? Summary, List<ContextReviewArmDto>? Arms, string? Recommendation);
 
+    // --- Right LLM for the right job: one brief, four models, GnuCOBOL decides the checkable part ---
+    public void QueueShootout(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            if (!_shootout.Oracle.Available)
+            {
+                throw new InvalidOperationException("The GnuCOBOL oracle is not available; there is nothing to score against.");
+            }
+
+            session.ShootoutEntries.Clear();
+            session.ShootoutTaskSlot.Clear();
+            session.ShootoutSlotToModel.Clear();
+            session.ShootoutVerdict = null;
+            session.ShootoutError = null;
+
+            var request = LlmShootoutService.BuildRequest();
+            var promptTokens = _encoder.CountTokens(Prompts.ShootoutDesignSystem + request).Tokens;
+
+            // Slots are shuffled so the judge cannot map a slot to a vendor by position.
+            var random = new Random(session.SessionId.GetHashCode(StringComparison.Ordinal));
+            var slots = new[] { "P", "Q", "R", "S" }.OrderBy(_ => random.Next()).ToArray();
+
+            for (var i = 0; i < LlmShootoutSamples.Contestants.Length; i++)
+            {
+                var model = LlmShootoutSamples.Contestants[i];
+                var slot = slots[i];
+                session.ShootoutSlotToModel[slot] = model;
+                session.ShootoutEntries[slot] = new ShootoutEntry(slot, model, null, "pending", 0, promptTokens, 0, [], 0, 0, [], 0, null, false, [], new Dictionary<string, string>(), null, null, null);
+
+                var task = new BridgeTask(
+                    Guid.NewGuid().ToString("N"),
+                    sessionId,
+                    "shootout-design",
+                    model,
+                    null,
+                    Prompts.ShootoutDesignSystem,
+                    request,
+                    420,
+                    DateTimeOffset.UtcNow);
+                session.Tasks[task.TaskId] = new TaskState(task);
+                session.ShootoutTaskSlot[task.TaskId] = slot;
+            }
+
+            session.ShootoutStatus = "running";
+        }
+    }
+
+    private void CompleteShootoutDesign(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!session.ShootoutTaskSlot.TryGetValue(result.TaskId, out var slot) ||
+            !session.ShootoutEntries.TryGetValue(slot, out var entry))
+        {
+            return;
+        }
+
+        entry = entry with { ModelUsed = result.ModelUsed, DurationMs = result.DurationMs };
+        session.ShootoutEntries[slot] = !succeeded || string.IsNullOrWhiteSpace(result.Content)
+            ? entry with { Status = "failed", Error = result.ErrorMessage ?? "The model returned nothing." }
+            : _shootout.Score(entry with { OutputTokens = _encoder.CountTokens(result.Content).Tokens }, result.Content);
+
+        if (session.ShootoutEntries.Values.All(item => item.Status is "completed" or "failed"))
+        {
+            QueueShootoutJudge(session);
+        }
+    }
+
+    private void QueueShootoutJudge(SessionState session)
+    {
+        var completed = session.ShootoutEntries.Values.Where(entry => entry.Status == "completed").ToList();
+        if (completed.Count == 0)
+        {
+            session.ShootoutStatus = "completed";
+            session.ShootoutError = "No contestant returned a scorable answer, so there is nothing to judge.";
+            return;
+        }
+
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<brief>");
+        request.AppendLine(LlmShootoutSamples.Brief);
+        request.AppendLine("</brief>");
+        request.AppendLine("<compiler_facts>");
+        request.AppendLine(_shootout.Oracle.RawOutput);
+        request.AppendLine("</compiler_facts>");
+        foreach (var entry in completed.OrderBy(item => item.Slot, StringComparer.Ordinal))
+        {
+            request.AppendLine($"<answer slot=\"{entry.Slot}\" compiler_checks=\"{entry.CheckablePassed}/{entry.CheckableTotal}\" sme_insights=\"{entry.InsightsFound}/{entry.Insights.Count}\" java_provided=\"{entry.JavaProvided}\" java_confidence=\"{entry.JavaConfidence}\">");
+            foreach (var failed in entry.Checks.Where(check => !check.Passed))
+            {
+                request.AppendLine($"<wrong name=\"{failed.Name}\" expected=\"{failed.Expected}\" given=\"{failed.Given ?? "(missing)"}\" />");
+            }
+
+            request.AppendLine("<design>");
+            foreach (var (key, value) in entry.Design)
+            {
+                request.AppendLine($"{key}: {value}");
+            }
+
+            request.AppendLine("</design>");
+            request.AppendLine("<observations>");
+            foreach (var observation in entry.Observations)
+            {
+                request.AppendLine($"- {observation}");
+            }
+
+            request.AppendLine("</observations>");
+            request.AppendLine($"<not_written>{entry.NotWritten}</not_written>");
+            if (entry.Java is not null)
+            {
+                request.AppendLine("<java>");
+                request.AppendLine(entry.Java.Length > 7000 ? entry.Java[..7000] + "\n// … truncated for review" : entry.Java);
+                request.AppendLine("</java>");
+            }
+
+            request.AppendLine("</answer>");
+        }
+
+        request.AppendLine("Judge the design quality of each slot. The compiler_checks and sme_insights numbers are facts — explain, do not re-grade. Rank the slots for the job of leading a COBOL-to-Java migration design and say which you would trust with production code.");
+
+        var task = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "shootout-judge",
+            ClaraAuthorModel,
+            GeminiAdvisorModel,
+            Prompts.ShootoutJudgeSystem,
+            request.ToString(),
+            300,
+            DateTimeOffset.UtcNow);
+        session.Tasks[task.TaskId] = new TaskState(task);
+        session.ShootoutStatus = "judging";
+    }
+
+    private void CompleteShootoutJudge(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        session.ShootoutStatus = "completed";
+        if (!succeeded || !TryDeserialize(result.Content!, out ShootoutJudgeDto? dto) || dto is null)
+        {
+            session.ShootoutError = result.ErrorMessage ?? "The judge did not return the agreed shape; the deterministic scorecard stands on its own.";
+            return;
+        }
+
+        session.ShootoutVerdict = new ShootoutVerdict(
+            result.ModelUsed ?? result.ModelRequested,
+            dto.Summary?.Trim() ?? "",
+            (dto.Slots ?? [])
+                .Where(slot => !string.IsNullOrWhiteSpace(slot.Slot))
+                .GroupBy(slot => slot.Slot!, StringComparer.Ordinal)
+                .Select(group => group.First())
+                .Select(slot => new ShootoutJudgeSlot(slot.Slot!, slot.Verdict ?? "", slot.Strengths ?? [], slot.Weaknesses ?? [], Math.Clamp(slot.DesignScore ?? 0, 0, 10)))
+                .ToList(),
+            dto.Ranking ?? [],
+            dto.Recommendation?.Trim() ?? "");
+    }
+
+    private sealed record ShootoutJudgeSlotDto(string? Slot, string? Verdict, List<string>? Strengths, List<string>? Weaknesses, int? DesignScore);
+
+    private sealed record ShootoutJudgeDto(string? Summary, List<ShootoutJudgeSlotDto>? Slots, List<string>? Ranking, string? Recommendation);
+
     public void QueueLlmSupport(string sessionId, string requirement)
     {
         if (string.IsNullOrWhiteSpace(requirement) || requirement.Length > 8000)
@@ -3705,6 +3867,17 @@ public sealed class TrainingSessionStore
                 case "claude-focus-review":
                     session.FocusStatus = "reviewing";
                     break;
+                case "shootout-design":
+                    if (session.ShootoutTaskSlot.TryGetValue(task.Task.TaskId, out var shootoutSlot) &&
+                        session.ShootoutEntries.TryGetValue(shootoutSlot, out var shootoutEntry))
+                    {
+                        session.ShootoutEntries[shootoutSlot] = shootoutEntry with { Status = "running" };
+                    }
+
+                    break;
+                case "shootout-judge":
+                    session.ShootoutStatus = "judging";
+                    break;
                 case "claude-pattern-review":
                     session.PatternStatus = "reviewing";
                     break;
@@ -3895,6 +4068,12 @@ public sealed class TrainingSessionStore
                     break;
                 case "claude-focus-review":
                     CompleteFocusReview(session, result, succeeded);
+                    break;
+                case "shootout-design":
+                    CompleteShootoutDesign(session, result, succeeded);
+                    break;
+                case "shootout-judge":
+                    CompleteShootoutJudge(session, result, succeeded);
                     break;
                 case "claude-pattern-review":
                     CompletePatternReview(session, result, succeeded);
@@ -4362,8 +4541,14 @@ public sealed class TrainingSessionStore
         public ContextReview? FocusReview { get; set; }
         public string? FocusReviewModel { get; set; }
         public string? FocusError { get; set; }
+        public string ShootoutStatus { get; set; } = "not-started";
+        public Dictionary<string, ShootoutEntry> ShootoutEntries { get; } = [];
+        public Dictionary<string, string> ShootoutTaskSlot { get; } = [];
+        public Dictionary<string, string> ShootoutSlotToModel { get; } = [];
+        public ShootoutVerdict? ShootoutVerdict { get; set; }
+        public string? ShootoutError { get; set; }
 
-        public TrainingSession Snapshot() => new(
+        public TrainingSession Snapshot(ShootoutOracle shootoutOracle) => new(
             SessionId,
             BridgeToken,
             CreatedAt,
@@ -4662,6 +4847,13 @@ public sealed class TrainingSessionStore
                 FocusReview,
                 FocusReviewModel,
                 FocusError),
+            new ShootoutState(
+                ShootoutStatus,
+                shootoutOracle,
+                ShootoutEntries.Values.OrderBy(entry => entry.Slot, StringComparer.Ordinal).ToArray(),
+                ShootoutVerdict,
+                ShootoutSlotToModel,
+                ShootoutError),
             new NarrationState(NarrationStatus, NarrationText, NarrationModel, NarrationFallbackUsed));
     }
 
@@ -5469,6 +5661,34 @@ public sealed class TrainingSessionStore
             If the design omits something you need, do NOT invent a requirement. Implement the most
             conservative reading and add a line of the form:
             // ASSUMPTION: <what you had to assume and why>
+            """;
+
+        // Identical for every contestant. Nothing here hints at the layout, the truncation or the sign loss;
+        // that is precisely what the comparison measures.
+        public const string ShootoutDesignSystem = """
+            You are the lead architect on a mainframe-to-Java migration. You are given a brief describing an IBM
+            Enterprise COBOL program, its DB2 DCLGEN copybook and the paragraph that formats rows for a screen.
+
+            Answer from your knowledge of IBM Enterprise COBOL for z/OS semantics: storage layouts of COMP, COMP-3
+            and DISPLAY items, MOVE truncation rules, alphanumeric versus numeric moves, and DB2 host-variable
+            conventions. Every checkable value you give will be compared against a real compiler run. Do not
+            approximate. If you are not sure of the Java, say so and leave it out rather than guess.
+
+            Return only the JSON described in the deliverable. No Markdown fences, no prose outside the JSON.
+            """;
+
+        // The judge sees slot letters, never vendor names, and may not alter the compiler's numbers.
+        public const string ShootoutJudgeSystem = """
+            You are a principal engineer judging anonymised design answers to a COBOL-to-Java migration brief.
+            Each answer has already been scored by a compiler (checkable facts) and a sealed SME checklist. Those
+            numbers are facts. Your job is the part a compiler cannot do: is the design sound, are the risks
+            named, is the equivalence plan executable, is the confidence honest, and is any Java trustworthy.
+
+            Do not guess which vendor produced a slot and do not favour verbosity. A short answer that declines
+            to write Java it cannot verify may beat a long one that writes wrong Java confidently.
+
+            Return JSON only, no Markdown fences:
+            {"summary":"...","slots":[{"slot":"P","verdict":"...","strengths":["..."],"weaknesses":["..."],"designScore":0-10}],"ranking":["best slot","..."],"recommendation":"which slot you would trust to lead the design and why"}
             """;
 
         // Review, not grading. The compile and test results are already decided by execution.

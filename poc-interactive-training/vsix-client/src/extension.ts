@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 interface BridgeTask {
 	taskId: string;
 	sessionId: string;
-	kind: 'coach-narration' | 'autopilot-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis' | 'context-curve-plan' | 'framing-arm' | 'framing-judge' | 'claude-consolidation-design' | 'gemma-consolidation-build' | 'claude-curve-judge' | 'claude-tier1-discover' | 'claude-tier2-scope' | 'claude-tier3-design' | 'gemma-regression-guidance' | 'claude-regression-review' | 'gemma-pattern-apply' | 'claude-pattern-review' | 'claude-crypto-unaided' | 'gemma-crypto-sme' | 'claude-crypto-design' | 'claude-context-filter' | 'gemma-context-implement' | 'claude-context-review' | 'claude-focus-implement' | 'claude-focus-review';
+	kind: 'coach-narration' | 'autopilot-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis' | 'context-curve-plan' | 'framing-arm' | 'framing-judge' | 'claude-consolidation-design' | 'gemma-consolidation-build' | 'claude-curve-judge' | 'claude-tier1-discover' | 'claude-tier2-scope' | 'claude-tier3-design' | 'gemma-regression-guidance' | 'claude-regression-review' | 'gemma-pattern-apply' | 'claude-pattern-review' | 'claude-crypto-unaided' | 'gemma-crypto-sme' | 'claude-crypto-design' | 'claude-context-filter' | 'gemma-context-implement' | 'claude-context-review' | 'claude-focus-implement' | 'claude-focus-review' | 'shootout-design' | 'shootout-judge';
 	preferredModel: string;
 	fallbackModel?: string;
 	systemPrompt: string;
@@ -237,6 +237,10 @@ function taskLabel(task: BridgeTask): string {
 			return 'Claude build (focus/ignore arm)';
 		case 'claude-focus-review':
 			return 'Claude focus/ignore review';
+		case 'shootout-design':
+			return `${task.preferredModel} shootout answer`;
+		case 'shootout-judge':
+			return 'Blinded shootout judge';
 		case 'framing-arm':
 			return 'Framing arm';
 		case 'framing-judge':

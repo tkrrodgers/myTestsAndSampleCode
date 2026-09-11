@@ -38,6 +38,7 @@ public sealed record TrainingSession(
     CryptoSmeState CryptoSme,
     ClassifyContextState ClassifyContext,
     FocusState Focus,
+    ShootoutState Shootout,
     NarrationState Narration);
 
 public sealed record NarrationState(

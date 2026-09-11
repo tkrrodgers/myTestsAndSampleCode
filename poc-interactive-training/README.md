@@ -53,8 +53,9 @@ These produce their numbers from executed code, not from an opinion. They work w
 | Plan-first check | Six structural checks on a plan, including "no code yet" |
 | CLARA compiler | Lex → parse → bind/type-check → expression tree → CIL → JIT. Conformance suite plus a measured benchmark against hand-written C# |
 | COBOL migration oracle | GnuCOBOL compiles and executes the legacy program to produce ground truth; candidate migrations are executed against it |
-| Autopilot manifest contract | Diffs the 124-step walkthrough manifest against the markup at startup; a missing selector disables auto-run rather than failing at the click |
+| Autopilot manifest contract | Diffs the 131-step walkthrough manifest against the markup at startup; a missing selector disables auto-run rather than failing at the click |
 | COBOL domain segmentation | Parses real IBM Enterprise COBOL with the ANTLR `Cobol85.g4` grammar, resolves copybooks in SYSLIB order, builds the call graph, CRUD matrix and DDG, builds a PDG on demand, then partitions with Leiden over a resolution sweep. Publishes parse, grammar, copybook, SQL and program-reference coverage with every run |
+| Context classifier | Separates a mixed two-domain design document section by section: embeddinggemma vectors through an ML.NET model trained on the two real trading repositories, fused with a lexical arm of repository vocabulary. Uncertain sections are kept, referenced sections are kept regardless of label, and the result is scored against sealed labels and planted cross-domain traps |
 
 ## Auto-run: the whole programme, unattended
 
@@ -64,8 +65,8 @@ The rule that makes it safe: **no model ever infers what the application does.**
 
 | Profile | Scope |
 | --- | --- |
-| Deterministic | The 100 steps that need no bridge model. Narration is the fact list, read verbatim. Works offline |
-| Full | All 124 steps including every model stage, with Gemma 4 authoring narration |
+| Deterministic | The 104 steps that need no bridge model. Narration is the fact list, read verbatim. Works offline |
+| Full | All 131 steps including every model stage, with Gemma 4 authoring narration |
 
 Narration falls back **Gemma 4 → Claude Opus 4.8 → the fact list**. Claude is used only on a mechanical failure of Gemma — unavailable, timeout, empty, or unparseable — never because someone judged Gemma's prose to be worse, and every substitution is disclosed on screen. Failures are narrated rather than hidden. **Escape** aborts at any point.
 
@@ -82,6 +83,8 @@ Not yet built: narration pre-flight caching, and the Rehearsed profile that depe
 | Common code audit | Claude Opus 5 designs the consolidation from the audit; Gemma 4 implements it one module at a time from the spec alone |
 | Making Gemma 4 an SME | Claude answers a crypto-execution ticket unaided, consults a Gemma grounded on a three-layer vendor documentation pack, then designs. Recall is scored against verified facts, and a per-fact trace shows which stage lost each one |
 | Prompt challenge | Claude reviews the learner's prompt against a visible rubric and **streams** each decision as it is made, so a long review reads as progress rather than a hang |
+| Classify Context | Claude filters the same mixed design the local classifier filtered (arm D); Gemma 4 then builds the bond settlement service from the full document, the classifier's selection and Claude's selection; every build is compiled and executed against a reference oracle, and Claude reviews the results against sealed criteria |
+| Tell LLM to Focus/Ignore | The classifier's dropped set becomes a deterministic instruction prepended to the full document. Claude Opus 5 builds from the mixed document, the mixed document plus the instruction, and the filtered document; prompt and output tokens are counted and every build is executed against the oracle. The live VS Code chat version is documented on the page, not built |
 | Round trip, modernize, audits, CLARA, framing, drift | Gemma authors or audits; Claude reviews or grades against sealed criteria |
 
 ## External dependencies

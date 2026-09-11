@@ -26,7 +26,6 @@ public sealed partial class AutopilotContract(IWebHostEnvironment environment)
     private static readonly (string Prefix, int Count)[] Templated =
     [
         ("s05.step-", 6),
-        ("s08.q", 12),
         ("s28.amp-", 0)
     ];
 

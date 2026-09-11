@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 interface BridgeTask {
 	taskId: string;
 	sessionId: string;
-	kind: 'coach-narration' | 'autopilot-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis' | 'context-curve-plan' | 'framing-arm' | 'framing-judge' | 'claude-consolidation-design' | 'gemma-consolidation-build' | 'claude-curve-judge' | 'claude-tier1-discover' | 'claude-tier2-scope' | 'claude-tier3-design' | 'gemma-regression-guidance' | 'claude-regression-review' | 'gemma-pattern-apply' | 'claude-pattern-review' | 'claude-crypto-unaided' | 'gemma-crypto-sme' | 'claude-crypto-design';
+	kind: 'coach-narration' | 'autopilot-narration' | 'claude-review' | 'model-answer' | 'model-judge' | 'gemma-story' | 'gemma-recreate' | 'claude-roundtrip-qa' | 'claude-modernize' | 'gemma-audit' | 'gemma-context' | 'claude-context-judge' | 'claude-clara-author' | 'claude-clara-review' | 'gemini-gcp-advisor' | 'claude-gcp-synthesis' | 'context-curve-plan' | 'framing-arm' | 'framing-judge' | 'claude-consolidation-design' | 'gemma-consolidation-build' | 'claude-curve-judge' | 'claude-tier1-discover' | 'claude-tier2-scope' | 'claude-tier3-design' | 'gemma-regression-guidance' | 'claude-regression-review' | 'gemma-pattern-apply' | 'claude-pattern-review' | 'claude-crypto-unaided' | 'gemma-crypto-sme' | 'claude-crypto-design' | 'claude-context-filter' | 'gemma-context-implement' | 'claude-context-review' | 'claude-focus-implement' | 'claude-focus-review';
 	preferredModel: string;
 	fallbackModel?: string;
 	systemPrompt: string;
@@ -227,6 +227,16 @@ function taskLabel(task: BridgeTask): string {
 			return `${task.preferredModel} SME answers`;
 		case 'claude-crypto-design':
 			return 'Claude grounded design';
+		case 'claude-context-filter':
+			return 'Claude context filter';
+		case 'gemma-context-implement':
+			return `${task.preferredModel} build from filtered context`;
+		case 'claude-context-review':
+			return 'Claude context review';
+		case 'claude-focus-implement':
+			return 'Claude build (focus/ignore arm)';
+		case 'claude-focus-review':
+			return 'Claude focus/ignore review';
 		case 'framing-arm':
 			return 'Framing arm';
 		case 'framing-judge':

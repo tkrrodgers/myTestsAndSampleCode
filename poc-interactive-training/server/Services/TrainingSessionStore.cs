@@ -26,6 +26,7 @@ public sealed class TrainingSessionStore
     private readonly EmbeddingGemmaEncoder _encoder;
     private readonly CobolToolchain _cobol;
     private readonly MigrationSandbox _sandbox;
+    private readonly ContextClassifierService _classifier;
 
     // Measured once: what each representation of the same logic actually costs in context.
     private static int CSharpSourceTokens;
@@ -57,7 +58,7 @@ public sealed class TrainingSessionStore
         "The fee is rounded to whole dollars, but rule 6 requires 2 decimal places."
     ];
 
-    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox, DataTierClassifier dataTier, TradingCorpus tradingCorpus, DocumentationFetcher documentation)
+    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox, DataTierClassifier dataTier, TradingCorpus tradingCorpus, DocumentationFetcher documentation, ContextClassifierService classifier)
     {
         _fixture = fixture;
         _auditAnalyzer = auditAnalyzer;
@@ -65,6 +66,7 @@ public sealed class TrainingSessionStore
         _encoder = encoder;
         _cobol = cobol;
         _sandbox = sandbox;
+        _classifier = classifier;
         _dataTier = dataTier;
         _tradingCorpus = tradingCorpus;
         _documentation = documentation;
@@ -1785,6 +1787,398 @@ public sealed class TrainingSessionStore
         return (path, body.ToString().Trim(), assumptions);
     }
 
+    // --- Classify Context: a local classifier separates a mixed design; models then build from the result ---
+    //
+    // Step 3 is deterministic and needs no bridge. Steps 4 and 5 are model calls, scored by execution.
+    public void RunContextClassifier(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.ClassifyFilter = _classifier.Classify();
+            session.ClassifyClaudeFilter = null;
+            session.ClassifyClaudeModel = null;
+            session.ClassifyClaudePromptTokens = 0;
+            session.ClassifyArms.Clear();
+            session.ClassifyTaskArm.Clear();
+            session.ClassifyReview = null;
+            session.ClassifyReviewModel = null;
+            session.ClassifyError = null;
+            session.ClassifyStatus = "classified";
+        }
+    }
+
+    public void QueueContextClaudeFilter(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            if (session.ClassifyFilter is null)
+            {
+                throw new InvalidOperationException("Run the classifier first so the two filters are compared on the same document.");
+            }
+
+            session.ClassifyImplementAfterFilter = false;
+            QueueContextClaudeFilterCore(session);
+        }
+    }
+
+    private void QueueContextClaudeFilterCore(SessionState session)
+    {
+        var request = BuildContextFilterRequest();
+        session.ClassifyClaudePromptTokens = _encoder.CountTokens(Prompts.ContextFilterSystem + request).Tokens;
+        session.ClassifyClaudeFilter = null;
+        session.ClassifyError = null;
+
+        var task = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            "claude-context-filter",
+            ClaudeModel,
+            null,
+            Prompts.ContextFilterSystem,
+            request,
+            180,
+            DateTimeOffset.UtcNow);
+        session.Tasks[task.TaskId] = new TaskState(task);
+        session.ClassifyStatus = "claude-filtering";
+    }
+
+    private string BuildContextFilterRequest()
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<mixed_design>");
+        request.AppendLine(ContextClassifierService.ToText(_classifier.MixedDocument()));
+        request.AppendLine("</mixed_design>");
+        request.AppendLine("An implementer will build ONLY the bond settlement amount service from this document. " +
+            "Decide which numbered sections that implementer must receive. Keep every section the service needs, " +
+            "including any section another kept section refers to by number, and drop the rest.");
+        return request.ToString();
+    }
+
+    private void CompleteContextFilter(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out ContextFilterDto? dto) || dto is null || dto.Keep is null)
+        {
+            session.ClassifyError = result.ErrorMessage ?? "Claude's filter did not return the expected keep-list.";
+            if (session.ClassifyImplementAfterFilter)
+            {
+                // Build A and B anyway; the missing arm D is visible on the page rather than blocking the run.
+                session.ClassifyError += " Arm D was skipped; arms A and B were built.";
+                var error = session.ClassifyError;
+                QueueContextImplementationsCore(session);
+                session.ClassifyError = error;
+                return;
+            }
+
+            session.ClassifyStatus = "classified";
+            return;
+        }
+
+        var reasons = (dto.Reasons ?? []).Where(reason => reason.Section is int)
+            .ToDictionary(reason => reason.Section!.Value, reason => reason.Reason ?? "");
+        session.ClassifyClaudeFilter = _classifier.FromKeepList(dto.Keep, reasons, $"{result.ModelUsed} read the whole document and returned a keep-list", dto.Note);
+        session.ClassifyClaudeModel = result.ModelUsed;
+        session.ClassifyStatus = "filtered";
+
+        if (session.ClassifyImplementAfterFilter)
+        {
+            QueueContextImplementationsCore(session);
+        }
+    }
+
+    private sealed record ContextFilterReasonDto(int? Section, string? Reason);
+
+    private sealed record ContextFilterDto(List<int>? Keep, List<ContextFilterReasonDto>? Reasons, string? Note);
+
+    public void QueueContextImplementations(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            if (session.ClassifyFilter is null)
+            {
+                throw new InvalidOperationException("Run the classifier before implementing.");
+            }
+
+            // Arm D needs Claude's keep-list. If Step 4 was skipped, run it now and build once it lands.
+            if (session.ClassifyClaudeFilter is null)
+            {
+                session.ClassifyImplementAfterFilter = true;
+                QueueContextClaudeFilterCore(session);
+                return;
+            }
+
+            QueueContextImplementationsCore(session);
+        }
+    }
+
+    private void QueueContextImplementationsCore(SessionState session)
+    {
+        session.ClassifyImplementAfterFilter = false;
+        session.ClassifyArms.Clear();
+        session.ClassifyTaskArm.Clear();
+        session.ClassifyReview = null;
+        session.ClassifyReviewModel = null;
+        session.ClassifyError = null;
+
+        var arms = new List<(string Arm, string Label, string Text)>
+        {
+            ("A", "Everything — the mixed document", ContextClassifierService.ToText(_classifier.MixedDocument())),
+            ("B", "Classifier-filtered (embeddinggemma + ML.NET)", session.ClassifyFilter!.FilteredText)
+        };
+        if (session.ClassifyClaudeFilter is not null)
+        {
+            arms.Add(("D", $"Claude-filtered ({session.ClassifyClaudeModel})", session.ClassifyClaudeFilter.FilteredText));
+        }
+
+        foreach (var (arm, label, text) in arms)
+        {
+            var request = _classifier.BuildImplementRequest(text);
+            var tokens = _encoder.CountTokens(Prompts.ContextImplementSystem + request).Tokens;
+            session.ClassifyArms[arm] = new ImplementationArm(arm, label, "pending", null, tokens, 0, null, false, [], [], 0, [], [], null);
+
+            var task = new BridgeTask(
+                Guid.NewGuid().ToString("N"),
+                session.SessionId,
+                "gemma-context-implement",
+                GemmaModel,
+                GptFallbackModel,
+                Prompts.ContextImplementSystem,
+                request,
+                300,
+                DateTimeOffset.UtcNow);
+            session.Tasks[task.TaskId] = new TaskState(task);
+            session.ClassifyTaskArm[task.TaskId] = arm;
+        }
+
+        session.ClassifyStatus = "implementing";
+    }
+
+    private void CompleteContextImplement(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!session.ClassifyTaskArm.TryGetValue(result.TaskId, out var armId) ||
+            !session.ClassifyArms.TryGetValue(armId, out var arm))
+        {
+            return;
+        }
+
+        if (!succeeded || string.IsNullOrWhiteSpace(result.Content))
+        {
+            session.ClassifyArms[armId] = arm with { Status = "failed", ModelUsed = result.ModelUsed, Error = result.ErrorMessage ?? "The model returned no code." };
+        }
+        else
+        {
+            // Grading is compilation and execution against the reference oracle. No model is consulted.
+            session.ClassifyArms[armId] = _classifier.Score(arm with { ModelUsed = result.ModelUsed, OutputTokens = _encoder.CountTokens(result.Content).Tokens }, result.Content);
+        }
+
+        if (session.ClassifyArms.Values.All(entry => entry.Status is "completed" or "failed"))
+        {
+            var total = _classifier.MixedDocument().Length;
+            QueueReviewFor(session, session.ClassifyArms.Values, "claude-context-review", arm => arm switch
+            {
+                "B" when session.ClassifyFilter is not null => SectionManifest(session.ClassifyFilter),
+                "D" when session.ClassifyClaudeFilter is not null => SectionManifest(session.ClassifyClaudeFilter),
+                _ => FullManifest(total)
+            });
+            session.ClassifyStatus = "reviewing";
+        }
+    }
+
+    private void QueueReviewFor(SessionState session, IEnumerable<ImplementationArm> arms, string kind, Func<string, string> contextManifest)
+    {
+        var request = new System.Text.StringBuilder();
+        request.AppendLine("<sealed_criteria>");
+        foreach (var criterion in ClassifyContextSamples.SealedCriteria)
+        {
+            request.AppendLine($"- {criterion}");
+        }
+
+        request.AppendLine("</sealed_criteria>");
+        foreach (var arm in arms.OrderBy(entry => entry.Arm, StringComparer.Ordinal))
+        {
+            request.AppendLine($"<arm id=\"{arm.Arm}\" label=\"{arm.Label}\" prompt_tokens=\"{arm.PromptTokens}\" output_tokens=\"{arm.OutputTokens}\" compiled=\"{arm.Compiled}\" cases_passed=\"{arm.Passed}/{ClassifyContextSamples.TestVectors.Length}\" leaked_terms=\"{string.Join(", ", arm.LeakedTerms)}\">");
+            // The reviewer must not infer what an arm saw from its label; state it.
+            request.AppendLine($"<context_received>{contextManifest(arm.Arm)}</context_received>");
+            if (arm.Error is not null)
+            {
+                request.AppendLine($"<error>{arm.Error}</error>");
+            }
+
+            foreach (var failure in arm.Cases.Where(item => !item.Matched))
+            {
+                request.AppendLine($"<mismatch input=\"{failure.Input}\" expected=\"{failure.Expected}\" actual=\"{failure.Actual}\" />");
+            }
+
+            if (!string.IsNullOrWhiteSpace(arm.Code))
+            {
+                request.AppendLine("<code>");
+                request.AppendLine(arm.Code.Length > 6000 ? arm.Code[..6000] + "\n// … truncated for review" : arm.Code);
+                request.AppendLine("</code>");
+            }
+
+            request.AppendLine("</arm>");
+        }
+
+        request.AppendLine("Review each arm against the sealed criteria. The compile and test results are facts; explain them, do not re-grade them. Comment on output length where it differs materially between arms. Judge what each arm saw ONLY from its context_received element, never from its label.");
+
+        var task = new BridgeTask(
+            Guid.NewGuid().ToString("N"),
+            session.SessionId,
+            kind,
+            ClaudeModel,
+            ClaraAuthorModel,
+            Prompts.ContextReviewSystem,
+            request.ToString(),
+            240,
+            DateTimeOffset.UtcNow);
+        session.Tasks[task.TaskId] = new TaskState(task);
+    }
+
+    private static ContextReview? ParseReview(BridgeTaskResult result, bool succeeded)
+    {
+        if (!succeeded || !TryDeserialize(result.Content!, out ContextReviewDto? dto) || dto is null)
+        {
+            return null;
+        }
+
+        return new ContextReview(
+            dto.Summary?.Trim() ?? "",
+            (dto.Arms ?? [])
+                .Where(arm => !string.IsNullOrWhiteSpace(arm.Verdict) || (arm.Strengths?.Count ?? 0) + (arm.Gaps?.Count ?? 0) > 0)
+                .GroupBy(arm => arm.Arm ?? "?", StringComparer.Ordinal)
+                .Select(group => group.First())
+                .Select(arm => new ContextReviewArm(arm.Arm ?? "?", arm.Verdict ?? "", arm.Strengths ?? [], arm.Gaps ?? []))
+                .ToList(),
+            dto.Recommendation?.Trim() ?? "");
+    }
+
+    private static string SectionManifest(FilterResult filter)
+    {
+        var kept = filter.Decisions.Where(d => d.Kept).Select(d => $"{d.Number} ({d.Title})").ToList();
+        var dropped = filter.Decisions.Where(d => !d.Kept).Select(d => d.Number.ToString()).ToList();
+        return $"Sections included verbatim: {string.Join("; ", kept)}. Sections absent from the prompt: {(dropped.Count == 0 ? "none" : string.Join(", ", dropped))}.";
+    }
+
+    private static string FullManifest(int sections) => $"All {sections} sections of the mixed document, verbatim, no guidance about which apply.";
+
+    private void CompleteContextReview(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        session.ClassifyReview = ParseReview(result, succeeded);
+        session.ClassifyReviewModel = result.ModelUsed;
+        session.ClassifyStatus = "completed";
+        if (session.ClassifyReview is null)
+        {
+            session.ClassifyError = result.ErrorMessage ?? "The review did not match the expected contract; the deterministic results above stand on their own.";
+        }
+    }
+
+    // --- Tell the LLM to Focus/Ignore: keep the noise, name it, and see whether naming is as good as removing ---
+    public void RunFocusClassifier(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            session.FocusFilter = _classifier.Classify();
+            session.FocusInstruction = ContextClassifierService.BuildIgnoreInstruction(session.FocusFilter);
+            session.FocusInstructionTokens = _encoder.CountTokens(session.FocusInstruction).Tokens;
+            session.FocusArms.Clear();
+            session.FocusTaskArm.Clear();
+            session.FocusReview = null;
+            session.FocusReviewModel = null;
+            session.FocusError = null;
+            session.FocusStatus = "classified";
+        }
+    }
+
+    public void QueueFocusImplementations(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            if (session.FocusFilter is null || session.FocusInstruction is null)
+            {
+                throw new InvalidOperationException("Run the classifier before implementing.");
+            }
+
+            session.FocusArms.Clear();
+            session.FocusTaskArm.Clear();
+            session.FocusReview = null;
+            session.FocusReviewModel = null;
+            session.FocusError = null;
+
+            var mixed = ContextClassifierService.ToText(_classifier.MixedDocument());
+            var arms = new List<(string Arm, string Label, string Request)>
+            {
+                ("A", "Mixed document, no guidance", _classifier.BuildImplementRequest(mixed)),
+                ("I", "Mixed document + Focus/Ignore instruction", _classifier.BuildFocusRequest(session.FocusInstruction, mixed)),
+                ("B", "Classifier-filtered (dropped sections removed; uncertain and referenced sections kept)", _classifier.BuildImplementRequest(session.FocusFilter.FilteredText))
+            };
+
+            foreach (var (arm, label, request) in arms)
+            {
+                var tokens = _encoder.CountTokens(Prompts.ContextImplementSystem + request).Tokens;
+                session.FocusArms[arm] = new ImplementationArm(arm, label, "pending", null, tokens, 0, null, false, [], [], 0, [], [], null);
+
+                var task = new BridgeTask(
+                    Guid.NewGuid().ToString("N"),
+                    sessionId,
+                    "claude-focus-implement",
+                    ClaudeModel,
+                    ClaraAuthorModel,
+                    Prompts.ContextImplementSystem,
+                    request,
+                    300,
+                    DateTimeOffset.UtcNow);
+                session.Tasks[task.TaskId] = new TaskState(task);
+                session.FocusTaskArm[task.TaskId] = arm;
+            }
+
+            session.FocusStatus = "implementing";
+        }
+    }
+
+    private void CompleteFocusImplement(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        if (!session.FocusTaskArm.TryGetValue(result.TaskId, out var armId) ||
+            !session.FocusArms.TryGetValue(armId, out var arm))
+        {
+            return;
+        }
+
+        session.FocusArms[armId] = !succeeded || string.IsNullOrWhiteSpace(result.Content)
+            ? arm with { Status = "failed", ModelUsed = result.ModelUsed, Error = result.ErrorMessage ?? "The model returned no code." }
+            : _classifier.Score(arm with { ModelUsed = result.ModelUsed, OutputTokens = _encoder.CountTokens(result.Content).Tokens }, result.Content);
+
+        if (session.FocusArms.Values.All(entry => entry.Status is "completed" or "failed"))
+        {
+            var total = _classifier.MixedDocument().Length;
+            QueueReviewFor(session, session.FocusArms.Values, "claude-focus-review", arm => arm switch
+            {
+                "B" when session.FocusFilter is not null => SectionManifest(session.FocusFilter),
+                "I" => FullManifest(total) + " Preceded by this instruction: " + (session.FocusInstruction ?? "").Replace('\n', ' '),
+                _ => FullManifest(total)
+            });
+            session.FocusStatus = "reviewing";
+        }
+    }
+
+    private void CompleteFocusReview(SessionState session, BridgeTaskResult result, bool succeeded)
+    {
+        session.FocusReview = ParseReview(result, succeeded);
+        session.FocusReviewModel = result.ModelUsed;
+        session.FocusStatus = "completed";
+        if (session.FocusReview is null)
+        {
+            session.FocusError = result.ErrorMessage ?? "The review did not match the expected contract; the deterministic results above stand on their own.";
+        }
+    }
+
+    private sealed record ContextReviewArmDto(string? Arm, string? Verdict, List<string>? Strengths, List<string>? Gaps);
+
+    private sealed record ContextReviewDto(string? Summary, List<ContextReviewArmDto>? Arms, string? Recommendation);
+
     public void QueueLlmSupport(string sessionId, string requirement)
     {
         if (string.IsNullOrWhiteSpace(requirement) || requirement.Length > 8000)
@@ -3286,6 +3680,31 @@ public sealed class TrainingSessionStore
                 case "claude-crypto-design":
                     session.SmeStatus = "designing";
                     break;
+                case "claude-context-filter":
+                    session.ClassifyStatus = "claude-filtering";
+                    break;
+                case "gemma-context-implement":
+                    if (session.ClassifyTaskArm.TryGetValue(task.Task.TaskId, out var classifyArm) &&
+                        session.ClassifyArms.TryGetValue(classifyArm, out var classifyState))
+                    {
+                        session.ClassifyArms[classifyArm] = classifyState with { Status = "running" };
+                    }
+
+                    break;
+                case "claude-context-review":
+                    session.ClassifyStatus = "reviewing";
+                    break;
+                case "claude-focus-implement":
+                    if (session.FocusTaskArm.TryGetValue(task.Task.TaskId, out var focusArm) &&
+                        session.FocusArms.TryGetValue(focusArm, out var focusState))
+                    {
+                        session.FocusArms[focusArm] = focusState with { Status = "running" };
+                    }
+
+                    break;
+                case "claude-focus-review":
+                    session.FocusStatus = "reviewing";
+                    break;
                 case "claude-pattern-review":
                     session.PatternStatus = "reviewing";
                     break;
@@ -3461,6 +3880,21 @@ public sealed class TrainingSessionStore
                     break;
                 case "claude-crypto-design":
                     CompleteCryptoDesign(session, result, succeeded);
+                    break;
+                case "claude-context-filter":
+                    CompleteContextFilter(session, result, succeeded);
+                    break;
+                case "gemma-context-implement":
+                    CompleteContextImplement(session, result, succeeded);
+                    break;
+                case "claude-context-review":
+                    CompleteContextReview(session, result, succeeded);
+                    break;
+                case "claude-focus-implement":
+                    CompleteFocusImplement(session, result, succeeded);
+                    break;
+                case "claude-focus-review":
+                    CompleteFocusReview(session, result, succeeded);
                     break;
                 case "claude-pattern-review":
                     CompletePatternReview(session, result, succeeded);
@@ -3907,6 +4341,28 @@ public sealed class TrainingSessionStore
         public bool ConsolidationTokensExact { get; set; }
         public string? ConsolidationError { get; set; }
 
+        public string ClassifyStatus { get; set; } = "not-started";
+        public FilterResult? ClassifyFilter { get; set; }
+        public FilterResult? ClassifyClaudeFilter { get; set; }
+        public string? ClassifyClaudeModel { get; set; }
+        public int ClassifyClaudePromptTokens { get; set; }
+        public bool ClassifyImplementAfterFilter { get; set; }
+        public Dictionary<string, ImplementationArm> ClassifyArms { get; } = [];
+        public Dictionary<string, string> ClassifyTaskArm { get; } = [];
+        public ContextReview? ClassifyReview { get; set; }
+        public string? ClassifyReviewModel { get; set; }
+        public string? ClassifyError { get; set; }
+
+        public string FocusStatus { get; set; } = "not-started";
+        public FilterResult? FocusFilter { get; set; }
+        public string? FocusInstruction { get; set; }
+        public int FocusInstructionTokens { get; set; }
+        public Dictionary<string, ImplementationArm> FocusArms { get; } = [];
+        public Dictionary<string, string> FocusTaskArm { get; } = [];
+        public ContextReview? FocusReview { get; set; }
+        public string? FocusReviewModel { get; set; }
+        public string? FocusError { get; set; }
+
         public TrainingSession Snapshot() => new(
             SessionId,
             BridgeToken,
@@ -4187,6 +4643,25 @@ public sealed class TrainingSessionStore
                             ? null
                             : SmeDesign.Summary + " " + string.Join(" ", SmeDesign.Steps.Select(step => step.Step + " " + step.Detail))),
                 SmeError),
+            new ClassifyContextState(
+                ClassifyStatus,
+                ClassifyFilter,
+                ClassifyClaudeFilter,
+                ClassifyClaudeModel,
+                ClassifyClaudePromptTokens,
+                ClassifyArms.Values.OrderBy(arm => arm.Arm, StringComparer.Ordinal).ToArray(),
+                ClassifyReview,
+                ClassifyReviewModel,
+                ClassifyError),
+            new FocusState(
+                FocusStatus,
+                FocusFilter,
+                FocusInstruction,
+                FocusInstructionTokens,
+                FocusArms.Values.OrderBy(arm => arm.Arm switch { "A" => 0, "I" => 1, _ => 2 }).ToArray(),
+                FocusReview,
+                FocusReviewModel,
+                FocusError),
             new NarrationState(NarrationStatus, NarrationText, NarrationModel, NarrationFallbackUsed));
     }
 
@@ -4427,7 +4902,7 @@ public sealed class TrainingSessionStore
             definition; do not substitute a different meaning for OKF.
             Return JSON only with lessonTitle, scenes, and openQuestions. Every scene must have sceneId,
             narration, and sourcePaths. Valid scene IDs: why-okf, artifact-tree, jira-trace, animation-demo,
-            image-demo, knowledge-check, prompt-challenge. Cite only exact fixture paths. Explain observable evidence, never hidden reasoning.
+            image-demo, prompt-challenge. Cite only exact fixture paths. Explain observable evidence, never hidden reasoning.
             Keep each narration under 75 words and do not invent metrics, files, policies, or API field names.
             """;
 
@@ -4959,6 +5434,58 @@ public sealed class TrainingSessionStore
             If the specification is ambiguous or omits something you need, do NOT invent a requirement.
             Implement the most conservative reading and add a line of the form:
             // ASSUMPTION: <what you had to assume and why>
+            """;
+
+        // Arm D of the Classify Context scene: the expensive model does what the local classifier does,
+        // so the two can be compared on the same sealed labels and the same downstream build.
+        public const string ContextFilterSystem = """
+            You are preparing context for a smaller model that will implement ONE service from a design
+            document that also describes an unrelated service. Your job is to decide which numbered sections
+            the implementer must receive.
+
+            Keep a section if the target service depends on it: its own sections, platform-wide conventions
+            that apply to every service, and any section that a kept section refers to by number — even if
+            that section is mostly about the other service. Drop sections that only describe the other
+            service. When unsure, keep; a dropped requirement is worse than a stray paragraph.
+
+            Return JSON only, no Markdown fences:
+            {"keep":[1,2,3],"reasons":[{"section":1,"reason":"..."}],"note":"one sentence on anything you were unsure about"}
+            """;
+
+        // The implementer sees only the design text it is handed. Nothing here says which sections matter,
+        // because deciding that is exactly what the filters upstream are being tested on.
+        public const string ContextImplementSystem = """
+            You are implementing a service from a design document. Implement precisely what the design
+            states for the service you are asked to build, honouring every platform convention the document
+            defines, and nothing else.
+
+            Write idiomatic C# for .NET 8 in a single file: one public static class with the requested
+            public static string method, plus any private helpers. Use only System, System.Globalization,
+            System.Linq and System.Collections.Generic. No I/O, no networking, no reflection, no threading.
+            Parse and format numbers with CultureInfo.InvariantCulture.
+
+            Output the raw contents of exactly ONE C# file. No Markdown fences, no prose, no JSON.
+
+            If the design omits something you need, do NOT invent a requirement. Implement the most
+            conservative reading and add a line of the form:
+            // ASSUMPTION: <what you had to assume and why>
+            """;
+
+        // Review, not grading. The compile and test results are already decided by execution.
+        public const string ContextReviewSystem = """
+            You are reviewing several implementations of the same service, each built by the same model
+            from a different amount of context. You are given the sealed acceptance criteria, each arm's
+            compile result, test results, leaked vocabulary and code.
+
+            For each arm, explain what the deterministic results show against the criteria: which criteria
+            the code meets, which it misses, and — where a test failed — which missing or extra context most
+            plausibly caused it. Two criteria are marked as traps: they depend on sections that look like
+            they belong to the other service. Say explicitly whether each arm honoured them.
+
+            Do not award scores. Do not soften a failed test. Be specific and brief.
+
+            Return JSON only, no Markdown fences:
+            {"summary":"...","arms":[{"arm":"A","verdict":"...","strengths":["..."],"gaps":["..."]}],"recommendation":"..."}
             """;
 
         // Deliberately contains no COBOL semantics tuition. Telling every arm about implied decimals or

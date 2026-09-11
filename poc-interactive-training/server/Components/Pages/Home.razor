@@ -12,6 +12,7 @@
 @inject PatternLibraryService Library
 @inject AutopilotContract Contract
 @inject CobolDomainService CobolDomains
+@inject ContextClassifierService Classifier
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 
@@ -117,7 +118,7 @@
 							<p class="kicker">DIRECTOR OF AI &middot; PROGRAMME OVERVIEW</p>
 							<h2 id="scene-title">Help teams adopt AI<br /><em>without asking them to take it on trust.</em></h2>
 							<p class="lede">
-								Six priorities, thirty-four working demonstrations. Every scene ends in a number, and every scene
+								Six priorities, thirty-five working demonstrations. Every scene ends in a number, and every scene
 								says whether that number came from running something or from asking a model. Where the honest answer
 								is &ldquo;we have not built this yet&rdquo;, it is listed at the bottom of this page rather than left out.
 							</p>
@@ -152,7 +153,7 @@
 									@SceneLink("jira-trace") walks the evidence chain step by step.
 								</p>
 								<p>
-									Practice, not lecture: @SceneLink("knowledge-check") tests the mental model, @SceneLink("prompt-challenge")
+									Practice, not lecture: @SceneLink("prompt-challenge")
 									has Claude coach a learner's prompt against a rubric, and @SceneLink("framing-lab") measures how much the
 									asker's own phrasing moved the answer &mdash; the most expensive bias is the one you introduced yourself.
 									@SceneLink("animation-demo") and @SceneLink("image-demo") exist to make the point that motion and bitmaps
@@ -258,13 +259,13 @@
 						<section class="rt-box" data-auto="s01.gaps">
 							<header class="rt-head"><span class="rt-step">!</span><div><strong>What the role calls for and this lab does not yet do</strong><small>stated here so nobody has to discover it in a demo</small></div></header>
 							<div class="audit-body">
-								<p class="rt-reco">Thirty-four scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
+								<p class="rt-reco">Thirty-five scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
 								<table class="audit-table">
 									<thead><tr><th>Missing capability</th><th>Nearest scene</th><th>Why the scene is not sufficient</th></tr></thead>
 									<tbody>
 										<tr class="p0-req"><td>Golden baseline as a maintained asset</td><td>@SceneLink("drift-scorecard")</td><td>One frozen case is a demonstration. There is no story for how cases are chosen, versioned, or retired as the code moves under them.</td></tr>
 										<tr class="p0-req"><td>Sampling method for production review</td><td>@SceneLink("drift-scorecard")</td><td>&ldquo;A representative percentage&rdquo; needs a defined rate, a selection method and a reviewer. Without those it is anecdote, not monitoring.</td></tr>
-										<tr class="p0-req"><td>Did the training change behaviour</td><td>@SceneLink("knowledge-check")</td><td>Quiz answers are not competency. Nothing tracks a learner over time or measures delivery outcomes before and after.</td></tr>
+										<tr class="p0-req"><td>Did the training change behaviour</td><td>&mdash;</td><td>No scene. Nothing tracks a learner over time or measures delivery outcomes before and after.</td></tr>
 										<tr class="p0-req"><td>Success-story capture loop</td><td>@SceneLink("pattern-library")</td><td>The library admits prompts. It does not capture outcomes, lessons learned, or the failures that are usually more instructive.</td></tr>
 										<tr class="p0-req"><td>Vendor model drift over time</td><td>@SceneLink("drift-scorecard")</td><td>That scene measures agent output against a golden patch. It does not detect the provider silently changing the model underneath you.</td></tr>
 										<tr class="p0-req"><td>Runtime incident response and observability</td><td>&mdash;</td><td>No scene. Covered in the written strategy only. This is the gap that matters most once agents touch production.</td></tr>
@@ -519,30 +520,6 @@
 					break;
 				case 7:
 					<section>
-						<p class="kicker">CHECK THE MENTAL MODEL</p>
-						<h2 id="scene-title">Three decisions before code</h2>
-						<div class="quiz-list">
-							@for (var questionIndex = 0; questionIndex < Questions.Length; questionIndex++)
-							{
-								var currentQuestion = questionIndex;
-								var question = Questions[questionIndex];
-								<div class="question-block" role="group" aria-labelledby="question-label-@questionIndex">
-									<p class="question-prompt" id="question-label-@questionIndex"><span>@(questionIndex + 1)</span>@question.Prompt</p>
-									<div class="question-options">
-									@for (var optionIndex = 0; optionIndex < question.Options.Count; optionIndex++)
-									{
-										var currentOption = optionIndex;
-										<label class="answer-option @AnswerClass(currentQuestion, currentOption)"><input type="radio" name="question-@questionIndex" data-auto="s08.q@(currentQuestion)-o@(currentOption)" checked="@(_answers.GetValueOrDefault(currentQuestion, -1) == currentOption)" @onchange="() => Answer(currentQuestion, currentOption)" /><span>@((char)('A' + optionIndex))</span>@question.Options[optionIndex]</label>
-									}
-									@if (_answers.ContainsKey(currentQuestion)) { <p class="answer-feedback">@question.Feedback</p> }
-									</div>
-								</div>
-							}
-						</div>
-					</section>
-					break;
-				case 8:
-					<section>
 						<p class="kicker">YOU DRIVE THE INVESTIGATION</p>
 						<h2 id="scene-title">Write the prompt Claude will review</h2>
 						<div class="challenge-stack">
@@ -631,7 +608,7 @@
 						</div>
 					</section>
 					break;
-				case 9:
+				case 8:
 					<section>
 						<p class="kicker">CAPABILITY COMPARISON</p>
 						<h2 id="scene-title">Ask three models the same question</h2>
@@ -807,7 +784,7 @@
 						}
 					</section>
 					break;
-				case 10:
+				case 9:
 					<section>
 						<p class="kicker">ONE MODEL GROUNDS ANOTHER</p>
 						<h2 id="scene-title">Using a specialist model as a source, not an oracle</h2>
@@ -927,7 +904,7 @@
 						</section>
 					</section>
 					break;
-				case 11:
+				case 10:
 					<section>
 						<p class="kicker">GROUNDING ROUND TRIP</p>
 						<h2 id="scene-title">Class ? JIRA story ? class</h2>
@@ -1020,7 +997,7 @@
 						</section>
 					</section>
 					break;
-				case 12:
+				case 11:
 					<section>
 						<p class="kicker">MODERNIZE FOR AI-FRIENDLINESS</p>
 						<h2 id="scene-title">Spend comprehension tokens once</h2>
@@ -1087,7 +1064,7 @@
 						</section>
 					</section>
 					break;
-				case 13:
+				case 12:
 					<section>
 						<p class="kicker">AGENTIC-READINESS AUDIT · CODE</p>
 						<h2 id="scene-title">Rate the code deterministically, then let Gemma advise</h2>
@@ -1192,7 +1169,7 @@
 						</section>
 					</section>
 					break;
-				case 14:
+				case 13:
 					<section>
 						<p class="kicker">AGENTIC-READINESS AUDIT · CONTEXT</p>
 						<h2 id="scene-title">Does the context actually help an agent?</h2>
@@ -1302,7 +1279,7 @@
 						</section>
 					</section>
 					break;
-				case 15:
+				case 14:
 					<section>
 						<p class="kicker">A LANGUAGE FOR THE LOGIC LAYER</p>
 						<h2 id="scene-title">Business rules in a language built for models</h2>
@@ -1490,7 +1467,7 @@
 						</section>
 					</section>
 					break;
-				case 16:
+				case 15:
 					<section>
 						<p class="kicker">DOES THE REPRESENTATION CHANGE THE OUTCOME?</p>
 						<h2 id="scene-title">The same ticket, the same model, no context either way</h2>
@@ -1635,7 +1612,7 @@
 						}
 					</section>
 					break;
-				case 17:
+				case 16:
 					<section>
 						<p class="kicker">GROUNDING, GRADED BY A COMPILER</p>
 						<h2 id="scene-title">Three migrations of real Enterprise COBOL</h2>
@@ -1784,7 +1761,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 18:
+				case 17:
 					<section>
 						<p class="kicker">MAP THE ESTATE BEFORE MIGRATING IT</p>
 						<h2 id="scene-title">Identify COBOL domains</h2>
@@ -2512,7 +2489,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 19:
+				case 18:
 					<section>
 						<p class="kicker">STOP BAD WORK BEFORE IT STARTS</p>
 						<h2 id="scene-title">A ticket an agent cannot act on</h2>
@@ -2596,7 +2573,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 20:
+				case 19:
 					<section>
 						<p class="kicker">FIND WHAT WAS PLANTED</p>
 						<h2 id="scene-title">Auditing a cloud design an AI helped write</h2>
@@ -2676,7 +2653,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 21:
+				case 20:
 					<section>
 						<p class="kicker">IS THE AGENT STILL DOING THE JOB?</p>
 						<h2 id="scene-title">One golden case, three layers of drift</h2>
@@ -2766,7 +2743,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 22:
+				case 21:
 					<section>
 						<p class="kicker">PHASE 0 — BEFORE ANY OF THIS IS SAFE</p>
 						<h2 id="scene-title">Name it, tier it, and gate what it sees</h2>
@@ -2881,7 +2858,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 23:
+				case 22:
 					<section>
 						<p class="kicker">HOW MUCH CONTEXT DOES THE CHEAP MODEL NEED?</p>
 						<h2 id="scene-title">Same ticket, same code, three levels of documentation</h2>
@@ -3053,7 +3030,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 24:
+				case 23:
 					<section>
 						<p class="kicker">AUTHORITY IS PER ACTION, NOT PER AGENT</p>
 						<h2 id="scene-title">"Approve deploy" is not approval</h2>
@@ -3099,7 +3076,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 25:
+				case 24:
 					<section>
 						<p class="kicker">THE BIAS YOU BRING</p>
 						<h2 id="scene-title">The same question, asked three ways</h2>
@@ -3177,7 +3154,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 26:
+				case 25:
 					<section>
 						<p class="kicker">GREEN TESTS ARE NOT COVERAGE</p>
 						<h2 id="scene-title">Does the suite cover the risk this change adds?</h2>
@@ -3469,7 +3446,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 27:
+				case 26:
 					<section>
 						<p class="kicker">REAL DATA, NEVER COMMITTED</p>
 						<h2 id="scene-title">The best test data is also the worst leak</h2>
@@ -3555,7 +3532,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 28:
+				case 27:
 					<section>
 						<p class="kicker">DISCOVER WIDE, SCOPE NARROW, DESIGN DEEP</p>
 						<h2 id="scene-title">Each tier answers a question the tier below it cannot</h2>
@@ -3792,7 +3769,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 29:
+				case 28:
 					<section>
 						<p class="kicker">THREE REAL SERVICES, ONE SHARED SPINE</p>
 						<h2 id="scene-title">Find the duplication by meaning, then let the right model do each job</h2>
@@ -4009,7 +3986,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 30:
+				case 29:
 					<section>
 						<p class="kicker">FREE IS THE WRONG WORD</p>
 						<h2 id="scene-title">Budget in cost per outcome, not cost per token</h2>
@@ -4058,7 +4035,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 31:
+				case 30:
 					<section>
 						<p class="kicker">A LIBRARY THAT SCALES WHAT WORKS</p>
 						<h2 id="scene-title">Contributions are admitted on evidence, then run</h2>
@@ -4189,7 +4166,7 @@ cobol85  -&gt; 000000</pre>
 						</section>
 					</section>
 					break;
-				case 32:
+				case 31:
 					<section>
 						<p class="kicker">PLAN BEFORE CODE</p>
 						<h2 id="scene-title">A summary leadership reads, a diagram engineers check</h2>
@@ -4225,7 +4202,7 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
-				case 33:
+				case 32:
 					<section>
 						<p class="kicker">THE ORDER TO WALK IT IN</p>
 						<h2 id="scene-title">Six acts, each ending in a number</h2>
@@ -4257,7 +4234,7 @@ cobol85  -&gt; 000000</pre>
 						</section>
 					</section>
 					break;
-				case 34:
+				case 33:
 					<section>
 						<p class="kicker">GROUND THE CHEAP MODEL, THEN DELEGATE TO IT</p>
 						<h2 id="scene-title">Making Gemma 4 a crypto SME</h2>
@@ -4459,6 +4436,676 @@ cobol85  -&gt; 000000</pre>
 						</section>
 					</section>
 					break;
+				case 34:
+					<section>
+						<p class="kicker">SEND THE MODEL THE PAGES ABOUT ITS TASK &mdash; AND PROVE NOTHING WAS LOST</p>
+						<h2 id="scene-title">Classify Context</h2>
+						<p class="rt-intro">
+							In a long working session people change subject. Every later question then pays for every earlier
+							paragraph, and the model has to find the relevant part in the noise. This scene tests a cheap, local fix:
+							a <strong>classifier that runs on this machine</strong> reads a design document that mixes two unrelated
+							services, decides section by section which ones the implementer needs, and drops the rest
+							<strong>whole</strong> &mdash; nothing that is kept is altered, so every kept sentence can still be quoted.
+						</p>
+						<p class="rt-intro">
+							Then the real test: <strong>Gemma 4 builds the service three times</strong> &mdash; from everything, from
+							what the classifier kept, and from what Claude kept &mdash; and each build is compiled and run against a
+							reference answer. If the filtered builds pass and the full build cost more, the saving is real. If a
+							filtered build fails a case the full build passed, the filter threw away something that mattered, and the
+							page shows exactly which section.
+						</p>
+
+						@{
+							var ccFixed = Classifier.DomainDocument(ClassifyContextSamples.FixedIncome);
+							var ccCrypto = Classifier.DomainDocument(ClassifyContextSamples.Crypto);
+							var ccShared = Classifier.DomainDocument(ClassifyContextSamples.Shared);
+							var ccMixed = Classifier.MixedDocument();
+							var ccMixedTokens = Classifier.Tokens(ContextClassifierService.ToText(ccMixed));
+							var ccIdealTokens = Classifier.Tokens(ContextClassifierService.ToText(Classifier.IdealKeptSet()));
+							var cc = _session?.ClassifyContext;
+						}
+
+						<section class="rt-box" data-auto="cc.designs">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>Two designs, written separately</strong><small>@ccFixed.Length fixed-income sections &middot; @ccCrypto.Length crypto sections &middot; @ccShared.Length shared platform sections</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>What this is.</strong> A design document for two new services on the trading platform. The
+									<em>bond settlement amount service</em> belongs to the fixed-income desk and is the one we will ask
+									Gemma to build. The <em>wallet screening and instant settlement service</em> belongs to the crypto desk
+									and is the noise. A third group of sections &mdash; record format, rounding, logging, testing,
+									deployment &mdash; applies to both and is labelled <em>shared</em>.
+								</p>
+								<p>
+									<strong>Why it is set up this way.</strong> Because the two designs were authored separately and
+									tagged, the right answer for every section is known in advance without anyone hand-labelling
+									anything. Two fixed-income sections deliberately depend on crypto-labelled sections &mdash; the
+									rejection code table and the settlement cycle live over there. Those are the <strong>traps</strong>:
+									a filter that drops everything it does not recognise will lose them, and the compiled result will show it.
+								</p>
+								<div class="rt-flow">
+									<div>
+										<h4>Fixed income &mdash; bond settlement amount</h4>
+										@foreach (var segment in ccFixed)
+										{
+											<details class="cc-seg cc-fi"><summary><code>@segment.Id</code> @segment.Title</summary><p>@segment.Body</p></details>
+										}
+									</div>
+									<div>
+										<h4>Crypto &mdash; wallet screening and instant settlement</h4>
+										@foreach (var segment in ccCrypto)
+										{
+											<details class="cc-seg cc-cr"><summary><code>@segment.Id</code> @segment.Title</summary><p>@segment.Body</p></details>
+										}
+									</div>
+								</div>
+								<h4>Shared platform conventions (both services depend on these)</h4>
+								@foreach (var segment in ccShared)
+								{
+									<details class="cc-seg cc-sh"><summary><code>@segment.Id</code> @segment.Title</summary><p>@segment.Body</p></details>
+								}
+								<p class="rt-note">
+									Trap sections: <code>FI-MARGIN</code> refers to the reason-code table in <code>CR-CODES</code>;
+									<code>FI-SETTLE</code> refers to the settlement cycle in <code>CR-LIFECYCLE</code>. Both are marked in the
+									text with a &sect; reference, exactly as a real design document would do it.
+								</p>
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="cc.mixed">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>The mixed document &mdash; what a model would actually receive</strong><small>@ccMixed.Length sections &middot; @ccMixedTokens.ToString("N0") tokens &middot; shuffled with a fixed seed</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>What we did.</strong> The sections were shuffled together with a fixed seed (so the result is
+									the same every run), renumbered 1 to @ccMixed.Length, and every cross-reference was rewritten to the new
+									number. The labels travel with each section as sealed ground truth but are <strong>not</strong> in the
+									text the classifier or the models see. This stands in for a chat history that has drifted across topics.
+								</p>
+								<div class="rt-actions">
+									<small>@(_ccReveal ? "Sealed labels shown for the audience. The classifier never sees them." : "Labels hidden — this is exactly what the classifier sees.")</small>
+									<button class="secondary-command compact" type="button" @onclick="() => _ccReveal = !_ccReveal">@(_ccReveal ? "Hide sealed labels" : "Reveal sealed labels")</button>
+								</div>
+								<table class="audit-table">
+									<thead><tr><th>#</th><th>Section</th>@if (_ccReveal) { <th>Sealed label</th> }<th>Opening words</th></tr></thead>
+									<tbody>
+										@foreach (var segment in ccMixed)
+										{
+											<tr class="@(_ccReveal ? DomainClass(segment.SealedDomain) : null)">
+												<td>@segment.Number</td>
+												<td>@segment.Title</td>
+												@if (_ccReveal) { <td>@segment.SealedDomain</td> }
+												<td><small>@(segment.Body.Length > 140 ? segment.Body[..140] + "…" : segment.Body)</small></td>
+											</tr>
+										}
+									</tbody>
+								</table>
+								<p class="rt-note">
+									A perfect filter for the bond service would keep @Classifier.IdealKeptSet().Length of @ccMixed.Length sections
+									(@ccIdealTokens.ToString("N0") tokens &mdash; @(ccMixedTokens == 0 ? 0 : 100 - (int)Math.Round(100.0 * ccIdealTokens / ccMixedTokens))% less than the mixed document). That is the floor the filters below are measured against.
+								</p>
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="cc.classify-box">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Arm B &mdash; separate the two with embeddinggemma + ML.NET</strong><small>runs here, no model call, no bridge</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>What we did.</strong> Each section is turned into a vector by embeddinggemma-300m (a 300-million
+									parameter local model, the same one the other scenes use) and classified by an ML.NET model that was
+									trained on the two real trading repositories: the fixed-income code and notes as one class, the crypto
+									code and notes as another, and the framework code the two repositories share as the third,
+									&ldquo;shared&rdquo; class. A second, purely lexical vote uses each repository's own distinctive vocabulary.
+									<strong>The design document was never used in training.</strong>
+								</p>
+								<p>
+									<strong>Two rules keep it safe.</strong> First, the decision is <em>asymmetric</em>: a section the classifier
+									is unsure about is kept, because dropping a real requirement is far worse than keeping a stray paragraph.
+									Second, if a kept section says &ldquo;see &sect;14&rdquo;, section 14 is kept too, whatever the classifier
+									thought of it. That second rule is what catches the traps.
+								</p>
+								<p class="rt-note">@Classifier.Training.Method Training set: @Classifier.Training.TrainingDocuments documents (@Classifier.Training.FixedIncomeDocuments fixed income, @Classifier.Training.CryptoDocuments crypto, @Classifier.Training.SharedDocuments shared); vocabulary @Classifier.Training.FixedIncomeTerms fixed-income and @Classifier.Training.CryptoTerms crypto terms.</p>
+								<div class="rt-actions">
+									<small>Deterministic for a given model file. Same input, same answer.</small>
+									<button class="primary-command compact" type="button" data-auto="cc.classify" disabled="@(_session is null)" @onclick="RunContextClassifier">@(cc?.Classifier is null ? "Separate the document" : "Run again")</button>
+								</div>
+
+								@if (cc?.Classifier is { } filter)
+								{
+									<div class="audit-scoreline" data-auto="cc.classify-result">
+										<span class="ctx-label @(filter.FixedIncomeKept == filter.FixedIncomeTotal && filter.TrapsHonoured == filter.TrapsTotal ? "ctx-rich" : "ctx-poor")">@filter.FixedIncomeKept/@filter.FixedIncomeTotal</span>
+										<div>
+											<strong>Fixed-income sections kept</strong>
+											<small>@filter.CryptoDropped of @filter.CryptoTotal crypto sections dropped &middot; @filter.SharedKept of @filter.SharedTotal shared kept &middot; @filter.Uncertain kept as uncertain &middot; @filter.KeptByReference kept by reference &middot; traps honoured @filter.TrapsHonoured/@filter.TrapsTotal</small>
+										</div>
+									</div>
+									<p class="rt-reco">
+										Tokens: @ccMixedTokens.ToString("N0") in the mixed document &rarr; <strong>@filter.PromptTokens.ToString("N0")</strong> kept
+										(<strong>@(ccMixedTokens == 0 ? 0 : 100 - (int)Math.Round(100.0 * filter.PromptTokens / ccMixedTokens))% less</strong>; a perfect filter would reach @ccIdealTokens.ToString("N0")).
+										@(filter.FixedIncomeKept < filter.FixedIncomeTotal ? "A fixed-income section was dropped — that is the failure this experiment exists to catch, and Step 5 will show its cost." : "Nothing the bond service needs was dropped.")
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>#</th><th>Section</th><th>Sealed</th><th>Classifier said</th><th>FI</th><th>Crypto</th><th>Shared</th><th>Margin</th><th>Decision</th></tr></thead>
+										<tbody>
+											@foreach (var ccd in filter.Decisions)
+											{
+												<tr class="@DecisionClass(ccd)">
+													<td>@ccd.Number</td><td>@ccd.Title</td>
+													<td>@ccd.SealedDomain</td><td>@ccd.Predicted</td>
+													<td>@ccd.FixedIncome</td><td>@ccd.Crypto</td><td>@ccd.Shared</td><td>@ccd.Margin</td>
+													<td>@(ccd.Kept ? "KEEP" : "drop") &mdash; <small>@ccd.Reason</small></td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="rt-note">
+										Highlighted rows are where the decision disagrees with the sealed label. A crypto section kept because a
+										fixed-income section refers to it is <em>not</em> a mistake &mdash; it is the trap being handled correctly.
+									</p>
+								}
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="cc.claude-box">
+							<header class="rt-head"><span class="rt-step">4</span><div><strong>Arm D &mdash; let Claude Opus 5 do the filtering</strong><small>the expensive way to do the same job &middot; @(cc?.ClaudeFilterPromptTokens > 0 ? $"{cc.ClaudeFilterPromptTokens:N0} tokens billed to filter" : "for comparison")</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>What we did.</strong> Claude is given the same mixed document and the same instruction &mdash;
+									keep what the bond service implementer needs, follow references, drop the rest &mdash; and returns a
+									keep-list. It is scored by exactly the same rules as the classifier. This is the natural alternative:
+									instead of a local classifier, just ask the big model to prune. It works; the question is what it
+									costs, every time, on every turn.
+								</p>
+								<div class="rt-actions">
+									<small>Requires the VSIX bridge. Claude reads the whole document, so this call is billed at full length.</small>
+									<button class="primary-command compact" type="button" data-auto="cc.claude" disabled="@(!_bridgeConnected || cc?.Classifier is null || ClassifyBusy)" @onclick="RunContextClaudeFilter">@ClaudeFilterButtonText</button>
+								</div>
+								@if (!_bridgeConnected)
+								{
+									<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge to run Steps 4 and 5.</p>
+								}
+								@if (cc?.Status == "claude-filtering")
+								{
+									<div class="rt-pending cc-progress" role="status" aria-live="polite"><span></span><div><strong>Claude is reading the mixed document and choosing sections…</strong><small>@ClassifyElapsed elapsed · one model call, billed at the full document length</small></div></div>
+								}
+								@if (cc?.ClaudeFilter is { } claude)
+								{
+									<div class="audit-scoreline" data-auto="cc.claude-result">
+										<span class="ctx-label @(claude.FixedIncomeKept == claude.FixedIncomeTotal && claude.TrapsHonoured == claude.TrapsTotal ? "ctx-rich" : "ctx-poor")">@claude.FixedIncomeKept/@claude.FixedIncomeTotal</span>
+										<div>
+											<strong>Fixed-income sections kept by @cc.ClaudeFilterModel</strong>
+											<small>@claude.CryptoDropped of @claude.CryptoTotal crypto dropped &middot; @claude.SharedKept of @claude.SharedTotal shared kept &middot; traps honoured @claude.TrapsHonoured/@claude.TrapsTotal &middot; @claude.PromptTokens.ToString("N0") tokens kept for the implementer</small>
+										</div>
+									</div>
+									@if (!string.IsNullOrWhiteSpace(claude.Note))
+									{
+										<p class="rt-reco">Claude's own note: @claude.Note</p>
+									}
+									<table class="audit-table">
+										<thead><tr><th>#</th><th>Section</th><th>Sealed</th><th>Claude</th><th>Classifier</th><th>Claude's reason</th></tr></thead>
+										<tbody>
+											@foreach (var ccd in claude.Decisions)
+											{
+												var local = cc.Classifier?.Decisions.FirstOrDefault(x => x.Number == ccd.Number);
+												<tr class="@DecisionClass(ccd)">
+													<td>@ccd.Number</td><td>@ccd.Title</td><td>@ccd.SealedDomain</td>
+													<td>@(ccd.Kept ? "KEEP" : "drop")</td>
+													<td>@(local is null ? "—" : local.Kept ? "KEEP" : "drop")</td>
+													<td><small>@ccd.Reason</small></td>
+												</tr>
+											}
+										</tbody>
+									</table>
+								}
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="cc.implement-box">
+							<header class="rt-head"><span class="rt-step">5</span><div><strong>Gemma 4 builds the service from each version, and the code is executed</strong><small>compiled and run against a reference answer &middot; no model grades this</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>What we did.</strong> The same Gemma 4, the same instruction, three different amounts of context:
+									<strong>A</strong> the whole mixed document, <strong>B</strong> what the classifier kept, <strong>D</strong> what
+									Claude kept. Each answer is compiled in a sandbox and run against @ClassifyContextSamples.TestVectors.Length
+									input records whose correct output was computed by a reference implementation of the design &mdash;
+									including the buying-power rejection and the settlement cycle that depend on the trap sections. The code is
+									also scanned for crypto vocabulary that has no business in a bond service.
+								</p>
+								<p>
+									<strong>How to read it.</strong> Tokens down and cases equal is a saving. A case that A passes and B or D fails
+									names the section the filter should not have dropped. Leaked terms show whether the noise in A became wrong
+									code rather than just cost.
+								</p>
+								<div class="rt-actions">
+									<small>@(cc?.ClaudeFilter is null ? "Runs Claude's filter first (Step 4), then builds arms A, B and D." : "Builds arms A, B and D.") One run each; the models are not deterministic.</small>
+									<button class="primary-command compact" type="button" data-auto="cc.implement" disabled="@(!_bridgeConnected || cc?.Classifier is null || ClassifyBusy)" @onclick="RunContextImplementations">@ImplementButtonText</button>
+								</div>
+								@if (ClassifyBusy)
+								{
+									<div class="rt-pending cc-progress" role="status" aria-live="polite" data-auto="cc.progress">
+										<span></span>
+										<div>
+											<strong>@ClassifyProgressHeadline</strong>
+											<small>@ClassifyProgressDetail</small>
+										</div>
+									</div>
+								}
+
+								@if (cc?.Arms.Count > 0)
+								{
+									<table class="audit-table" data-auto="cc.results">
+										<thead><tr><th>Arm</th><th>Context given</th><th>Prompt tokens</th><th>vs A</th><th>Output tokens</th><th>Compiled</th><th>Cases passed</th><th>Crypto terms in code</th><th>Status</th></tr></thead>
+										<tbody>
+											@{ var armA = cc.Arms.FirstOrDefault(a => a.Arm == "A"); }
+											@foreach (var arm in cc.Arms)
+											{
+												<tr class="@(arm.Status == "completed" && arm.Passed == ClassifyContextSamples.TestVectors.Length ? "p0-opt" : arm.Status is "completed" or "failed" ? "p0-req" : null)">
+													<td><strong>@arm.Arm</strong></td><td>@arm.Label</td>
+													<td>@arm.PromptTokens.ToString("N0")</td>
+													<td>@(armA is null || armA.PromptTokens == 0 || arm.Arm == "A" ? "—" : $"{100 - (int)Math.Round(100.0 * arm.PromptTokens / armA.PromptTokens)}% less")</td>
+													<td>@(arm.Status == "completed" ? arm.OutputTokens.ToString("N0") : "—")</td>
+													<td>@(arm.Status == "completed" ? (arm.Compiled ? "yes" : "NO") : "—")</td>
+													<td>@(arm.Status == "completed" && arm.Compiled ? $"{arm.Passed} / {ClassifyContextSamples.TestVectors.Length}" : "—")</td>
+													<td>@(arm.Status == "completed" ? (arm.LeakedTerms.Count == 0 ? "none" : string.Join(", ", arm.LeakedTerms)) : "—")</td>
+													<td>@(arm.Status == "pending" ? "queued — waiting for the bridge" : arm.Status == "running" ? "Gemma is writing the code…" : arm.Status == "failed" ? arm.Error : arm.ModelUsed)</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+
+									@if (armA is not null && cc.Arms.Count > 1)
+									{
+										<h4>The saving, net of what it cost to filter</h4>
+										<table class="audit-table">
+											<thead><tr><th>Arm</th><th>Implementer tokens saved vs A</th><th>Tokens spent to produce the filter</th><th>Which model spent them</th><th>Net</th></tr></thead>
+											<tbody>
+												@foreach (var arm in cc.Arms.Where(a => a.Arm != "A"))
+												{
+													var saved = armA.PromptTokens - arm.PromptTokens;
+													var filterCost = arm.Arm == "D" ? cc.ClaudeFilterPromptTokens : 0;
+													<tr class="@(saved - filterCost > 0 ? "p0-opt" : "p0-req")">
+														<td><strong>@arm.Arm</strong></td>
+														<td>@saved.ToString("N0")</td>
+														<td>@filterCost.ToString("N0")</td>
+														<td>@(arm.Arm == "D" ? $"{cc.ClaudeFilterModel} — reads the whole document every time" : "none — the classifier runs locally, no model call")</td>
+														<td>@((saved - filterCost).ToString("N0")) tokens @(saved - filterCost > 0 ? "saved" : "spent")</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+										<p class="rt-note">
+											A filter that reads the whole document to decide what to drop has already paid for the whole document. It can
+											only pay off if the filtered result is reused across many later turns, and only if the model doing the reading
+											is cheaper than the model being spared. The classifier's column is zero because it is a local model with no
+											per-token cost — that, not the percentage, is the point.
+										</p>
+									}
+
+									@foreach (var arm in cc.Arms.Where(a => a.Status == "completed"))
+									{
+										<details class="cc-arm">
+											<summary><strong>Arm @arm.Arm</strong> &mdash; @arm.Label: @(arm.Compiled ? $"{arm.Passed} of {ClassifyContextSamples.TestVectors.Length} cases match the reference" : "did not compile")</summary>
+											@if (!arm.Compiled)
+											{
+												<div class="compare-status failed" role="alert">@arm.Error</div>
+												<ul class="rt-list warn">@foreach (var error in arm.CompileErrors) { <li>@error</li> }</ul>
+											}
+											@if (arm.Cases.Count > 0)
+											{
+												<table class="audit-table">
+													<thead><tr><th>Input record</th><th>Reference says</th><th>This build says</th><th></th></tr></thead>
+													<tbody>
+														@foreach (var item in arm.Cases)
+														{
+															<tr class="@(item.Matched ? null : "p0-req")">
+																<td><code>@item.Input</code></td><td><small>@item.Expected</small></td>
+																<td><small>@item.Actual@(string.IsNullOrEmpty(item.Note) ? "" : $" ({item.Note})")</small></td>
+																<td>@(item.Matched ? "match" : "MISMATCH")</td>
+															</tr>
+														}
+													</tbody>
+												</table>
+											}
+											@if (arm.Assumptions.Count > 0)
+											{
+												<h4>Assumptions the model declared</h4>
+												<ul class="rt-list warn">@foreach (var assumption in arm.Assumptions) { <li>@assumption</li> }</ul>
+											}
+											@if (!string.IsNullOrEmpty(arm.Code))
+											{
+												<pre class="rt-code">@arm.Code</pre>
+											}
+										</details>
+									}
+								}
+								@if (cc?.Error is { } ccError)
+								{
+									<div class="compare-status failed" role="alert">@ccError</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-qa" data-auto="cc.review">
+							<header class="rt-head"><span class="rt-step">&#10003;</span><div><strong>Claude Opus 5 reviews the builds against the sealed criteria</strong><small>@(cc?.ReviewModel ?? "review, not grading — the test results are already decided")</small></div></header>
+							@if (cc?.Review is { } ccReview)
+							{
+								<p class="rt-reco">@ccReview.Summary</p>
+								<table class="audit-table">
+									<thead><tr><th>Arm</th><th>Verdict</th><th>Met</th><th>Missed or at risk</th></tr></thead>
+									<tbody>
+										@foreach (var reviewed in ccReview.Arms)
+										{
+											<tr>
+												<td><strong>@reviewed.Arm</strong></td><td>@reviewed.Verdict</td>
+												<td><ul class="rt-list good">@foreach (var item in reviewed.Strengths) { <li>@item</li> }</ul></td>
+												<td><ul class="rt-list warn">@foreach (var item in reviewed.Gaps) { <li>@item</li> }</ul></td>
+											</tr>
+										}
+									</tbody>
+								</table>
+								<h4>Recommendation</h4>
+								<p class="rt-reco">@ccReview.Recommendation</p>
+							}
+							else if (cc?.Status == "reviewing")
+							{
+								<div class="rt-pending cc-progress" role="status" aria-live="polite"><span></span><div><strong>Claude is reviewing the builds against the sealed criteria…</strong><small>@ClassifyElapsed since the run started</small></div></div>
+							}
+							else
+							{
+								<div class="rt-placeholder">The review appears here once all arms have been compiled and run.</div>
+							}
+
+							<h4>The sealed criteria</h4>
+							<ol class="rt-list">@foreach (var criterion in ClassifyContextSamples.SealedCriteria) { <li>@criterion</li> }</ol>
+
+							<h4>What this does and does not prove</h4>
+							<ul class="rt-list warn">
+								<li><strong>Dropping whole sections is not the same as compressing text.</strong> Every kept sentence is verbatim and can be quoted with its section number. That is the property a token-deletion compressor gives up, and it is why this approach fits a programme that insists on citable context.</li>
+								<li><strong>Two domains this different are the easy case.</strong> Fixed income and crypto have distinct vocabularies. The honest next test is two adjacent domains &mdash; options versus bonds within the same desk &mdash; where the uncertain band will grow. The size of that band is a result, not an embarrassment.</li>
+								<li><strong>One run per arm.</strong> Gemma is not deterministic. A programme decision needs the median of several runs, as the context-sufficiency scene does.</li>
+								<li><strong>The classifier is a model too.</strong> Its version is part of the agent release. A new embedding model or a retrained classifier changes what the implementer sees and must be drift-gated like any other model change.</li>
+								<li><strong>The same classifier, run per chat turn against the current question, is the production version of this idea.</strong> That is a VSIX-side change once the numbers here hold up.</li>
+							</ul>
+						</section>
+					</section>
+					break;
+				case 35:
+					<section>
+						<p class="kicker">REMOVE THE NOISE, OR NAME IT?</p>
+						<h2 id="scene-title">Tell the LLM to Focus / Ignore</h2>
+						<p class="rt-intro">
+							@SceneLink("classify-context") removed the off-topic sections before the model saw them. This scene tests
+							the other option: <strong>keep everything, but prepend an instruction that names exactly which sections to
+							ignore.</strong> The instruction is written by code from the classifier's decisions &mdash; no person and no
+							model composes it &mdash; so it is as deterministic as the filter. The question is whether <em>telling</em> a
+							model what to ignore is as good as <em>removing</em> it, and what each costs.
+						</p>
+						<p class="rt-intro">
+							Claude Opus 5 builds the bond settlement service three times: from the mixed document alone, from the mixed
+							document with the Focus/Ignore instruction on top, and from the classifier-filtered document as the reference.
+							Every build is compiled and executed against the same reference answer. Prompt tokens <em>and output tokens</em>
+							are counted, because an instruction that stops the model hedging about the other service saves on the way out,
+							not the way in.
+						</p>
+
+						@{
+							var fx = _session?.Focus;
+							var fxMixed = Classifier.MixedDocument();
+							var fxMixedTokens = Classifier.Tokens(ContextClassifierService.ToText(fxMixed));
+						}
+
+						<section class="rt-box" data-auto="fx.setup">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>The same mixed document</strong><small>@fxMixed.Length sections &middot; @fxMixedTokens.ToString("N0") tokens &middot; fixed income + crypto + shared, shuffled with a fixed seed</small></div></header>
+							<div class="audit-body">
+								<p>
+									The document, the sealed labels, the two traps and the reference oracle are identical to
+									@SceneLink("classify-context") &mdash; that scene shows the designs side by side and the mixed order. Reusing
+									them means the only thing that differs between the two scenes is <em>how the noise is handled</em>.
+								</p>
+								<table class="audit-table">
+									<thead><tr><th>#</th><th>Section</th><th>Sealed label</th></tr></thead>
+									<tbody>
+										@foreach (var segment in fxMixed)
+										{
+											<tr class="@DomainClass(segment.SealedDomain)"><td>@segment.Number</td><td>@segment.Title</td><td>@segment.SealedDomain</td></tr>
+										}
+									</tbody>
+								</table>
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="fx.classify-box">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>Separate the two with embeddinggemma + ML.NET</strong><small>same classifier, same rules &middot; no model call</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>What we did.</strong> The classifier from the previous scene runs unchanged: uncertain sections are
+									kept, referenced sections are kept whatever their label. Here its <em>dropped</em> set is not thrown away
+									&mdash; it becomes the list of sections the model will be told to ignore.
+								</p>
+								<div class="rt-actions">
+									<small>Deterministic for a given model file.</small>
+									<button class="primary-command compact" type="button" data-auto="fx.classify" disabled="@(_session is null)" @onclick="RunFocusClassifier">@(fx?.Classifier is null ? "Separate the document" : "Run again")</button>
+								</div>
+								@if (fx?.Classifier is { } fxFilter)
+								{
+									<div class="audit-scoreline" data-auto="fx.classify-result">
+										<span class="ctx-label @(fxFilter.FixedIncomeKept == fxFilter.FixedIncomeTotal && fxFilter.TrapsHonoured == fxFilter.TrapsTotal ? "ctx-rich" : "ctx-poor")">@fxFilter.Decisions.Count(d => !d.Kept)</span>
+										<div>
+											<strong>Sections the model will be told to ignore</strong>
+											<small>fixed income kept @fxFilter.FixedIncomeKept/@fxFilter.FixedIncomeTotal &middot; crypto dropped @fxFilter.CryptoDropped/@fxFilter.CryptoTotal &middot; @fxFilter.Uncertain kept as uncertain &middot; @fxFilter.KeptByReference kept by reference &middot; traps honoured @fxFilter.TrapsHonoured/@fxFilter.TrapsTotal</small>
+										</div>
+									</div>
+									<table class="audit-table">
+										<thead><tr><th>#</th><th>Section</th><th>Sealed</th><th>Classifier</th><th>Fate in arm I</th></tr></thead>
+										<tbody>
+											@foreach (var ccd in fxFilter.Decisions)
+											{
+												<tr class="@DecisionClass(ccd)">
+													<td>@ccd.Number</td><td>@ccd.Title</td><td>@ccd.SealedDomain</td><td>@ccd.Predicted</td>
+													<td>@(ccd.Kept ? "read in full" : "present, but named as IGNORE") &mdash; <small>@ccd.Reason</small></td>
+												</tr>
+											}
+										</tbody>
+									</table>
+								}
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="fx.instruction">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>The Focus/Ignore instruction, exactly as it will be sent</strong><small>@(fx?.InstructionTokens > 0 ? $"{fx.InstructionTokens:N0} tokens · written by code from the table above" : "appears after Step 2")</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>Why it is built this way.</strong> The instruction names section numbers and titles only. It does not
+									summarise the crypto content, because a summary would be a model's opinion smuggled into the prompt; it does
+									not say <em>why</em> a section is crypto, because the classifier does not know why. It also names the sections
+									that <em>look</em> like crypto but are referenced by a bond section, so the traps are protected the same way
+									removal protected them. Everything else it tells the model to read in full.
+								</p>
+								@if (fx?.Instruction is { } fxInstruction)
+								{
+									<pre class="rt-story">@fxInstruction</pre>
+									<p class="rt-note">
+										Arm I's prompt is the mixed document (@fxMixedTokens.ToString("N0") tokens) <em>plus</em> this instruction
+										(@fx.InstructionTokens.ToString("N0") tokens). It is the largest of the three prompts by design. If it wins,
+										it wins on the output side or on correctness, not on input size.
+									</p>
+								}
+								else
+								{
+									<div class="rt-placeholder">Run Step 2 to generate the instruction.</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="fx.implement-box">
+							<header class="rt-head"><span class="rt-step">4</span><div><strong>Claude Opus 5 builds the service three ways, and the code is executed</strong><small>compiled and run against the reference &middot; prompt and output tokens counted</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>A</strong> the mixed document with no guidance &middot; <strong>I</strong> the mixed document with the
+									Focus/Ignore instruction &middot; <strong>B</strong> the filtered document (crypto removed) as the reference.
+									Same model, same system prompt, same @ClassifyContextSamples.TestVectors.Length test records.
+								</p>
+								<div class="rt-actions">
+									<small>Three Claude calls, one at a time over the bridge, then a review. Models are not deterministic; this is one run each.</small>
+									<button class="primary-command compact" type="button" data-auto="fx.implement" disabled="@(!_bridgeConnected || fx?.Classifier is null || FocusBusy)" @onclick="RunFocusImplementations">@FocusButtonText</button>
+								</div>
+								@if (!_bridgeConnected)
+								{
+									<p class="bridge-required" role="status">Connect the VSIX with the token shown under Local Bridge to run Step 4.</p>
+								}
+								@if (FocusBusy)
+								{
+									<div class="rt-pending cc-progress" role="status" aria-live="polite" data-auto="fx.progress">
+										<span></span>
+										<div>
+											<strong>@FocusProgressHeadline</strong>
+											<small>@FocusProgressDetail</small>
+										</div>
+									</div>
+								}
+
+								@if (fx?.Arms.Count > 0)
+								{
+									var fxA = fx.Arms.FirstOrDefault(a => a.Arm == "A");
+									<table class="audit-table" data-auto="fx.results">
+										<thead><tr><th>Arm</th><th>What Claude received</th><th>Prompt tokens</th><th>vs A</th><th>Output tokens</th><th>vs A</th><th>Illustrative cost</th><th>vs A</th><th>Compiled</th><th>Cases</th><th>Crypto terms in code</th><th>Status</th></tr></thead>
+										<tbody>
+											@foreach (var arm in fx.Arms)
+											{
+												<tr class="@(arm.Status == "completed" && arm.Passed == ClassifyContextSamples.TestVectors.Length ? "p0-opt" : arm.Status is "completed" or "failed" ? "p0-req" : null)">
+													<td><strong>@arm.Arm</strong></td><td>@arm.Label</td>
+													<td>@arm.PromptTokens.ToString("N0")</td>
+													<td>@Delta(fxA?.PromptTokens, arm.PromptTokens, arm.Arm == "A")</td>
+													<td>@(arm.Status == "completed" ? arm.OutputTokens.ToString("N0") : "—")</td>
+													<td>@(arm.Status == "completed" && fxA?.Status == "completed" ? Delta(fxA.OutputTokens, arm.OutputTokens, arm.Arm == "A") : "—")</td>
+													<td>@(arm.Status == "completed" ? ArmCost(arm).ToString("$0.0000") : "—")</td>
+													<td>@(arm.Status == "completed" && fxA?.Status == "completed" ? CostDelta(fxA, arm) : "—")</td>
+													<td>@(arm.Status == "completed" ? (arm.Compiled ? "yes" : "NO") : "—")</td>
+													<td>@(arm.Status == "completed" && arm.Compiled ? $"{arm.Passed} / {ClassifyContextSamples.TestVectors.Length}" : "—")</td>
+													<td>@(arm.Status == "completed" ? (arm.LeakedTerms.Count == 0 ? "none" : string.Join(", ", arm.LeakedTerms)) : "—")</td>
+													<td>@(arm.Status == "pending" ? "queued — waiting for the bridge" : arm.Status == "running" ? "Claude is writing the code…" : arm.Status == "failed" ? arm.Error : arm.ModelUsed)</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="rt-note">
+										<strong>How to read it.</strong> If I matches B on cases and beats A on output tokens, naming the noise is worth
+										its small input cost. If I and A are the same, the instruction bought nothing and removal (B) is the only lever.
+										If I fails a case A passed, the instruction confused the model &mdash; a result worth knowing before anyone
+										puts &ldquo;ignore the following&rdquo; into a production prompt.
+										<em>Illustrative cost</em> weights output tokens at @TokenEconomicsService.VendorOutputPerMillion.ToString("$0")/M against input at
+										@TokenEconomicsService.VendorInputPerMillion.ToString("$0")/M &mdash; the same illustrative rates as the token-economics scene, not a
+										contract price. At that ratio, one output token saved is worth five input tokens spent, which is why an instruction that
+										makes the prompt <em>longer</em> can still make the call <em>cheaper</em>.
+									</p>
+
+									@foreach (var arm in fx.Arms.Where(a => a.Status == "completed"))
+									{
+										<details class="cc-arm">
+											<summary><strong>Arm @arm.Arm</strong> &mdash; @arm.Label: @(arm.Compiled ? $"{arm.Passed} of {ClassifyContextSamples.TestVectors.Length} cases match the reference" : "did not compile") &middot; @arm.OutputTokens.ToString("N0") output tokens</summary>
+											@if (!arm.Compiled)
+											{
+												<div class="compare-status failed" role="alert">@arm.Error</div>
+												<ul class="rt-list warn">@foreach (var error in arm.CompileErrors) { <li>@error</li> }</ul>
+											}
+											@if (arm.Cases.Count > 0)
+											{
+												<table class="audit-table">
+													<thead><tr><th>Input record</th><th>Reference says</th><th>This build says</th><th></th></tr></thead>
+													<tbody>
+														@foreach (var item in arm.Cases)
+														{
+															<tr class="@(item.Matched ? null : "p0-req")">
+																<td><code>@item.Input</code></td><td><small>@item.Expected</small></td>
+																<td><small>@item.Actual@(string.IsNullOrEmpty(item.Note) ? "" : $" ({item.Note})")</small></td>
+																<td>@(item.Matched ? "match" : "MISMATCH")</td>
+															</tr>
+														}
+													</tbody>
+												</table>
+											}
+											@if (arm.Assumptions.Count > 0)
+											{
+												<h4>Assumptions the model declared</h4>
+												<ul class="rt-list warn">@foreach (var assumption in arm.Assumptions) { <li>@assumption</li> }</ul>
+											}
+											@if (!string.IsNullOrEmpty(arm.Code))
+											{
+												<pre class="rt-code">@arm.Code</pre>
+											}
+										</details>
+									}
+								}
+								@if (fx?.Error is { } fxError)
+								{
+									<div class="compare-status failed" role="alert">@fxError</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-qa" data-auto="fx.review">
+							<header class="rt-head"><span class="rt-step">&#10003;</span><div><strong>Claude Opus 5 reviews the three builds against the sealed criteria</strong><small>@(fx?.ReviewModel ?? "review, not grading — the test results are already decided")</small></div></header>
+							@if (fx?.Review is { } fxReview)
+							{
+								<p class="rt-reco">@fxReview.Summary</p>
+								<table class="audit-table">
+									<thead><tr><th>Arm</th><th>Verdict</th><th>Met</th><th>Missed or at risk</th></tr></thead>
+									<tbody>
+										@foreach (var reviewed in fxReview.Arms)
+										{
+											<tr>
+												<td><strong>@reviewed.Arm</strong></td><td>@reviewed.Verdict</td>
+												<td><ul class="rt-list good">@foreach (var item in reviewed.Strengths) { <li>@item</li> }</ul></td>
+												<td><ul class="rt-list warn">@foreach (var item in reviewed.Gaps) { <li>@item</li> }</ul></td>
+											</tr>
+										}
+									</tbody>
+								</table>
+								<h4>Recommendation</h4>
+								<p class="rt-reco">@fxReview.Recommendation</p>
+							}
+							else if (fx?.Status == "reviewing")
+							{
+								<div class="rt-pending cc-progress" role="status" aria-live="polite"><span></span><div><strong>Claude is reviewing the three builds against the sealed criteria…</strong><small>@FocusElapsed since the run started</small></div></div>
+							}
+							else
+							{
+								<div class="rt-placeholder">The review appears here once all three builds have been compiled and run.</div>
+							}
+
+							<h4>What this does and does not prove</h4>
+							<ul class="rt-list warn">
+								<li><strong>Naming the noise never saves input tokens.</strong> Arm I is the largest prompt by construction. It can only pay for itself in output tokens, in correctness, or in the cases where removal is not available &mdash; a hosted chat whose history you cannot edit.</li>
+								<li><strong>The instruction is only as good as the classifier.</strong> A section the classifier wrongly labels crypto is now something the model has been <em>told</em> to ignore, which is stronger than merely not seeing it. The same asymmetric rule and reference-following apply for that reason.</li>
+								<li><strong>One run per arm, one model.</strong> Instruction-following differs between models; a result for Claude Opus 5 says nothing about Gemma 4 until it is run.</li>
+							</ul>
+						</section>
+
+						<section class="rt-box" data-auto="fx.future">
+							<header class="rt-head"><span class="rt-step">&rarr;</span><div><strong>Future enhancement &mdash; documented, not built</strong><small>the same idea applied to a live VS Code chat</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>The goal.</strong> In a long VS Code chat the user drifts between topics, and every later prompt pays for
+									every earlier turn. The proposal: when the user sends a prompt, classify every prior turn against <em>that
+									prompt</em> and either drop the unrelated turns (the Classify Context approach) or prepend a Focus/Ignore
+									instruction naming them (this scene's approach). The user would invoke it explicitly &mdash; a command, then the
+									prompt &mdash; so the filtering is a recorded choice, never a silent one.
+								</p>
+								<h4>Approach</h4>
+								<ol class="rt-list">
+									<li><strong>Get the history.</strong> The reliable route is a <strong>chat participant</strong> (for example <code>@@ces</code>): VS Code passes the participant its own conversation history on every turn, and the participant calls the model through the <code>vscode.lm</code> API with whatever subset it chooses. An extension cannot edit the history that Copilot Chat sends for its <em>default</em> participant. The attached notes list workarounds for reading the built-in chat &mdash; a proposed <code>vscode.chat</code> session API, a focus / select-all / copy keystroke macro, and attaching Playwright to Electron's remote-debugging port. Treat the proposed API as <em>unverified until checked against the current VS Code release</em>, and treat the macro and debugger routes as demo-only: they read the rendered panel, not the structured turns, and break with UI changes.</li>
+									<li><strong>Classify against the current prompt, not fixed classes.</strong> Embed the prompt and each prior turn with embeddinggemma; keep turns above a <em>calibrated</em> similarity threshold, always keep the last N turns, keep any turn that names a file or symbol the prompt names, keep the uncertain band. Same rules as here: asymmetric, reference-following, verbatim.</li>
+									<li><strong>Where the classifier runs.</strong> ML.NET does not run in the extension host (Node). Either call the existing C# server over the loopback bridge already used by this training tool, or export the trained model's weights and evaluate them in TypeScript with <code>onnxruntime-node</code> for the embeddings.</li>
+									<li><strong>Emit the instruction deterministically</strong>, exactly as Step 3 does: turn numbers and first lines, no summaries, no reasons the classifier does not have.</li>
+									<li><strong>Test before trusting.</strong> Replay recorded sessions with sealed expected answers; measure tokens saved <em>and</em> answer quality by execution where possible; include adjacent-topic sessions where the classifier will struggle. Two effects can eat the saving: focused sessions have little to drop, and changing the prefix each turn defeats provider prompt caching.</li>
+								</ol>
+								<p class="rt-note">
+									Governance: the participant makes model calls on the user's behalf, so it is an agent under this programme's
+									definition and owes a registry entry, a pinned classifier version, and a drift gate when the embedding model or
+									threshold changes.
+								</p>
+							</div>
+						</section>
+					</section>
+					break;
 			}
 		</article>
 
@@ -4492,7 +5139,7 @@ cobol85  -&gt; 000000</pre>
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("knowledge-check", "Knowledge check"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME")];
+	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME"), ("classify-context", "Classify Context"), ("focus-ignore", "Tell LLM to Focus/Ignore")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -4502,22 +5149,15 @@ cobol85  -&gt; 000000</pre>
 		("Follow the code map", "okf/code-map/fulfillment-components.md", "DeliveryEstimateService.cs is primary; the handler is a caller.", "Locate implementation and contract impact."),
 		("Inspect verification", "src/Fulfillment.Application/DeliveryEstimateServiceTests.cs", "Tests expose delayed and unchanged paths.", "Plan proof before proposing a change.")
 	];
-	private static readonly QuizQuestion[] Questions =
-	[
-		new("Why begin with the OKF index?", ["It contains all source code", "It routes to governed concepts and authoritative artifacts", "It approves the change", "It replaces code inspection"], 1, "The index routes the investigation. Current code still verifies the artifact."),
-		new("What most strongly excludes a similarly named UI component?", ["The project name", "A keyword count", "The documented service boundary", "The JIRA label"], 2, "A verified ownership boundary is stronger evidence than naming proximity."),
-		new("OKF identifies the owner but not the new API field name. What next?", ["Invent a conventional name", "Ignore the criterion", "Ask the authoritative owner and mark it unresolved", "Edit every response model"], 2, "Good grounding reveals missing knowledge instead of hiding it behind a plausible guess.")
-	];
 	private static readonly string[] BuiltInNarration =
 	[
-		"Six priorities, thirty-four working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
+		"Six priorities, thirty-five working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
 		"A JIRA story names the desired outcome, but not always the system boundary or implementation path. This lesson follows governed evidence before code.",
 		"Search can find matching words. OKF adds concepts, ownership, decisions, and links that make those matches meaningful and reviewable.",
 		"The index is the entry point. Small linked artifacts disclose only the context needed for this task, while retaining provenance and freshness.",
 		"This is an illustration, not hidden model reasoning. Each step shows an observable source and the conclusion it supports.",
 		"Motion can make sequence and causality easier to inspect. Here it shows the investigation narrowing from a broad story to one evidence-backed code path.",
 		"This reviewed bitmap summarizes the same flow. The semantic lesson content remains authoritative because images alone are not searchable, localizable, or sufficient for accessibility.",
-		"Choose the evidence that should control the investigation. These checks practice the mental model; they are not a workplace competency grade.",
 		"Write a prompt that controls the investigation and requires evidence. Claude will return coaching commentary against the rubric, not a grade.",
 		"Ask three models the same Google Cloud question, then let an impartial judge model blind-score the anonymized answers against a reference checklist. This is an illustrative harness, not a validated benchmark.",
 		"A specialist model can sit past another model's knowledge boundary. Harvest its services, constraints and citations as evidence, then state plainly what was already known, what was learned, and what still needs the primary documentation before anyone trusts it.",
@@ -4544,11 +5184,12 @@ cobol85  -&gt; 000000</pre>
 		"A shared library of prompts scales whatever you put in it, including the mistakes. Contributions are admitted on evidence, preconditions and known failure modes — not on enthusiasm.",
 		"Plan before code: an executive summary leadership can read, a diagram engineers can check, risks, and a verification path. Jumping straight to an implementation is the habit this gate exists to break.",
 		"Six acts, each answering a question leadership actually asks and each ending in a number. This is the order to walk the programme in, not the order it was built in.",
-		"A strong generalist is not the same as an expert on exact header names and exact defaults. Claude answers unaided first, then consults a Gemma grounded on vendor documentation, then designs — and the improvement is measured against verified facts rather than asserted."
+		"A strong generalist is not the same as an expert on exact header names and exact defaults. Claude answers unaided first, then consults a Gemma grounded on vendor documentation, then designs — and the improvement is measured against verified facts rather than asserted.",
+		"People change subject in a long session, and every later question pays for every earlier paragraph. A design document that mixes two unrelated services is separated back out by a classifier that runs on this machine, section by section, keeping whole sections verbatim and dropping the rest. Then Gemma builds the service from everything, from what the classifier kept, and from what Claude kept, and each build is compiled and run against a reference answer. If the filtered builds pass and cost less, the saving is real; if one fails a case the full build passed, the page names the section the filter should not have dropped.",
+		"Remove the noise, or name it? This scene keeps the whole mixed document and prepends an instruction, written by code from the classifier's decisions, that tells the model exactly which sections to ignore. Claude Opus 5 builds the bond settlement service from the mixed document alone, from the mixed document with that instruction, and from the filtered document as the reference. Every build is compiled and executed, and prompt and output tokens are counted, because an instruction that stops the model hedging saves on the way out rather than the way in. The future enhancement, applying the same idea to a live VS Code chat, is documented on the page and not yet built."
 	];
 
 	private TrainingSession? _session;
-	private readonly Dictionary<int, int> _answers = [];
 	private readonly CancellationTokenSource _pollCancellation = new();
 	private PeriodicTimer? _timer;
 	private DateTimeOffset? _judgeStartedAt;
@@ -4897,6 +5538,129 @@ Finish with the verification path: the tests you would add or change, and how I 
 
 	private bool SmeBusy => _session?.CryptoSme.Status is "unaided" or "consulting" or "designing";
 
+	private bool _ccReveal;
+
+	private bool ClassifyBusy => _session?.ClassifyContext.Status is "claude-filtering" or "implementing" or "reviewing";
+
+	private string ClaudeFilterButtonText => _session?.ClassifyContext.Status switch
+	{
+		"claude-filtering" => "Claude is choosing sections…",
+		_ => _session?.ClassifyContext.ClaudeFilter is null ? "Ask Claude to filter" : "Ask again"
+	};
+
+	private string ImplementButtonText => _session?.ClassifyContext.Status switch
+	{
+		"claude-filtering" => "Claude is choosing sections…",
+		"implementing" => "Gemma is building…",
+		"reviewing" => "Claude is reviewing…",
+		"completed" => "Build again",
+		_ => "Build, execute and review"
+	};
+
+	private void RunContextClassifier() { if (_session is null) return; Store.RunContextClassifier(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
+	private void RunContextClaudeFilter() { if (_session is null) return; _ccStartedAt = DateTimeOffset.UtcNow; Store.QueueContextClaudeFilter(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
+	private void RunContextImplementations() { if (_session is null) return; _ccStartedAt = DateTimeOffset.UtcNow; Store.QueueContextImplementations(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
+
+	// The bridge runs one model call at a time, so a three-arm build is three sequential waits. The page
+	// polls every second; an elapsed count is what tells a viewer the wait is progress and not a hang.
+	private DateTimeOffset? _ccStartedAt;
+
+	private string ClassifyElapsed => _ccStartedAt is { } started
+		? $"{(int)(DateTimeOffset.UtcNow - started).TotalSeconds}s"
+		: "0s";
+
+	private string ClassifyProgressHeadline => _session?.ClassifyContext.Status switch
+	{
+		"claude-filtering" => "Step 4 is running first: Claude is choosing the sections for arm D…",
+		"implementing" when _session.ClassifyContext.Arms.FirstOrDefault(a => a.Status == "running") is { } running => $"Gemma 4 is building arm {running.Arm} — {running.Label}…",
+		"implementing" => "Waiting for the bridge to pick up the next build…",
+		"reviewing" => "All builds compiled and executed. Claude is reviewing them against the sealed criteria…",
+		_ => "Working…"
+	};
+
+	private string ClassifyProgressDetail
+	{
+		get
+		{
+			var arms = _session?.ClassifyContext.Arms ?? [];
+			var done = arms.Count(a => a.Status is "completed" or "failed");
+			var progress = arms.Count == 0 ? "" : $"{done} of {arms.Count} builds finished · ";
+			return $"{progress}{ClassifyElapsed} elapsed · the bridge runs one model call at a time, so each arm waits for the one before it";
+		}
+	}
+
+	private static string? DomainClass(string domain) => domain switch
+	{
+		ClassifyContextSamples.FixedIncome => "cc-row-fi",
+		ClassifyContextSamples.Crypto => "cc-row-cr",
+		_ => "cc-row-sh"
+	};
+
+	private static string Delta(int? baseline, int value, bool isBaseline)
+	{
+		if (isBaseline || baseline is null or 0) return "—";
+		var percent = (int)Math.Round(100.0 * (value - baseline.Value) / baseline.Value);
+		return percent == 0 ? "same" : percent < 0 ? $"{-percent}% less" : $"{percent}% more";
+	}
+
+	// Illustrative frontier rates from the token-economics scene; output is weighted ~5x input.
+	private static decimal ArmCost(ImplementationArm arm) =>
+		arm.PromptTokens / 1_000_000m * TokenEconomicsService.VendorInputPerMillion
+		+ arm.OutputTokens / 1_000_000m * TokenEconomicsService.VendorOutputPerMillion;
+
+	private static string CostDelta(ImplementationArm baseline, ImplementationArm arm)
+	{
+		if (arm.Arm == baseline.Arm) return "—";
+		var a = ArmCost(baseline);
+		if (a == 0) return "—";
+		var percent = (int)Math.Round(100m * (ArmCost(arm) - a) / a);
+		return percent == 0 ? "same" : percent < 0 ? $"{-percent}% cheaper" : $"{percent}% dearer";
+	}
+
+	private bool FocusBusy => _session?.Focus.Status is "implementing" or "reviewing";
+
+	private string FocusButtonText => _session?.Focus.Status switch
+	{
+		"implementing" => "Claude is building…",
+		"reviewing" => "Claude is reviewing…",
+		"completed" => "Build again",
+		_ => "Build all three, execute and review"
+	};
+
+	private DateTimeOffset? _focusStartedAt;
+
+	private string FocusElapsed => _focusStartedAt is { } started ? $"{(int)(DateTimeOffset.UtcNow - started).TotalSeconds}s" : "0s";
+
+	private string FocusProgressHeadline => _session?.Focus.Status switch
+	{
+		"implementing" when _session.Focus.Arms.FirstOrDefault(a => a.Status == "running") is { } running => $"Claude Opus 5 is building arm {running.Arm} — {running.Label}…",
+		"implementing" => "Waiting for the bridge to pick up the next build…",
+		"reviewing" => "All builds compiled and executed. Claude is reviewing them against the sealed criteria…",
+		_ => "Working…"
+	};
+
+	private string FocusProgressDetail
+	{
+		get
+		{
+			var arms = _session?.Focus.Arms ?? [];
+			var done = arms.Count(a => a.Status is "completed" or "failed");
+			return $"{done} of {arms.Count} builds finished · {FocusElapsed} elapsed · the bridge runs one model call at a time";
+		}
+	}
+
+	private void RunFocusClassifier() { if (_session is null) return; Store.RunFocusClassifier(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
+	private void RunFocusImplementations() { if (_session is null) return; _focusStartedAt = DateTimeOffset.UtcNow; Store.QueueFocusImplementations(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
+
+	// Highlight disagreements with the sealed label; a crypto section kept by reference is correct, not a miss.
+	private static string? DecisionClass(SegmentDecision decision)
+	{
+		var shouldKeep = decision.SealedDomain != ClassifyContextSamples.Crypto;
+		if (decision.Kept == shouldKeep) return null;
+		if (decision.Kept && decision.Reason.StartsWith("referenced", StringComparison.Ordinal)) return null;
+		return "p0-req";
+	}
+
 	private string SmeButtonText => _session?.CryptoSme.Status switch
 	{
 		"unaided" => "Claude is trying unaided…",
@@ -5054,8 +5818,6 @@ Finish with the verification path: the tests you would add or change, and how I 
 			_benchmarkRunning = false;
 		}
 	}
-	private void Answer(int question, int option) => _answers[question] = option;
-	private string? AnswerClass(int question, int option) => !_answers.TryGetValue(question, out var selected) || selected != option ? null : Questions[question].CorrectIndex == option ? "correct" : "incorrect";
 	private void GoTo(int scene)
 	{
 		var target = Math.Clamp(scene, 0, Scenes.Length - 1);
@@ -5292,19 +6054,29 @@ Finish with the verification path: the tests you would add or change, and how I 
 		"RegressionGuidance" => _session.RegressionGuidance.Status,
 		"PatternRun" => _session.PatternRun.Status,
 		"CryptoSme" => _session.CryptoSme.Status,
+		"ClassifyFilter" => _session.ClassifyContext.Status switch
+		{
+			"filtered" => "completed",
+			"classified" when _session.ClassifyContext.Error is not null => "failed",
+			var other => other
+		},
+		"ClassifyContext" => _session.ClassifyContext.Status,
+		"Focus" => _session.Focus.Status,
 		_ => null
 	};
 
 	// Only deterministic, already-computed values reach the narrator; never raw fixture payloads.
 	private string? ObservedValues(AutoStep step) => step.SceneNumber switch
 	{
-		19 when _pdg is { } pdg => $"PDG for {pdg.Program}: {pdg.Nodes.Count} statement node(s), {pdg.ControlEdges.Count} control edge(s), {pdg.DataEdges.Count} data edge(s).",
-		23 when _tier is { } tier => $"Derived risk tier: {tier.Tier}. Registrable: {tier.Registrable}. Missing fields: {tier.MissingFields.Count}.",
-		25 when _decision is { } decision => $"Verdict: {decision.VerdictLabel}. Reasons: {string.Join("; ", decision.Reasons)}.",
-		27 when _mutation is { } mutation && mutation.Ran => $"Mutation score {mutation.MutationScore}%, {mutation.KilledMutants} of {mutation.TotalMutants} mutants killed.",
-		30 when _commonCode is { } audit => $"{audit.DuplicatedClusters} duplicated cluster(s) across {audit.UnitCount} units, threshold {audit.Threshold:0.000}.",
-		31 when _economics is { } econ => $"Cheapest per attempt: {econ.CheapestPerAttempt}. Cheapest per success: {econ.CheapestPerSuccess}.",
-		33 when _planReview is { } plan => $"Plan score {plan.Score}%.",
+		18 when _pdg is { } pdg => $"PDG for {pdg.Program}: {pdg.Nodes.Count} statement node(s), {pdg.ControlEdges.Count} control edge(s), {pdg.DataEdges.Count} data edge(s).",
+		22 when _tier is { } tier => $"Derived risk tier: {tier.Tier}. Registrable: {tier.Registrable}. Missing fields: {tier.MissingFields.Count}.",
+		24 when _decision is { } decision => $"Verdict: {decision.VerdictLabel}. Reasons: {string.Join("; ", decision.Reasons)}.",
+		26 when _mutation is { } mutation && mutation.Ran => $"Mutation score {mutation.MutationScore}%, {mutation.KilledMutants} of {mutation.TotalMutants} mutants killed.",
+		29 when _commonCode is { } audit => $"{audit.DuplicatedClusters} duplicated cluster(s) across {audit.UnitCount} units, threshold {audit.Threshold:0.000}.",
+		30 when _economics is { } econ => $"Cheapest per attempt: {econ.CheapestPerAttempt}. Cheapest per success: {econ.CheapestPerSuccess}.",
+		32 when _planReview is { } plan => $"Plan score {plan.Score}%.",
+		35 when _session?.ClassifyContext.Classifier is { } cc => $"Classifier kept {cc.KeptSegments} of {cc.TotalSegments} sections: fixed income {cc.FixedIncomeKept}/{cc.FixedIncomeTotal}, crypto dropped {cc.CryptoDropped}/{cc.CryptoTotal}, traps honoured {cc.TrapsHonoured}/{cc.TrapsTotal}, {cc.PromptTokens} tokens kept."
+			+ (_session.ClassifyContext.Arms.Count > 0 ? " Builds: " + string.Join("; ", _session.ClassifyContext.Arms.Where(a => a.Status == "completed").Select(a => $"arm {a.Arm} {a.PromptTokens} tokens, compiled {a.Compiled}, {a.Passed}/{ClassifyContextSamples.TestVectors.Length} cases")) : ""),
 		_ => null
 	};
 

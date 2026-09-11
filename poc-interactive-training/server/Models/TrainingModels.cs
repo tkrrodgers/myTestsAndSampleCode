@@ -36,6 +36,8 @@ public sealed record TrainingSession(
     RegressionGuidanceState RegressionGuidance,
     PatternRunState PatternRun,
     CryptoSmeState CryptoSme,
+    ClassifyContextState ClassifyContext,
+    FocusState Focus,
     NarrationState Narration);
 
 public sealed record NarrationState(
@@ -98,12 +100,6 @@ public sealed record ReviewResponse(
     IReadOnlyList<string> UnsupportedAssumptions,
     string SuggestedPrompt,
     IReadOnlyList<string> EvidenceQuotes);
-
-public sealed record QuizQuestion(
-    string Prompt,
-    IReadOnlyList<string> Options,
-    int CorrectIndex,
-    string Feedback);
 
 public sealed record ComparisonTopic(
     string Id,

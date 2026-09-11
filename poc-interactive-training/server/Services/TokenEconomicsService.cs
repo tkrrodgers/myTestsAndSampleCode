@@ -9,8 +9,8 @@ namespace PocInteractiveTraining.Server.Services;
 public sealed class TokenEconomicsService
 {
     // Illustrative rates only. Replace with contract rates and measured GPU cost before quoting these.
-    private const decimal VendorInputPerMillion = 3.00m;
-    private const decimal VendorOutputPerMillion = 15.00m;
+    public const decimal VendorInputPerMillion = 3.00m;
+    public const decimal VendorOutputPerMillion = 15.00m;
     private const decimal MidInputPerMillion = 0.50m;
     private const decimal MidOutputPerMillion = 1.50m;
     private const decimal GpuHourlyRate = 1.20m;

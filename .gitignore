@@ -30,6 +30,12 @@ poc-interactive-training/training-fixture/cobol/*.c
 *.safetensors
 *.gguf
 *.bin
+*.litertlm
+
+# Local runtimes and model checkouts used by the on-device scenes; fetched, never committed.
+poc-interactive-training/tools/llama-cpp/
+poc-interactive-training/gemma-4-E2B-it-litert-lm/
+poc-interactive-training/sd-master-*/
 
 # Local secrets and environment
 .env

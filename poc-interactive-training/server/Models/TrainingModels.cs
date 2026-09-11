@@ -39,6 +39,7 @@ public sealed record TrainingSession(
     ClassifyContextState ClassifyContext,
     FocusState Focus,
     ShootoutState Shootout,
+    SpeculativeState Speculative,
     NarrationState Narration);
 
 public sealed record NarrationState(

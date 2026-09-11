@@ -28,6 +28,7 @@ public sealed class TrainingSessionStore
     private readonly MigrationSandbox _sandbox;
     private readonly ContextClassifierService _classifier;
     private readonly LlmShootoutService _shootout;
+    private readonly LocalInferenceService _localInference;
 
     // Measured once: what each representation of the same logic actually costs in context.
     private static int CSharpSourceTokens;
@@ -59,7 +60,7 @@ public sealed class TrainingSessionStore
         "The fee is rounded to whole dollars, but rule 6 requires 2 decimal places."
     ];
 
-    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox, DataTierClassifier dataTier, TradingCorpus tradingCorpus, DocumentationFetcher documentation, ContextClassifierService classifier, LlmShootoutService shootout)
+    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox, DataTierClassifier dataTier, TradingCorpus tradingCorpus, DocumentationFetcher documentation, ContextClassifierService classifier, LlmShootoutService shootout, LocalInferenceService localInference)
     {
         _fixture = fixture;
         _auditAnalyzer = auditAnalyzer;
@@ -69,6 +70,7 @@ public sealed class TrainingSessionStore
         _sandbox = sandbox;
         _classifier = classifier;
         _shootout = shootout;
+        _localInference = localInference;
         _dataTier = dataTier;
         _tradingCorpus = tradingCorpus;
         _documentation = documentation;
@@ -96,12 +98,12 @@ public sealed class TrainingSessionStore
                 .Replace('/', '_')
                 .TrimEnd('='));
         _sessions[state.SessionId] = state;
-        return state.Snapshot(_shootout.Oracle);
+        return state.Snapshot(_shootout.Oracle, _localInference.Environment());
     }
 
     public TrainingSession GetSession(string sessionId) =>
         _sessions.TryGetValue(sessionId, out var state)
-            ? state.Snapshot(_shootout.Oracle)
+            ? state.Snapshot(_shootout.Oracle, _localInference.Environment())
             : throw new InvalidOperationException("Training session was not found.");
 
     public bool IsValidToken(string token) =>
@@ -2341,6 +2343,65 @@ public sealed class TrainingSessionStore
 
     private sealed record ShootoutJudgeDto(string? Summary, List<ShootoutJudgeSlotDto>? Slots, List<string>? Ranking, string? Recommendation);
 
+    // --- Speculative decoding on this laptop: llama.cpp runs locally, no bridge, every number is a counter ---
+    public void StartSpeculativeRun(string sessionId, string promptKind)
+    {
+        var session = RequireSession(sessionId);
+        var prompt = LocalInferenceService.Prompts.FirstOrDefault(p => p.Kind == promptKind);
+        if (prompt.Kind is null)
+        {
+            throw new ArgumentException($"Unknown prompt kind '{promptKind}'.", nameof(promptKind));
+        }
+
+        lock (_gate)
+        {
+            if (session.SpeculativeRuns.Values.Any(run => run.Status == "running"))
+            {
+                throw new InvalidOperationException("A local run is already in progress.");
+            }
+
+            var (_, free) = LocalInferenceService.Memory();
+            session.SpeculativeRuns[promptKind] = new SpecPromptRun(promptKind, prompt.Title, prompt.Prompt, "running", [], free, DateTimeOffset.UtcNow, null, null);
+            session.SpeculativeError = null;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _localInference.RunAsync(promptKind, arm =>
+                {
+                    lock (_gate)
+                    {
+                        var run = session.SpeculativeRuns[promptKind];
+                        session.SpeculativeRuns[promptKind] = run with { Arms = run.Arms.Where(a => a.Arm != arm.Arm).Append(arm).ToList() };
+                    }
+                }, CancellationToken.None);
+
+                lock (_gate)
+                {
+                    var run = session.SpeculativeRuns[promptKind];
+                    var failed = run.Arms.Where(a => a.Status == "failed").ToList();
+                    session.SpeculativeRuns[promptKind] = run with
+                    {
+                        Status = failed.Count == run.Arms.Count ? "failed" : "completed",
+                        FinishedAt = DateTimeOffset.UtcNow,
+                        Error = failed.Count == 0 ? null : string.Join(" ", failed.Select(a => $"{a.Label}: {a.Error}"))
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                lock (_gate)
+                {
+                    var run = session.SpeculativeRuns[promptKind];
+                    session.SpeculativeRuns[promptKind] = run with { Status = "failed", FinishedAt = DateTimeOffset.UtcNow, Error = ex.Message };
+                    session.SpeculativeError = ex.Message;
+                }
+            }
+        });
+    }
+
     public void QueueLlmSupport(string sessionId, string requirement)
     {
         if (string.IsNullOrWhiteSpace(requirement) || requirement.Length > 8000)
@@ -4547,8 +4608,10 @@ public sealed class TrainingSessionStore
         public Dictionary<string, string> ShootoutSlotToModel { get; } = [];
         public ShootoutVerdict? ShootoutVerdict { get; set; }
         public string? ShootoutError { get; set; }
+        public Dictionary<string, SpecPromptRun> SpeculativeRuns { get; } = [];
+        public string? SpeculativeError { get; set; }
 
-        public TrainingSession Snapshot(ShootoutOracle shootoutOracle) => new(
+        public TrainingSession Snapshot(ShootoutOracle shootoutOracle, SpecEnvironment specEnvironment) => new(
             SessionId,
             BridgeToken,
             CreatedAt,
@@ -4854,6 +4917,14 @@ public sealed class TrainingSessionStore
                 ShootoutVerdict,
                 ShootoutSlotToModel,
                 ShootoutError),
+            new SpeculativeState(
+                SpeculativeRuns.Values.Any(run => run.Status == "running") ? "running"
+                    : SpeculativeRuns.Count == 0 ? "not-started"
+                    : SpeculativeRuns.Values.All(run => run.Status == "failed") ? "failed"
+                    : "completed",
+                specEnvironment,
+                LocalInferenceService.Prompts.Select(p => SpeculativeRuns.GetValueOrDefault(p.Kind)).Where(run => run is not null).ToList()!,
+                SpeculativeError),
             new NarrationState(NarrationStatus, NarrationText, NarrationModel, NarrationFallbackUsed));
     }
 

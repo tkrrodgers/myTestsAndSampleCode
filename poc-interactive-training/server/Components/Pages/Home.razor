@@ -14,6 +14,7 @@
 @inject CobolDomainService CobolDomains
 @inject ContextClassifierService Classifier
 @inject LlmShootoutService Shootout
+@inject LocalInferenceService LocalInference
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 
@@ -119,7 +120,7 @@
 							<p class="kicker">DIRECTOR OF AI &middot; PROGRAMME OVERVIEW</p>
 							<h2 id="scene-title">Help teams adopt AI<br /><em>without asking them to take it on trust.</em></h2>
 							<p class="lede">
-								Six priorities, thirty-six working demonstrations. Every scene ends in a number, and every scene
+								Six priorities, thirty-seven working demonstrations. Every scene ends in a number, and every scene
 								says whether that number came from running something or from asking a model. Where the honest answer
 								is &ldquo;we have not built this yet&rdquo;, it is listed at the bottom of this page rather than left out.
 							</p>
@@ -194,7 +195,9 @@
 									@SceneLink("model-comparison") asks three models the same question and has a judge blind-score them against
 									live vendor documentation. @SceneLink("llm-shootout") is the engineering version: four models design the same
 									COBOL-to-Java conversion and a real COBOL compiler marks the checkable part before any judge speaks &mdash; the
-									right model for a job is rarely the one that is best at everything. @SceneLink("token-economics") makes the harder argument: free is the wrong word and
+									right model for a job is rarely the one that is best at everything. @SceneLink("speculative-decoding") runs on the
+									laptop itself and measures whether a small draft model makes a larger one faster &mdash; and shows why that lever exists
+									only inside a serving process, never across vendors. @SceneLink("token-economics") makes the harder argument: free is the wrong word and
 									cost per token is the wrong unit, because a model that fails a third of the time is billed for every failure.
 									Budget in cost per successful outcome.
 								</p>
@@ -262,7 +265,7 @@
 						<section class="rt-box" data-auto="s01.gaps">
 							<header class="rt-head"><span class="rt-step">!</span><div><strong>What the role calls for and this lab does not yet do</strong><small>stated here so nobody has to discover it in a demo</small></div></header>
 							<div class="audit-body">
-								<p class="rt-reco">Thirty-six scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
+								<p class="rt-reco">Thirty-seven scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
 								<table class="audit-table">
 									<thead><tr><th>Missing capability</th><th>Nearest scene</th><th>Why the scene is not sufficient</th></tr></thead>
 									<tbody>
@@ -5389,6 +5392,203 @@ cobol85  -&gt; 000000</pre>
 						</section>
 					</section>
 					break;
+				case 37:
+					<section>
+						<p class="kicker">FASTER TOKENS FROM THE SAME MODEL</p>
+						<h2 id="scene-title">Speculative decoding on a 16 GB laptop</h2>
+						<p class="rt-intro">
+							A large model produces one token per forward pass, and each pass is a full trip through gigabytes of weights.
+							<strong>Speculative decoding</strong> lets a small, fast <em>draft</em> guess several tokens ahead, then has the
+							large <em>target</em> model check all of the guesses in a single pass. Guesses the target agrees with are kept;
+							at the first disagreement the target's own token is used and drafting resumes. The target still decides every
+							token, so the technique is advertised as free speed. This scene measures what that claim is worth on the
+							machine in front of you &mdash; no cloud, no bridge, no model doing the grading.
+						</p>
+						<p class="rt-intro">
+							<strong>Why it cannot be done across vendors.</strong> Verification compares the draft's tokens against the target's
+							probabilities inside one serving process, over one shared vocabulary. A hosted API returns text, not probabilities,
+							and the Gemma&nbsp;3 and Gemma&nbsp;4 families do not even share a tokenizer. So a local Gemma cannot draft for
+							Claude, or for Gemma&nbsp;4 online; speculative decoding is something a vendor does <em>inside</em> its service, and
+							the only version you can run and measure yourself is the one below.
+						</p>
+
+						@{
+							var sp = _session?.Speculative;
+							var spEnv = sp?.Environment;
+						}
+
+						<section class="rt-box" data-auto="sp.explain">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>How one decoding step works</strong><small>draft &rarr; verify in one pass &rarr; keep the agreed prefix</small></div></header>
+							<div class="audit-body">
+								<table class="audit-table">
+									<thead><tr><th>Step</th><th>Without speculation</th><th>With a draft model</th></tr></thead>
+									<tbody>
+										<tr><td>1</td><td>Target computes the next token. One pass through 4B weights.</td><td>Draft (270m) proposes up to 8 tokens in 8 cheap passes.</td></tr>
+										<tr><td>2</td><td>Repeat for every token.</td><td>Target scores all 8 positions in <em>one</em> pass through 4B weights.</td></tr>
+										<tr><td>3</td><td>&mdash;</td><td>Keep the longest prefix the target agrees with, plus the target's own next token. Discard the rest.</td></tr>
+										<tr><td>Cost of 192 tokens</td><td>192 target passes</td><td>192 &divide; (accepted per round + 1) target passes, plus the draft's work</td></tr>
+									</tbody>
+								</table>
+								<p class="rt-note">
+									The whole gain comes from the <strong>acceptance rate</strong>. If the draft is right three times out of four, the
+									target does a quarter of the passes. If the draft is right half the time, its own cost eats the saving. That is
+									why the result is task dependent, and why this scene runs two different prompts.
+								</p>
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="sp.setup">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>What this laptop has, and what it will run</strong><small>@(spEnv?.Status ?? "probing…")</small></div></header>
+							<div class="audit-body">
+								@if (spEnv is not null)
+								{
+									<table class="audit-table">
+										<thead><tr><th>Role</th><th>Model file</th><th>On disk</th><th>Note</th></tr></thead>
+										<tbody>
+											<tr><td>Target</td><td><code>@spEnv.TargetModel</code></td><td>@spEnv.TargetMb.ToString("N0") MB</td><td>Gemma 3 4B instruct, 4-bit weights. The model whose answers we want.</td></tr>
+											<tr><td>Draft</td><td><code>@spEnv.DraftModel</code></td><td>@spEnv.DraftMb.ToString("N0") MB</td><td>Gemma 3 270m instruct, 8-bit. Same tokenizer as the target &mdash; the only thing that makes drafting possible.</td></tr>
+											<tr><td>Runtime</td><td><code>llama-server.exe</code></td><td>@spEnv.BackendLabel</td><td>The Radeon 840M integrated GPU (460 MB dedicated memory) was measured slower than the CPU for a 4B model, so the CPU build is used.</td></tr>
+											<tr><td>Machine</td><td colspan="2">@spEnv.LogicalCores logical cores &middot; @((spEnv.TotalRamMb / 1024.0).ToString("0.0")) GB RAM, @((spEnv.FreeRamMb / 1024.0).ToString("0.0")) GB free now</td><td>Both models plus a 4k context need roughly 3 GB. Close what you can before pressing the button.</td></tr>
+										</tbody>
+									</table>
+									@if (!spEnv.Available)
+									{
+										<div class="compare-status failed" role="alert">@spEnv.Status Download the two GGUF files into <code>gemma3/</code> and the llama.cpp CPU build into <code>tools/llama-cpp/cpu/</code>, then restart the server.</div>
+									}
+								}
+								<p class="rt-note">
+									<strong>Why Gemma 3 and not Gemma 4.</strong> Gemma 4's tokenizer is different from Gemma 3's, so a Gemma 3 270m draft
+									cannot serve a Gemma 4 target. The Gemma 4 pair that would work &mdash; E2B drafting for 12B &mdash; needs about
+									9&nbsp;GB of weights and does not fit beside everything else on 16&nbsp;GB. The technique is identical; only the
+									pair changes.
+								</p>
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="sp.run-box">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Run the same prompt three ways</strong><small>greedy decoding &middot; fresh process per arm &middot; llama.cpp's own timings</small></div></header>
+							<div class="audit-body">
+								<p>
+									<strong>What we do.</strong> For each prompt, the target runs alone, then with the 270m draft, then with an
+									<em>n-gram</em> draft that needs no second model at all &mdash; it guesses the next tokens from patterns already in
+									the text. Sampling is greedy (temperature 0) so any difference in the output is a property of the decoding path,
+									not of randomness. One untimed warm-up call on an <em>unrelated</em> prompt settles the freshly loaded weights; the
+									second call is measured. The warm-up must be unrelated because the n-gram draft learns from everything the server
+									has generated &mdash; warming up on the real prompt would hand it the answer and report a perfect score. Three prompts
+									cover the range: fresh code, an edit of existing code, and free prose.
+								</p>
+								<table class="audit-table">
+									<thead><tr><th>Arm</th><th>What runs</th></tr></thead>
+									<tbody>
+										@foreach (var (arm, label, how) in LocalInferenceService.Arms)
+										{
+											<tr><td><strong>@label</strong><br /><small><code>@arm</code></small></td><td>@how</td></tr>
+										}
+									</tbody>
+								</table>
+								<div class="rt-actions">
+									<small>Each button takes two to three minutes on this machine. Only one run at a time.</small>
+									@foreach (var prompt in LocalInferenceService.Prompts)
+									{
+										var existing = sp?.Runs.FirstOrDefault(r => r.PromptKind == prompt.Kind);
+										<button class="primary-command compact" type="button" data-auto="sp.run-@prompt.Kind" disabled="@(_session is null || spEnv?.Available != true || SpeculativeBusy)" @onclick="() => RunSpeculative(prompt.Kind)">@(existing is null ? $"Run: {prompt.Title}" : existing.Status == "running" ? "Running…" : $"Run again: {prompt.Title}")</button>
+									}
+								</div>
+								@if (SpeculativeBusy)
+								{
+									<div class="rt-pending cc-progress" role="status" aria-live="polite" data-auto="sp.progress">
+										<span></span>
+										<div>
+											<strong>@SpeculativeProgressHeadline</strong>
+											<small>@SpeculativeProgressDetail</small>
+										</div>
+									</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="sp.results-box">
+							<header class="rt-head"><span class="rt-step">4</span><div><strong>Results &mdash; every number is a counter or a stopwatch</strong><small>decode tokens/second &middot; acceptance rate &middot; memory &middot; whether the text matched</small></div></header>
+							<div class="audit-body">
+								@if (sp is { Runs.Count: > 0 })
+								{
+									@foreach (var run in sp.Runs)
+									{
+										var spBase = run.Arms.FirstOrDefault(a => a.Arm == "baseline" && a.Status == "completed");
+										<h4 data-auto="sp.results-@run.PromptKind">@run.PromptTitle <small>&mdash; @(run.Status == "running" ? "running" : run.Status) &middot; @((run.FreeRamMbBefore / 1024.0).ToString("0.0")) GB free before the run</small></h4>
+										<p class="rt-note"><em>@LocalInferenceService.Prompts.First(p => p.Kind == run.PromptKind).Why</em></p>
+										<table class="audit-table">
+											<thead><tr><th>Arm</th><th>Tokens</th><th>Decode tok/s</th><th>vs alone</th><th>Drafted</th><th>Accepted</th><th>Accept rate</th><th>Process RAM</th><th>Same text as alone?</th><th>Status</th></tr></thead>
+											<tbody>
+												@foreach (var (arm, label, _) in LocalInferenceService.Arms)
+												{
+													var row = run.Arms.FirstOrDefault(a => a.Arm == arm);
+													<tr class="@(row?.Status == "completed" && spBase is not null && row.Arm != "baseline" ? (row.DecodeTokPerSec > spBase.DecodeTokPerSec ? "p0-opt" : "p0-req") : row?.Status == "failed" ? "p0-req" : null)">
+														<td><strong>@label</strong></td>
+														<td>@(row?.Status == "completed" ? row.TokensOut.ToString() : "—")</td>
+														<td>@(row?.Status == "completed" ? row.DecodeTokPerSec.ToString("0.0") : "—")</td>
+														<td>@(row?.Status == "completed" && spBase is not null && arm != "baseline" ? SpeedDelta(spBase.DecodeTokPerSec, row.DecodeTokPerSec) : "—")</td>
+														<td>@(row?.Status == "completed" && arm != "baseline" ? row.Drafted.ToString() : "—")</td>
+														<td>@(row?.Status == "completed" && arm != "baseline" ? row.Accepted.ToString() : "—")</td>
+														<td>@(row?.AcceptRatePercent is { } rate ? $"{rate}%" : "—")</td>
+														<td>@(row?.Status == "completed" ? $"{row.WorkingSetMb:N0} MB" : "—")</td>
+														<td>@(row?.Status != "completed" ? "—" : arm == "baseline" ? "reference" : row.IdenticalToBaseline == true ? "identical" : $"differs from char {row.DivergesAtChar}")</td>
+														<td>@(row is null ? (run.Status == "running" ? "waiting" : "—") : row.Status == "completed" ? "measured" : row.Error)</td>
+													</tr>
+												}
+											</tbody>
+										</table>
+										@foreach (var row in run.Arms.Where(a => a.Status == "completed" && a.Text is not null))
+										{
+											<details class="cc-arm">
+												<summary><strong>@row.Label</strong> &mdash; output text (sha @row.Sha)</summary>
+												<pre class="rt-code">@row.Text</pre>
+											</details>
+										}
+										@if (run.Error is not null)
+										{
+											<div class="compare-status failed" role="alert">@run.Error</div>
+										}
+									}
+									<p class="rt-note">
+										<strong>How to read it.</strong> <em>Decode tok/s</em> is the number a user feels. <em>Accept rate</em> explains it:
+										below roughly 60&nbsp;% the draft's own passes cost more than they save, and the row turns red. <em>Same text</em>
+										is the honesty column. The target model chooses every token in all three arms, and the baseline is bit-for-bit
+										reproducible run to run &mdash; yet the speculative arms usually diverge. Checking eight positions in one batch
+										changes the order of floating-point additions inside the matrix multiplies; where two candidate tokens were
+										nearly tied, the argmax flips, and from there the text takes a different but equally valid path. &ldquo;Lossless&rdquo;
+										means the same <em>distribution</em>, not the same transcript.
+									</p>
+								}
+								else
+								{
+									<div class="rt-placeholder">Results appear here as each arm finishes. Run a prompt in Step 3.</div>
+								}
+								@if (sp?.Error is { } spError)
+								{
+									<div class="compare-status failed" role="alert">@spError</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-qa" data-auto="sp.takeaways">
+							<header class="rt-head"><span class="rt-step">&#10003;</span><div><strong>What to take from it</strong><small>and what it does not show</small></div></header>
+							<h4>For the leadership conversation</h4>
+							<ul class="rt-list">
+								<li><strong>It is real, and it is task dependent.</strong> Expect the largest gain where the output copies or closely follows the input &mdash; edits, refactors, structured rewrites &mdash; a solid gain on formulaic code, and little or none on free prose. The acceptance-rate column tells you which you have before you commit to it.</li>
+								<li><strong>The cheapest draft may be no model at all.</strong> N-gram drafting costs zero extra memory and works whenever the answer repeats the prompt. It does nothing for fresh text, so try it first and keep the draft model for generation.</li>
+								<li><strong>You cannot buy this across vendors.</strong> Claude, Gemini and hosted Gemma either do it inside their service or do not; there is no lever on your side. Where it matters is on-device and self-hosted inference, which is exactly where this laptop demonstration applies.</li>
+								<li><strong>Verify with a tool, not with your eyes.</strong> The text-identity check is the same discipline as the compiler oracle two scenes back: a claim of &ldquo;identical&rdquo; is a hash comparison, and when it fails the page says at which character.</li>
+							</ul>
+							<h4>What this does and does not prove</h4>
+							<ul class="rt-list warn">
+								<li><strong>One machine, one pair.</strong> A discrete GPU changes the arithmetic: the target's batched verification gets much cheaper relative to the draft, and the draft model tends to win over n-gram. Re-run on the target hardware before deciding.</li>
+								<li><strong>One run each.</strong> Wall-clock speed on a laptop moves with thermal state and background load; the baseline should be re-run alongside any comparison, as it is here.</li>
+								<li><strong>Same distribution is a claim from the algorithm, not from this page.</strong> The page shows that the text can differ; it does not test whether the two outputs are equally good. That would need the task-level oracle approach the rest of the programme uses.</li>
+							</ul>
+						</section>
+					</section>
+					break;
 			}
 		</article>
 
@@ -5422,7 +5622,7 @@ cobol85  -&gt; 000000</pre>
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME"), ("classify-context", "Classify Context"), ("focus-ignore", "Tell LLM to Focus/Ignore"), ("llm-shootout", "Right LLM for the job")];
+	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME"), ("classify-context", "Classify Context"), ("focus-ignore", "Tell LLM to Focus/Ignore"), ("llm-shootout", "Right LLM for the job"), ("speculative-decoding", "Speculative decoding, locally")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -5434,7 +5634,7 @@ cobol85  -&gt; 000000</pre>
 	];
 	private static readonly string[] BuiltInNarration =
 	[
-		"Six priorities, thirty-six working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
+		"Six priorities, thirty-seven working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
 		"A JIRA story names the desired outcome, but not always the system boundary or implementation path. This lesson follows governed evidence before code.",
 		"Search can find matching words. OKF adds concepts, ownership, decisions, and links that make those matches meaningful and reviewable.",
 		"The index is the entry point. Small linked artifacts disclose only the context needed for this task, while retaining provenance and freshness.",
@@ -5470,7 +5670,8 @@ cobol85  -&gt; 000000</pre>
 		"A strong generalist is not the same as an expert on exact header names and exact defaults. Claude answers unaided first, then consults a Gemma grounded on vendor documentation, then designs — and the improvement is measured against verified facts rather than asserted.",
 		"People change subject in a long session, and every later question pays for every earlier paragraph. A design document that mixes two unrelated services is separated back out by a classifier that runs on this machine, section by section, keeping whole sections verbatim and dropping the rest. Then Gemma builds the service from everything, from what the classifier kept, and from what Claude kept, and each build is compiled and run against a reference answer. If the filtered builds pass and cost less, the saving is real; if one fails a case the full build passed, the page names the section the filter should not have dropped.",
 		"Remove the noise, or name it? This scene keeps the whole mixed document and prepends an instruction, written by code from the classifier's decisions, that tells the model exactly which sections to ignore. Claude Opus 5 builds the bond settlement service from the mixed document alone, from the mixed document with that instruction, and from the filtered document as the reference. Every build is compiled and executed, and prompt and output tokens are counted, because an instruction that stops the model hedging saves on the way out rather than the way in. The future enhancement, applying the same idea to a live VS Code chat, is documented on the page and not yet built.",
-		"Which model for which job? Four models receive the same COBOL-to-Java design brief and return the same fixed-shape answer. GnuCOBOL has already compiled and run the legacy logic, so every byte offset, output row and hex dump is marked right or wrong by code, a sealed SME checklist counts the insights an experienced migration lead expects, and only then does a blinded judge rank the design quality of anonymised slots. Cost, speed and honesty about uncertainty sit beside the score, because the right model for a job is rarely the one that is best at everything."
+		"Which model for which job? Four models receive the same COBOL-to-Java design brief and return the same fixed-shape answer. GnuCOBOL has already compiled and run the legacy logic, so every byte offset, output row and hex dump is marked right or wrong by code, a sealed SME checklist counts the insights an experienced migration lead expects, and only then does a blinded judge rank the design quality of anonymised slots. Cost, speed and honesty about uncertainty sit beside the score, because the right model for a job is rarely the one that is best at everything.",
+		"Speculative decoding lets a small model guess several tokens ahead and a large model check them all in one pass. This scene runs it on the laptop itself: Gemma 3 4B alone, then with a 270 million parameter draft, then with an n-gram draft that needs no second model, on a code prompt and a prose prompt. Every number is llama.cpp's own counter or stopwatch. The gain is real on formulaic code and can vanish on prose, the cheapest draft is sometimes no model at all, and the outputs are the same distribution rather than the same text. None of this can be applied across vendors; it lives inside a serving process."
 	];
 
 	private TrainingSession? _session;
@@ -5970,6 +6171,40 @@ Finish with the verification path: the tests you would add or change, and how I 
 
 	private void RunShootout() { if (_session is null) return; _shootoutStartedAt = DateTimeOffset.UtcNow; Store.QueueShootout(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
 
+	private bool SpeculativeBusy => _session?.Speculative.Status == "running";
+
+	private DateTimeOffset? _specStartedAt;
+
+	private string SpeculativeProgressHeadline
+	{
+		get
+		{
+			var run = _session?.Speculative.Runs.FirstOrDefault(r => r.Status == "running");
+			if (run is null) return "Working…";
+			var next = LocalInferenceService.Arms.FirstOrDefault(a => run.Arms.All(done => done.Arm != a.Arm));
+			return next.Arm is null ? "Finishing…" : $"{run.PromptTitle}: loading and running ‘{next.Label}’…";
+		}
+	}
+
+	private string SpeculativeProgressDetail
+	{
+		get
+		{
+			var run = _session?.Speculative.Runs.FirstOrDefault(r => r.Status == "running");
+			var elapsed = _specStartedAt is { } started ? $"{(int)(DateTimeOffset.UtcNow - started).TotalSeconds}s" : "0s";
+			return $"{run?.Arms.Count ?? 0} of {LocalInferenceService.Arms.Length} arms measured · {elapsed} elapsed · each arm loads 2.6 GB of weights, warms up, then generates up to {(run is null ? 192 : LocalInferenceService.Prompts.First(p => p.Kind == run.PromptKind).MaxTokens)} tokens";
+		}
+	}
+
+	private static string SpeedDelta(double baseline, double value)
+	{
+		if (baseline <= 0) return "—";
+		var percent = (int)Math.Round(100.0 * (value - baseline) / baseline);
+		return percent == 0 ? "same" : percent > 0 ? $"+{percent}% faster" : $"{-percent}% slower";
+	}
+
+	private void RunSpeculative(string promptKind) { if (_session is null) return; _specStartedAt = DateTimeOffset.UtcNow; Store.StartSpeculativeRun(_session.SessionId, promptKind); _session = Store.GetSession(_session.SessionId); }
+
 	private static string LsCaseWhy(int index) => index switch
 	{
 		0 => "Ordinary row: price fits, year fits. The baseline every model should get.",
@@ -6390,6 +6625,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 		"ClassifyContext" => _session.ClassifyContext.Status,
 		"Focus" => _session.Focus.Status,
 		"Shootout" => _session.Shootout.Status,
+		"Speculative" => _session.Speculative.Status,
 		_ => null
 	};
 
@@ -6406,6 +6642,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 		35 when _session?.ClassifyContext.Classifier is { } cc => $"Classifier kept {cc.KeptSegments} of {cc.TotalSegments} sections: fixed income {cc.FixedIncomeKept}/{cc.FixedIncomeTotal}, crypto dropped {cc.CryptoDropped}/{cc.CryptoTotal}, traps honoured {cc.TrapsHonoured}/{cc.TrapsTotal}, {cc.PromptTokens} tokens kept."
 			+ (_session.ClassifyContext.Arms.Count > 0 ? " Builds: " + string.Join("; ", _session.ClassifyContext.Arms.Where(a => a.Status == "completed").Select(a => $"arm {a.Arm} {a.PromptTokens} tokens, compiled {a.Compiled}, {a.Passed}/{ClassifyContextSamples.TestVectors.Length} cases")) : ""),
 		37 when _session?.Shootout is { Entries.Count: > 0 } ls => "Scorecard: " + string.Join("; ", ls.Entries.Where(e => e.Status == "completed").Select(e => $"{e.RequestedModel} {e.CheckablePassed}/{e.CheckableTotal} compiler checks, {e.InsightsFound}/{e.Insights.Count} insights, {e.OutputTokens} output tokens, {e.DurationMs / 1000} s, Java {(e.JavaProvided ? "provided" : "declined")}")),
+		38 when _session?.Speculative is { Runs.Count: > 0 } sp => string.Join(" ", sp.Runs.Where(r => r.Status == "completed").Select(r => $"{r.PromptTitle}: " + string.Join("; ", r.Arms.Where(a => a.Status == "completed").Select(a => $"{a.Label} {a.DecodeTokPerSec:0.0} tok/s" + (a.AcceptRatePercent is { } rate ? $", {rate}% accepted" : "") + (a.IdenticalToBaseline == false ? ", text differs" : ""))))),
 		_ => null
 	};
 

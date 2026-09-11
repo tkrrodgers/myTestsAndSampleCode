@@ -50,7 +50,7 @@ public static class AutopilotManifest
     [
         // ---- 1 introduction -------------------------------------------------
         S("s01.01", "introduction", 1, AutoKind.Observe,
-            ["Six Director of AI priorities are mapped onto thirty-five working demonstrations.",
+            ["Six Director of AI priorities are mapped onto thirty-seven working demonstrations.",
              "Every scene ends in a number, and each scene states whether a tool or a model produced it."]),
         S("s01.02", "introduction", 1, AutoKind.Scroll, selector: "[data-auto='s01.gaps']",
             facts: ["Eight capabilities the role calls for are not yet covered by the lab.",
@@ -581,7 +581,27 @@ public static class AutopilotManifest
         S("ls.05", "llm-shootout", 37, AutoKind.Scroll, selector: "[data-auto='ls.verdict']", result: true,
             facts: ["The judge sees slot letters, never vendor names, and may not change the compiler's numbers; the mapping is revealed only after the verdict.",
                     "This is one run on one job; pick models per job, repeat the run when the job or the model changes, and never let a model settle what a compiler can."],
-            mustNot: ["that one run settles the choice of model for every job"])
+            mustNot: ["that one run settles the choice of model for every job"]),
+
+        // ---- 38 speculative-decoding ------------------------------------------------------
+        S("sp.01", "speculative-decoding", 38, AutoKind.Scroll, selector: "[data-auto='sp.explain']",
+            facts: ["A small draft model guesses several tokens ahead and the large target model checks them all in one forward pass; the target still chooses every token.",
+                    "The gain depends entirely on how often the draft is right, so it varies by task."]),
+        S("sp.02", "speculative-decoding", 38, AutoKind.Scroll, selector: "[data-auto='sp.setup']",
+            facts: ["Gemma 3 4B is the target and Gemma 3 270m the draft; they share a tokenizer, which Gemma 4 does not.",
+                    "Everything runs on this laptop's CPU through llama.cpp; no cloud model and no bridge is involved."],
+            mustNot: ["that this could be applied to Claude or to a hosted Gemma API"]),
+        S("sp.03", "speculative-decoding", 38, AutoKind.Click, selector: "[data-auto='sp.run-edit']",
+            wait: AutoWait.State, waitKey: "Speculative", timeout: 480, needsExec: true,
+            facts: ["The edit prompt runs three ways: the target alone, with the 270m draft, and with an n-gram draft that needs no second model.",
+                    "Sampling is greedy and each arm is a fresh process; the numbers are llama.cpp's own timings."]),
+        S("sp.04", "speculative-decoding", 38, AutoKind.Scroll, selector: "[data-auto='sp.results-box']", result: true,
+            facts: ["Read decode tokens per second against the acceptance rate; below about sixty percent acceptance the draft costs more than it saves.",
+                    "The same-text column is a hash comparison; speculative arms often diverge from the baseline because batched verification changes floating-point order, so lossless means same distribution, not same transcript."],
+            mustNot: ["that the outputs are identical", "that the result transfers to a machine with a discrete GPU"]),
+        S("sp.05", "speculative-decoding", 38, AutoKind.Scroll, selector: "[data-auto='sp.takeaways']",
+            facts: ["Speculative decoding is a serving-side optimisation: real for on-device and self-hosted inference, unavailable as a lever on any vendor API.",
+                    "This is one run on one machine with one model pair; re-run on the target hardware before deciding."])
     ];
 
     public static IEnumerable<AutoStep> ForProfile(AutoProfile profile, bool allowInProcessExecution) =>

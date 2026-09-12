@@ -16,6 +16,7 @@
 @inject LlmShootoutService Shootout
 @inject LocalInferenceService LocalInference
 @inject NotesClassificationService NotesClassifier
+@inject RoomChatService Room
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 
@@ -5779,6 +5780,210 @@ cobol85  -&gt; 000000</pre>
 						}
 					</section>
 					break;
+				case 39:
+					<section>
+						<p class="kicker">A MODEL IN THE ROOM, NOT IN THE CLOUD</p>
+						<h2 id="scene-title">LLM in the Room</h2>
+						<p class="rt-intro">
+							A team is working through a topic together and wants a model in the room: one that listens when someone
+							presses the microphone, answers in a sentence or three, asks a question back, and keeps the notes. This scene
+							runs the whole loop on this laptop &mdash; <strong>whisper.cpp</strong> turns speech into text, <strong>Gemma 4
+							E2B</strong> answers through llama.cpp on the CPU, the browser reads the answer aloud sentence by sentence
+							&mdash; with no cloud model and no VS Code bridge. Nothing said in the room leaves the machine.
+						</p>
+						<p class="rt-intro">
+							The topic is <strong>@RoomChatService.Topic</strong>. Gemma is grounded on the fixture's own OKF explanation and
+							is told to answer only from it, so ask it what OKF is, what <code>stale_after</code> means, why the API field is
+							missing on purpose, or whether reading a bundle trains the model. Every answer ends with a question back to you.
+						</p>
+
+						@{
+							var rm = Room.Snapshot();
+							var rmEnv = rm.Environment;
+							var rmLast = rm.Turns.LastOrDefault(t => t.Role == "assistant" && t.Status == "completed");
+							var rmAnswers = rm.Turns.Where(t => t.Role == "assistant" && t.Status == "completed").ToList();
+						}
+
+						<section class="rt-box" data-auto="rm.setup">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>What runs, and where</strong><small>@rmEnv.Status</small></div></header>
+							<div class="audit-body">
+								<table class="audit-table">
+									<thead><tr><th>Stage</th><th>Runs on</th><th>What</th><th>Why this choice</th></tr></thead>
+									<tbody>
+										<tr><td>Listen</td><td>Browser</td><td>Microphone captured at 16 kHz mono while the button is lit; sent as WAV to the loopback server</td><td>No audio library on the server side; the browser already has the microphone</td></tr>
+										<tr><td>Transcribe</td><td>whisper.cpp, CPU</td><td><code>@rmEnv.WhisperModel</code> (@rmEnv.WhisperMb MB), English</td><td>About a second for a ten-second question on this machine; the base model is accurate enough for spoken questions</td></tr>
+										<tr><td>Answer</td><td>llama.cpp, CPU, @rmEnv.Threads threads</td><td><code>@rmEnv.ModelFile</code> (@rmEnv.ModelMb.ToString("N0") MB), thinking off, n-gram draft, prompt cache reuse</td><td>Measured at about 20 tokens a second here; 4-bit because CPU decode is bound by memory bandwidth, so half the bytes is nearly twice the speed</td></tr>
+										<tr><td>Speak</td><td>Browser</td><td>Each completed sentence is queued to the browser's speech engine as it arrives</td><td>The room hears the first sentence while the rest is still being generated</td></tr>
+										<tr><td>Record</td><td>Server memory</td><td>Verbatim transcript with speaker and timings; running notes rewritten by Gemma between questions</td><td>The transcript is the record. The notes are model-generated and say so</td></tr>
+									</tbody>
+								</table>
+								<p class="rt-note">
+									<strong>Why not speculative decoding with a draft model?</strong> @SceneLink("speculative-decoding") measured it on
+									this laptop: a small draft helps on code and slows prose down. Conversation is prose. The speed here comes from
+									sending less (a fixed grounding prefix the server caches, plus the last few turns) and saying less (three
+									sentences, 160-token cap). The n-gram draft is kept because it costs nothing and helps when the answer quotes the notes.
+								</p>
+								<div class="rt-actions">
+									<small>Both processes are launched on this host and stopped with the server. About 3.5 GB of RAM while running; @((rmEnv.FreeRamMb / 1024.0).ToString("0.0")) GB free now.</small>
+									@if (rm.Status is "offline" or "error")
+									{
+										<button class="primary-command compact" type="button" data-auto="rm.start" disabled="@(!rmEnv.Available)" @onclick="StartRoom">Start the room</button>
+									}
+									else
+									{
+										<button class="secondary-command compact" type="button" data-auto="rm.stop" @onclick="StopRoom">Stop the room</button>
+									}
+								</div>
+								@if (rm.Status is "starting" or "warming")
+								{
+									<div class="rt-pending cc-progress" role="status" aria-live="polite"><span></span><div><strong>@(rm.Status == "starting" ? "Loading Gemma 4 and whisper…" : "Pre-filling the grounding so the first question does not pay for it…")</strong><small>@RoomElapsed elapsed</small></div></div>
+								}
+								@if (rm.Status == "error" && rm.Error is { } rmError)
+								{
+									<div class="compare-status failed" role="alert">@rmError</div>
+								}
+								@if (rm.Status is "ready" or "answering" or "noting")
+								{
+									<div class="compare-status" role="status" data-auto="rm.ready">Ready. The grounding is @rm.GroundingTokens.ToString("N0") prompt tokens and is already cached on the server.</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="rm.chat-box">
+							<header class="rt-head"><span class="rt-step">2</span><div><strong>Talk to Gemma</strong><small>press the microphone, ask, press again to send &middot; or type</small></div></header>
+							<div class="audit-body">
+								<div class="room-controls">
+									<label class="room-speaker">Who is speaking<input type="text" maxlength="40" @bind="_roomSpeaker" placeholder="Team" /></label>
+									<button class="@("room-mic" + (_roomRecording ? " recording" : ""))" type="button" data-auto="rm.mic"
+											title="@(_roomRecording ? "Stop and send" : "Press and ask")" aria-label="@(_roomRecording ? "Stop recording and send" : "Start recording")"
+											disabled="@(!Room.IsReady || _roomTranscribing)" @onclick="ToggleRoomMic">
+										<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4zm6-4a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93V22h2v-3.07A8 8 0 0 0 20 11z"/></svg>
+										<span>@(_roomRecording ? $"Listening… {RoomRecordingSeconds}s — press to send" : _roomTranscribing ? "Transcribing…" : "Press and ask")</span>
+									</button>
+									<label class="room-toggle"><input type="checkbox" @bind="_roomSpeakAloud" /> Read answers aloud</label>
+								</div>
+								<div class="room-typed">
+									<textarea class="rt-code-input" rows="2" maxlength="600" data-auto="rm.typed" placeholder="Or type a question for the room…" @bind="_roomTyped" @bind:event="oninput" disabled="@(!Room.IsReady)" aria-label="Typed question"></textarea>
+									<button class="primary-command compact" type="button" data-auto="rm.send" disabled="@(!Room.IsReady || string.IsNullOrWhiteSpace(_roomTyped))" @onclick="SendRoomTyped">Send</button>
+								</div>
+								@if (!_roomMicSupported)
+								{
+									<p class="bridge-required" role="status">This browser did not grant microphone access. Typing still works; use Edge or Chrome for speech.</p>
+								}
+								@if (_roomMicError is { } micError)
+								{
+									<div class="compare-status failed" role="alert">@micError</div>
+								}
+
+								<div class="room-transcript" id="room-transcript" data-auto="rm.transcript">
+									@if (rm.Turns.Count == 0)
+									{
+										<div class="rt-placeholder">@(Room.IsReady ? "Ask the first question. Try: \u201cWhat is OKF, in one breath?\u201d" : "Start the room, then ask a question.")</div>
+									}
+									@foreach (var turn in rm.Turns)
+									{
+										<div class="@("room-turn " + (turn.Role == "user" ? "user" : "model") + (turn.Status == "streaming" ? " streaming" : turn.Status == "failed" ? " failed" : ""))">
+											<div class="room-turn-head">
+												<strong>@turn.Speaker</strong>
+												<small>
+													@turn.At.ToLocalTime().ToString("HH:mm:ss")
+													@if (turn.Role == "user" && turn.SttMs > 0) { <text>&middot; transcribed in @turn.SttMs ms</text> }
+													@if (turn.Role == "assistant" && turn.Status == "completed") { <text>&middot; first word @turn.FirstTokenMs ms &middot; @turn.OutputTokens tokens in @((turn.TotalMs / 1000.0).ToString("0.0")) s &middot; @turn.TokPerSec tok/s &middot; @turn.CachedTokens of @turn.PromptTokens prompt tokens from cache</text> }
+													@if (turn.Status == "streaming") { <text>&middot; answering…</text> }
+												</small>
+											</div>
+											<p>@(turn.Status == "failed" ? (turn.Error ?? "The answer did not complete.") : turn.Text)@if (turn.Status == "streaming") { <span class="room-caret">&#9612;</span> }</p>
+										</div>
+									}
+								</div>
+								@if (rm.Error is { } rmChatError && rm.Status != "error")
+								{
+									<div class="compare-status failed" role="alert">@rmChatError</div>
+								}
+								<div class="rt-actions">
+									<small>@rm.Turns.Count(t => t.Role == "user") question(s) &middot; the prompt carries the grounding plus the last 10 turns, nothing else.</small>
+									<button class="secondary-command compact" type="button" data-auto="rm.clear" disabled="@(rm.Turns.Count == 0)" @onclick="ClearRoom">Clear the conversation</button>
+								</div>
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="rm.latency">
+							<header class="rt-head"><span class="rt-step">3</span><div><strong>Was it fast enough?</strong><small>every figure is a stopwatch or a llama.cpp counter</small></div></header>
+							<div class="audit-body">
+								@if (rmAnswers.Count > 0)
+								{
+									<table class="audit-table" data-auto="rm.latency-table">
+										<thead><tr><th>Measure</th><th>Target for a room</th><th>Last answer</th><th>Median so far</th></tr></thead>
+										<tbody>
+											<tr class="@(rmLast!.FirstTokenMs <= 1500 ? "p0-opt" : "p0-req")"><td>First word on screen</td><td>&le; 1.5 s</td><td>@rmLast.FirstTokenMs ms</td><td>@Median(rmAnswers.Select(t => (double)t.FirstTokenMs)).ToString("0") ms</td></tr>
+											<tr class="@(rmLast.TotalMs <= 10000 ? "p0-opt" : "p0-req")"><td>Whole answer</td><td>&le; 10 s</td><td>@((rmLast.TotalMs / 1000.0).ToString("0.0")) s</td><td>@((Median(rmAnswers.Select(t => (double)t.TotalMs)) / 1000.0).ToString("0.0")) s</td></tr>
+											<tr class="@(rmLast.TokPerSec >= 15 ? "p0-opt" : "p0-req")"><td>Decode speed</td><td>&ge; 15 tok/s</td><td>@rmLast.TokPerSec tok/s</td><td>@Median(rmAnswers.Select(t => t.TokPerSec)).ToString("0.0") tok/s</td></tr>
+											<tr class="@(rmLast.OutputTokens <= 160 ? "p0-opt" : "p0-req")"><td>Answer length</td><td>&le; 160 tokens</td><td>@rmLast.OutputTokens tokens</td><td>@Median(rmAnswers.Select(t => (double)t.OutputTokens)).ToString("0") tokens</td></tr>
+											<tr class="@(rmLast.PromptTokens > 0 && rmLast.CachedTokens * 100 / Math.Max(1, rmLast.PromptTokens) >= 80 ? "p0-opt" : "p0-req")"><td>Prompt served from cache</td><td>&ge; 80 %</td><td>@(rmLast.PromptTokens == 0 ? "—" : $"{rmLast.CachedTokens * 100 / Math.Max(1, rmLast.PromptTokens)} %")</td><td>@rm.GroundingTokens.ToString("N0") tokens of grounding never re-read</td></tr>
+										</tbody>
+									</table>
+									<p class="rt-note">
+										The first word is what the room feels; it is transcription time plus the prefill of whatever is <em>not</em>
+										cached &mdash; the new question and the last answer. Decode speed decides how long the room waits for the
+										question Gemma asks back. Red rows are the honest result on this hardware, not a bug.
+									</p>
+								}
+								else
+								{
+									<div class="rt-placeholder">Latency figures appear here after the first answer.</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-box" data-auto="rm.notes">
+							<header class="rt-head"><span class="rt-step">4</span><div><strong>Running notes</strong><small>@(rm.Notes.Status == "updating" ? "Gemma is rewriting the notes between questions…" : rm.Notes.UpdatedAt is { } upd ? $"version {rm.Notes.Version} · {upd.ToLocalTime():HH:mm:ss} · generated by Gemma 4, verified by nobody yet" : "written after the second exchange")</small></div></header>
+							<div class="audit-body">
+								<p class="rt-note">
+									The scribe lane runs only while nobody is asking: pressing the microphone cancels it, and it starts again after the
+									next answer. The notes are rewritten from the verbatim transcript each time, so they never drift from what was said.
+									They carry <code>generated: gemma-4-e2b-it-Q4_K_M</code> and <code>verified: null</code> until a person signs them off.
+								</p>
+								@if (!string.IsNullOrWhiteSpace(rm.Notes.Markdown))
+								{
+									<pre class="rt-story" data-auto="rm.notes-text">---
+type: Meeting Notes
+topic: @RoomChatService.Topic
+generated: { by: "model:gemma-4-e2b-it-Q4_K_M", at: "@(rm.Notes.UpdatedAt?.ToString("u") ?? "")" }
+verified: null
+sources: [transcript]
+---
+@rm.Notes.Markdown</pre>
+								}
+								else if (rm.Notes.Error is { } notesError)
+								{
+									<div class="compare-status failed" role="alert">@notesError</div>
+								}
+								else
+								{
+									<div class="rt-placeholder">Notes appear here once the conversation has at least one question and one answer.</div>
+								}
+							</div>
+						</section>
+
+						<section class="rt-qa" data-auto="rm.takeaways">
+							<header class="rt-head"><span class="rt-step">&#10003;</span><div><strong>What this shows, and what it does not</strong><small>for the room and for the budget</small></div></header>
+							<h4>For the leadership conversation</h4>
+							<ul class="rt-list">
+								<li><strong>A useful model fits in the room.</strong> A 3 GB open-weight model on a laptop CPU answers a grounded question in a few seconds and asks a sensible one back. No per-token invoice, no data leaving the building.</li>
+								<li><strong>Latency is a design choice, not a model property.</strong> Cache the grounding, send only the last few turns, cap the answer, speak sentence by sentence. The same model with the whole transcript in every prompt would feel three times slower.</li>
+								<li><strong>Grounding is what makes it safe to put in front of a team.</strong> Gemma is told to answer only from the OKF notes and to say when they do not cover something. Ask it about something else and watch it decline.</li>
+								<li><strong>The transcript is the record; the notes are a draft.</strong> The same rule as everywhere in this programme: model output carries <code>verified: null</code> until a person changes it.</li>
+							</ul>
+							<h4>What this does and does not prove</h4>
+							<ul class="rt-list warn">
+								<li><strong>One microphone, one speaker at a time.</strong> The presser's name is the speaker label; there is no diarization. In a real room that is a shared microphone and a name field, not a solved problem.</li>
+								<li><strong>English, base model.</strong> whisper base.en is fast and adequate for clear speech at a metre. Accents, cross-talk and jargon will degrade it; the transcript shows what was heard, so a wrong hearing is visible rather than silent.</li>
+								<li><strong>One topic, one grounding pack.</strong> The tutor is only as good as the notes it is given. Swapping the topic is swapping the pack &mdash; and the pack needs an owner and a <code>stale_after</code>.</li>
+								<li><strong>This is an agent.</strong> It makes model calls on the team's behalf and records what people say. It owes a registry entry, a data-tier decision on the transcript, and a pinned model hash &mdash; see @SceneLink("phase-zero").</li>
+							</ul>
+						</section>
+					</section>
+					break;
 			}
 		</article>
 
@@ -5812,7 +6017,7 @@ cobol85  -&gt; 000000</pre>
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME"), ("classify-context", "Classify Context"), ("focus-ignore", "Tell LLM to Focus/Ignore"), ("llm-shootout", "Right LLM for the job"), ("speculative-decoding", "Speculative decoding, locally"), ("notes-to-domains", "Notes to domains (BankDemo)")];
+	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME"), ("classify-context", "Classify Context"), ("focus-ignore", "Tell LLM to Focus/Ignore"), ("llm-shootout", "Right LLM for the job"), ("speculative-decoding", "Speculative decoding, locally"), ("notes-to-domains", "Notes to domains (BankDemo)"), ("llm-in-the-room", "LLM in the Room")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -5862,7 +6067,8 @@ cobol85  -&gt; 000000</pre>
 		"Remove the noise, or name it? This scene keeps the whole mixed document and prepends an instruction, written by code from the classifier's decisions, that tells the model exactly which sections to ignore. Claude Opus 5 builds the bond settlement service from the mixed document alone, from the mixed document with that instruction, and from the filtered document as the reference. Every build is compiled and executed, and prompt and output tokens are counted, because an instruction that stops the model hedging saves on the way out rather than the way in. The future enhancement, applying the same idea to a live VS Code chat, is documented on the page and not yet built.",
 		"Which model for which job? Four models receive the same COBOL-to-Java design brief and return the same fixed-shape answer. GnuCOBOL has already compiled and run the legacy logic, so every byte offset, output row and hex dump is marked right or wrong by code, a sealed SME checklist counts the insights an experienced migration lead expects, and only then does a blinded judge rank the design quality of anonymised slots. Cost, speed and honesty about uncertainty sit beside the score, because the right model for a job is rarely the one that is best at everything.",
 		"Speculative decoding lets a small model guess several tokens ahead and a large model check them all in one pass. This scene runs it on the laptop itself: Gemma 3 4B alone, then with a 270 million parameter draft, then with an n-gram draft that needs no second model, on a code prompt and a prose prompt. Every number is llama.cpp's own counter or stopwatch. The gain is real on formulaic code and can vanish on prose, the cheapest draft is sometimes no model at all, and the outputs are the same distribution rather than the same text. None of this can be applied across vendors; it lives inside a serving process.",
-		"Can the notes rebuild the map? On thousands of legacy COBOL programs the comments are often the only description of what each one does. This scene tests, on the open BankDemo application, whether EmbeddingGemma and ML.NET can read those notes and reproduce a hand-written domain catalog. Five methods run against that ground truth: plain retrieval, retrieval with the one cross-cutting Help domain removed, nearest-centroid, a supervised ML.NET classifier, and a structure-aware method that pools notes along the call graph. The finding is that the notes carry the domain, the governed Function header does most of the work, and cross-cutting concerns must be placed by who calls them rather than by their words — the neurons need the hippocampus."
+		"Can the notes rebuild the map? On thousands of legacy COBOL programs the comments are often the only description of what each one does. This scene tests, on the open BankDemo application, whether EmbeddingGemma and ML.NET can read those notes and reproduce a hand-written domain catalog. Five methods run against that ground truth: plain retrieval, retrieval with the one cross-cutting Help domain removed, nearest-centroid, a supervised ML.NET classifier, and a structure-aware method that pools notes along the call graph. The finding is that the notes carry the domain, the governed Function header does most of the work, and cross-cutting concerns must be placed by who calls them rather than by their words — the neurons need the hippocampus.",
+		"A model in the room, not in the cloud. Press the microphone, ask a question about the Open Knowledge Format, and a Gemma 4 running on this laptop's CPU answers in three sentences and asks one back, read aloud sentence by sentence as it is generated. whisper.cpp does the listening, llama.cpp the answering, the browser the speaking, and nothing said in the room leaves the machine. Between questions Gemma rewrites the running notes from the verbatim transcript, labelled generated and unverified. Every latency figure on the page is a stopwatch or a counter, and the speed comes from caching the grounding and capping the answer, not from a faster model."
 	];
 
 	private TrainingSession? _session;
@@ -6089,6 +6295,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 		_session = Store.CreateSession();
 		_changeJira = _session.GroundedChange.Jira;
 		_timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+		Room.Changed += OnRoomChanged;
 		_ = PollAsync();
 	}
 
@@ -6405,6 +6612,143 @@ Finish with the verification path: the tests you would add or change, and how I 
 	private void RunNotesClassification() { if (_session is null) return; _notesStartedAt = DateTimeOffset.UtcNow; Store.StartNotesClassification(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
 
 	private static string Pct(int n, int d) => d == 0 ? "n/a" : $"{100.0 * n / d:0}%";
+
+	private static double Median(IEnumerable<double> values)
+	{
+		var sorted = values.OrderBy(v => v).ToList();
+		return sorted.Count == 0 ? 0 : sorted.Count % 2 == 1 ? sorted[sorted.Count / 2] : (sorted[sorted.Count / 2 - 1] + sorted[sorted.Count / 2]) / 2;
+	}
+
+	// --- LLM in the Room: local Gemma 4 + whisper, no bridge. State lives in the singleton; this page renders it. ---
+	private string _roomSpeaker = "Team";
+	private string _roomTyped = string.Empty;
+	private bool _roomRecording;
+	private bool _roomTranscribing;
+	private bool _roomSpeakAloud = true;
+	private bool _roomMicSupported = true;
+	private string? _roomMicError;
+	private DateTimeOffset? _roomStartedAt;
+	private DateTimeOffset? _roomRecordingStartedAt;
+	private int _roomSpokenTurnId;
+	private int _roomSpokenChars;
+
+	private sealed record RoomMicResult(string Text, int SttMs, double Seconds, string? Error);
+
+	private string RoomElapsed => _roomStartedAt is { } started ? $"{(int)(DateTimeOffset.UtcNow - started).TotalSeconds}s" : "0s";
+	private int RoomRecordingSeconds => _roomRecordingStartedAt is { } started ? (int)(DateTimeOffset.UtcNow - started).TotalSeconds : 0;
+
+	private void StartRoom() { _roomStartedAt = DateTimeOffset.UtcNow; _ = Room.StartAsync(CancellationToken.None); }
+
+	private async Task StopRoom()
+	{
+		if (_roomRecording) { await JS.InvokeVoidAsync("roomMic.cancel"); _roomRecording = false; }
+		await JS.InvokeVoidAsync("roomSpeech.stop");
+		Room.Stop();
+	}
+
+	private async Task ClearRoom()
+	{
+		await JS.InvokeVoidAsync("roomSpeech.stop");
+		_roomSpokenTurnId = 0;
+		_roomSpokenChars = 0;
+		Room.ClearConversation();
+	}
+
+	private async Task ToggleRoomMic()
+	{
+		_roomMicError = null;
+		if (!_roomRecording)
+		{
+			try
+			{
+				await JS.InvokeVoidAsync("roomSpeech.stop");
+				await JS.InvokeAsync<double>("roomMic.start");
+				_roomRecording = true;
+				_roomRecordingStartedAt = DateTimeOffset.UtcNow;
+				_roomMicSupported = true;
+			}
+			catch (JSException ex)
+			{
+				_roomMicSupported = false;
+				_roomMicError = "Microphone unavailable: " + ex.Message;
+			}
+
+			return;
+		}
+
+		_roomRecording = false;
+		_roomTranscribing = true;
+		try
+		{
+			var result = await JS.InvokeAsync<RoomMicResult>("roomMic.stop");
+			if (result.Error is not null)
+			{
+				_roomMicError = result.Error;
+			}
+			else if (string.IsNullOrWhiteSpace(result.Text))
+			{
+				_roomMicError = result.Seconds < 0.5 ? "That was too short to hear. Hold the button while you ask." : "Nothing was heard. Check the microphone and try again.";
+			}
+			else
+			{
+				Room.Ask(_roomSpeaker, result.Text, result.SttMs);
+			}
+		}
+		catch (JSException ex)
+		{
+			_roomMicError = "Transcription failed: " + ex.Message;
+		}
+		finally
+		{
+			_roomTranscribing = false;
+		}
+	}
+
+	private async Task SendRoomTyped()
+	{
+		var text = _roomTyped.Trim();
+		if (text.Length == 0) return;
+		_roomTyped = string.Empty;
+		await JS.InvokeVoidAsync("roomSpeech.stop");
+		Room.Ask(_roomSpeaker, text, 0);
+	}
+
+	// Streams the model's text to the screen and hands each finished sentence to the speaker queue once.
+	private void OnRoomChanged()
+	{
+		_ = InvokeAsync(async () =>
+		{
+			StateHasChanged();
+			try { await JS.InvokeVoidAsync("trainingSpeech.stickToBottom", "room-transcript"); } catch (JSException) { }
+			if (!_roomSpeakAloud) return;
+			var turn = Room.Snapshot().Turns.LastOrDefault(t => t.Role == "assistant");
+			if (turn is null || turn.Status == "failed") return;
+			if (turn.Id != _roomSpokenTurnId) { _roomSpokenTurnId = turn.Id; _roomSpokenChars = 0; }
+
+			var text = turn.Text;
+			var end = turn.Status == "completed" ? text.Length : LastSentenceEnd(text);
+			if (end <= _roomSpokenChars) return;
+			var sentence = text[_roomSpokenChars..end].Trim().Replace("`", "").Replace("*", "").Replace("_", " ");
+			_roomSpokenChars = end;
+			if (sentence.Length > 0)
+			{
+				try { await JS.InvokeVoidAsync("roomSpeech.enqueue", sentence); } catch (JSException) { }
+			}
+		});
+	}
+
+	private static int LastSentenceEnd(string text)
+	{
+		for (var i = text.Length - 1; i > 0; i--)
+		{
+			if (text[i] is '.' or '?' or '!' && (i == text.Length - 1 || char.IsWhiteSpace(text[i + 1])) && i >= 20)
+			{
+				return i + 1;
+			}
+		}
+
+		return 0;
+	}
 
 	private static string Trunc(string text, int max) => string.IsNullOrEmpty(text) ? "" : text.Length <= max ? text : text[..max] + "…";
 
@@ -6830,6 +7174,12 @@ Finish with the verification path: the tests you would add or change, and how I 
 		"Shootout" => _session.Shootout.Status,
 		"Speculative" => _session.Speculative.Status,
 		"Notes" => _session.NotesClassification.Status,
+		"Room" => Room.Snapshot().Status switch
+		{
+			"error" => "failed",
+			"ready" or "noting" => "completed",
+			var other => other
+		},
 		_ => null
 	};
 
@@ -6848,6 +7198,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 		37 when _session?.Shootout is { Entries.Count: > 0 } ls => "Scorecard: " + string.Join("; ", ls.Entries.Where(e => e.Status == "completed").Select(e => $"{e.RequestedModel} {e.CheckablePassed}/{e.CheckableTotal} compiler checks, {e.InsightsFound}/{e.Insights.Count} insights, {e.OutputTokens} output tokens, {e.DurationMs / 1000} s, Java {(e.JavaProvided ? "provided" : "declined")}")),
 		38 when _session?.Speculative is { Runs.Count: > 0 } sp => string.Join(" ", sp.Runs.Where(r => r.Status == "completed").Select(r => $"{r.PromptTitle}: " + string.Join("; ", r.Arms.Where(a => a.Status == "completed").Select(a => $"{a.Label} {a.DecodeTokPerSec:0.0} tok/s" + (a.AcceptRatePercent is { } rate ? $", {rate}% accepted" : "") + (a.IdenticalToBaseline == false ? ", text differs" : ""))))),
 		39 when _session?.NotesClassification.Result is { Available: true } ncr => $"BankDemo notes to domains: retrieval top-1 {Pct(ncr.Retrieval.Top1, ncr.Retrieval.Total)} (top-3 {Pct(ncr.Retrieval.Top3, ncr.Retrieval.Total)}), Help excluded {Pct(ncr.RetrievalNoHelp.Top1, ncr.RetrievalNoHelp.Total)}, supervised {Pct(ncr.Supervised.Top1, ncr.Supervised.Total)}, structure-aware {Pct(ncr.Structural.Top1, ncr.Structural.Total)} over {ncr.ProgramCount} programs and {ncr.EdgeCount} call edges.",
+		40 when Room.Snapshot().Turns.LastOrDefault(t => t.Role == "assistant" && t.Status == "completed") is { } answer => $"Last answer: first word after {answer.FirstTokenMs} ms, {answer.OutputTokens} tokens in {answer.TotalMs / 1000.0:0.0} s at {answer.TokPerSec} tok/s, {answer.CachedTokens} of {answer.PromptTokens} prompt tokens from cache.",
 		_ => null
 	};
 
@@ -6959,6 +7310,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 
 	public ValueTask DisposeAsync()
 	{
+		Room.Changed -= OnRoomChanged;
 		_pollCancellation.Cancel();
 		_timer?.Dispose();
 		_pollCancellation.Dispose();

@@ -20,7 +20,7 @@ public sealed record AutopilotContractResult(
 public sealed partial class AutopilotContract(IWebHostEnvironment environment)
 {
     // Must match Scenes.Length in Home.razor; a new scene without manifest steps fails the contract.
-    public const int SceneCount = 39;
+    public const int SceneCount = 40;
 
     [GeneratedRegex(@"data-auto=""([^""]+)""")]
     private static partial Regex DataAuto();

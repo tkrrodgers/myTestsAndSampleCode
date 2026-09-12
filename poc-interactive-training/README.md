@@ -1,6 +1,6 @@
 # POC Interactive Training
 
-A runnable, 39-scene AI-governance training platform: an ASP.NET Core Blazor server, a VS Code model bridge, and a set of deterministic controls that run with no model at all. Scene 1 is the programme overview; the other 38 are working demonstrations.
+A runnable, 40-scene AI-governance training platform: an ASP.NET Core Blazor server, a VS Code model bridge, and a set of deterministic controls that run with no model at all. Scene 1 is the programme overview; the other 39 are working demonstrations.
 
 The organising principle throughout: **prerequisite and assurance controls are deterministic; models supply judgement and narrative only.** A gate that depends on a model is not a gate. Every deterministic service has a startup self-check that prints its result to the console, so a broken control is visible before anyone demonstrates it.
 
@@ -53,12 +53,13 @@ These produce their numbers from executed code, not from an opinion. They work w
 | Plan-first check | Six structural checks on a plan, including "no code yet" |
 | CLARA compiler | Lex → parse → bind/type-check → expression tree → CIL → JIT. Conformance suite plus a measured benchmark against hand-written C# |
 | COBOL migration oracle | GnuCOBOL compiles and executes the legacy program to produce ground truth; candidate migrations are executed against it |
-| Autopilot manifest contract | Diffs the 146-step walkthrough manifest against the markup at startup and checks that every one of the 39 scenes has at least one step; a missing selector disables auto-run rather than failing at the click |
+| Autopilot manifest contract | Diffs the 152-step walkthrough manifest against the markup at startup and checks that every one of the 40 scenes has at least one step; a missing selector disables auto-run rather than failing at the click |
 | COBOL domain segmentation | Parses real IBM Enterprise COBOL with the ANTLR `Cobol85.g4` grammar, resolves copybooks in SYSLIB order, builds the call graph, CRUD matrix and DDG, builds a PDG on demand, then partitions with Leiden over a resolution sweep. Publishes parse, grammar, copybook, SQL and program-reference coverage with every run |
 | Context classifier | Separates a mixed two-domain design document section by section: embeddinggemma vectors through an ML.NET model trained on the two real trading repositories, fused with a lexical arm of repository vocabulary. Uncertain sections are kept, referenced sections are kept regardless of label, and the result is scored against sealed labels and planted cross-domain traps |
 | LLM shootout oracle | GnuCOBOL compiles and runs a harness lifted verbatim from the IBM Global Auto Mart sample (DCLGEN copybook + the row-formatting MOVE chain). Its output — record lengths, 21 field offsets, five screen rows and four hex dumps — is the answer key every model is scored against; a synthetic perfect answer must score 32/32 at startup |
 | Local speculative decoding | Drives a local llama.cpp `llama-server` (CPU build) to run Gemma 3 4B alone, with a Gemma 3 270m draft, and with an n-gram draft on the same greedy prompt. Reports llama.cpp's own decode tokens/s, drafted/accepted counts, process memory and a SHA-256 text-identity check against the baseline. Weights and the runtime are fetched, never committed |
 | Notes-to-domains classifier | Reads the in-code notes of the open BankDemo COBOL app and scores five methods (retrieval, Help-excluded retrieval, nearest-centroid, supervised ML.NET, call-graph structure-aware) against the hand-written `docs/domains` catalog. Uses each domain's *Business purpose* prose only, never the section that quotes the notes. embeddinggemma vectors, cosine, SdcaMaximumEntropy and LINK/CALL/COPY call-graph clustering; every number is a cosine or a held-out prediction |
+| LLM in the Room | Push-to-talk chat with a local Gemma 4 E2B (Q4, llama.cpp CPU) grounded on the fixture's OKF explanation: whisper.cpp transcribes, the answer streams and is read aloud sentence by sentence, every answer ends with a question back, and Gemma rewrites running notes from the verbatim transcript between questions. First-word, total, tok/s and cache-hit are measured per turn against room targets. No cloud, no bridge. Design: [GemmaInTheRoomFinalDesign.md](GemmaInTheRoomFinalDesign.md) |
 
 ## Auto-run: the whole programme, unattended
 
@@ -68,12 +69,12 @@ The rule that makes it safe: **no model ever infers what the application does.**
 
 | Profile | Scope |
 | --- | --- |
-| Deterministic | The 119 steps that need no bridge model (116 with the default in-process execution block, see below). Narration is the fact list, read verbatim. Works offline |
-| Full | All 146 steps across 39 scenes, including the 27 bridge steps that run every model stage, with Gemma 4 authoring narration |
+| Deterministic | The 125 steps that need no bridge model (121 with the default in-process execution block, see below). Narration is the fact list, read verbatim. Works offline |
+| Full | All 152 steps across 40 scenes, including the 27 bridge steps that run every model stage, with Gemma 4 authoring narration |
 
 Narration falls back **Gemma 4 → Claude Opus 4.8 → the fact list**. Claude is used only on a mechanical failure of Gemma — unavailable, timeout, empty, or unparseable — never because someone judged Gemma's prose to be worse, and every substitution is disclosed on screen. Failures are narrated rather than hidden. **Escape** aborts at any point.
 
-Three steps execute on the host rather than over the bridge: mutation testing (scene 26) compiles and executes mutated code in-process, the local speculative-decoding scene (38) launches `llama-server`, and the notes-to-domains scene (39) embeds and trains against a repository on disk. The autopilot **hard-blocks** those three steps unless `Autopilot:AllowInProcessExecution` is set. It defaults to `false`.
+Four steps execute on the host rather than over the bridge: mutation testing (scene 26) compiles and executes mutated code in-process, the local speculative-decoding scene (38) launches `llama-server`, the notes-to-domains scene (39) embeds and trains against a repository on disk, and LLM in the Room (40) launches `llama-server` and `whisper-server`. The autopilot **hard-blocks** those four steps unless `Autopilot:AllowInProcessExecution` is set. It defaults to `false`.
 
 Not yet built: narration pre-flight caching, and the Rehearsed profile that depends on it. A Full run currently generates static narration inline. See [Gemma4AutoNarratsAllTabs.md](../Gemma4AutoNarratsAllTabs.md) for the design and its open decisions.
 
@@ -98,6 +99,7 @@ The server reads and fetches things outside its own directory. All are optional;
 - **embeddinggemma-300m ONNX** under `models/embeddinggemma-300m-onnx/` (~320 MB, gitignored). Absent → structural fallbacks, stated in the UI.
 - **GnuCOBOL** on `PATH` for the migration oracle. Absent → that scene reports the toolchain is unavailable.
 - **llama.cpp CPU build + two GGUF files** for the local speculative-decoding scene: `tools/llama-cpp/cpu/llama-server.exe` (release b10909 `llama-*-bin-win-cpu-x64.zip`, or set `LLAMA_CPP_HOME`), `gemma3/gemma-3-4b-it-Q4_K_M.gguf` (2.4 GB) and `gemma3/gemma-3-270m-it-Q8_0.gguf` (278 MB) from `unsloth/*-GGUF` on Hugging Face. All gitignored. Absent → the scene lists what is missing and disables the run buttons. Needs ~3 GB of free RAM while running.
+- **Gemma 4 E2B GGUF + whisper.cpp** for LLM in the Room: `Gemma4/gemma-4-E2B-it-Q4_K_M.gguf` (3.0 GB, from `cstr/gemma4-e2b-it-GGUF`), `tools/whisper-cpp/Release/whisper-server.exe` (whisper.cpp b5130 `whisper-bin-x64.zip`) and `tools/whisper-cpp/models/ggml-base.en.bin` (141 MB, from `ggerganov/whisper.cpp`). All gitignored; the same `llama-server.exe` as above. Absent → the scene names what is missing and disables Start. Needs ~3.5 GB of free RAM while the room is running, and a browser with a microphone (Edge or Chrome, not VS Code's embedded browser).
 - **BankDemo repository** for the notes-to-domains scene, at `C:\Users\tkrro\Source\BankDemo` or set `BankDemoRoot`. Uses its COBOL sources and `docs/domains` ground truth. Absent → the scene reports the path is missing and disables the run button.
 - **Three trading repositories** (`EquityTradingPipeline`, `FixedIncomeOptionsEngine`, `CryptoFxSpotDesk`) discovered beside the workspace, or set `TradingCorpusRoot`. Absent → the common-code audit reports an unavailable corpus.
 - **Outbound HTTPS to Google Cloud documentation**, used only to ground the comparison judge. Restricted to an allowlist of documentation hosts. Unreachable → the comparison fails loudly rather than judging from memory.
@@ -165,3 +167,4 @@ dotnet run --project .\server\... -- --score-facts <file>    # score saved model
 - The autopilot itself fires 27 bridge steps on a Full run, several of which fan out to multiple models (four contestants plus a judge in the shootout, three builds plus a review in each of the classify and focus scenes) — well over 60 unattended model calls. That makes it an agent under this programme's own definition. It has no registry entry yet.
 - Benchmarks printed from a Debug build are marked as such; re-run in Release before quoting a number.
 - The fixture under `training-fixture/` is the canonical synthetic context for the FUL-1842 lesson; duplicated prose in application code is not authoritative.
+- LLM in the Room keeps the transcript in server memory only and posts microphone audio to loopback, where it is transcribed and discarded. The running notes are model-generated and rendered with `verified: null`; the transcript, not the notes, is the record. whisper base.en is English-only and degrades on cross-talk and accents.

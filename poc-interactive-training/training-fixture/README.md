@@ -78,6 +78,7 @@ elsewhere, and conflating them will produce wrong conclusions:
 | COBOL domains / Right LLM for the job | The IBM Global Auto Mart sample under `gam/` | Real IBM Enterprise COBOL, copybooks and JCL, used under its as-is sample licence; the GnuCOBOL oracle is compiled from it at startup |
 | Speculative decoding, locally | Two Gemma 3 GGUF files and a llama.cpp build under `gemma3/` and `tools/` | Fetched, never committed; the scene reports what is missing |
 | Notes to domains | The open BankDemo repository at `BankDemoRoot` | Real COBOL sources and a hand-written `docs/domains` catalog; only the *Business purpose* prose is used as ground truth |
+| LLM in the Room | This README (up to this section) and `okf/index.md`, as the tutor's grounding | The one place this bundle is used for a topic other than FUL-1842: Gemma explains OKF from these two files and is told to answer from nothing else |
 | Regression audit | The production baseline plus QA's condition-permutation data | The baseline is the reference of record — correctness is defined as agreement with it, not with any document |
 | Auto-run narration | The step fact packs in `AutopilotManifest` | Authored by a human, contract-tested against the markup, and the only thing narration may assert |
 | Everything deterministic | Fixtures compiled into the server | Synthetic, versioned with the code |

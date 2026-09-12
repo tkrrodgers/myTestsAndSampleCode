@@ -81,7 +81,7 @@ The remaining review recommendations were applied **inside** existing documents 
 
 **Platform design:**
 - [Interactive AI Training Design](interactiveAITrainingDesign.md) — the multimedia training platform (VSIX client ↔ training server ↔ Blazor UI) that delivers the enablement curriculum in [07](07-enablement-and-interactive-training.md). Staged behind explicit build gates (§14.1).
-- [POC Interactive Training](../poc-interactive-training/README.md) — the runnable build: 39 scenes (an overview plus 38 demonstrations), an unattended auto-run, and the list of deterministic controls that produce their numbers without a model. Its scene 1 lists the capabilities this framework calls for that the lab does not yet cover.
+- [POC Interactive Training](../poc-interactive-training/README.md) — the runnable build: 40 scenes (an overview plus 39 demonstrations), an unattended auto-run, and the list of deterministic controls that produce their numbers without a model. Its scene 1 lists the capabilities this framework calls for that the lab does not yet cover. Scene 40, [LLM in the Room](../poc-interactive-training/GemmaInTheRoomFinalDesign.md), puts a local Gemma 4 in a team session with push-to-talk, spoken answers and model-drafted notes.
 - [Enhancing the Current Interactive Training](enhancingCurrentInteractiveTraining.md) and [Training Sample Overview](trainingSampleOverview.md) are dated design snapshots (20 and 15 scenes respectively); the README above is authoritative for what exists.
 
 **Meta / review:**

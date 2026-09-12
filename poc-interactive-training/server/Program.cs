@@ -217,6 +217,9 @@ builder.Services.AddSingleton<MigrationSandbox>();
 builder.Services.AddSingleton<ContextClassifierService>();
 builder.Services.AddSingleton<LlmShootoutService>();
 builder.Services.AddSingleton(_ => new LocalInferenceService(Path.Combine(builder.Environment.ContentRootPath, "..")));
+builder.Services.AddSingleton(provider => new RoomChatService(
+    Path.Combine(builder.Environment.ContentRootPath, ".."),
+    provider.GetRequiredService<TrainingFixtureProvider>()));
 builder.Services.AddSingleton(provider => new NotesClassificationService(
     provider.GetRequiredService<EmbeddingGemmaEncoder>(),
     builder.Configuration["BankDemoRoot"] ?? @"C:\Users\tkrro\Source\BankDemo"));
@@ -237,6 +240,11 @@ app.Logger.LogInformation("LLM shootout self-check: {Detail}", app.Services.GetR
 var specEnv = app.Services.GetRequiredService<LocalInferenceService>().Environment();
 app.Logger.LogInformation("Local inference: {Status} target {Target} ({TargetMb} MB), draft {Draft} ({DraftMb} MB), {Cores} cores, {Free}/{Total} MB RAM free.", specEnv.Status, specEnv.TargetModel, specEnv.TargetMb, specEnv.DraftModel, specEnv.DraftMb, specEnv.LogicalCores, specEnv.FreeRamMb, specEnv.TotalRamMb);
 app.Logger.LogInformation("Notes classification: {Status}", app.Services.GetRequiredService<NotesClassificationService>().EnvironmentStatus);
+
+// The room assistant launches two host processes; they must die with the server, not outlive it.
+var room = app.Services.GetRequiredService<RoomChatService>();
+app.Logger.LogInformation("LLM in the Room: {Status}", room.Environment().Status);
+app.Lifetime.ApplicationStopping.Register(room.Stop);
 
 var claraProbe = ClaraCompiler.Run(RoundTripSamples.ClaraSample);
 app.Logger.LogInformation("CLARA compiler self-check: compiled={Compiled} in {Milliseconds:N2} ms, {Passed}/{Total} examples passed, {Warnings} warnings.",
@@ -472,6 +480,33 @@ bridge.MapPost("/events/stream", (HttpRequest request, ReviewStreamChunk chunk, 
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// Browser microphone audio for the room scene. Loopback only (enforced above); the WAV goes to a local
+// whisper.cpp process and is discarded — only the transcript is kept.
+app.MapPost("/api/room/transcribe", async (HttpRequest request, RoomChatService roomChat, CancellationToken cancellation) =>
+{
+    if (request.ContentLength is > 12_000_000)
+    {
+        return Results.BadRequest(new { error = "Recording too long." });
+    }
+
+    using var buffer = new MemoryStream();
+    await request.Body.CopyToAsync(buffer, cancellation);
+    if (buffer.Length < 44)
+    {
+        return Results.BadRequest(new { error = "Empty recording." });
+    }
+
+    try
+    {
+        var (text, ms) = await roomChat.TranscribeAsync(buffer.ToArray(), cancellation);
+        return Results.Ok(new { text, ms });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+});
 
 app.Run("http://127.0.0.1:5000");
 

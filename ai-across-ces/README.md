@@ -4,7 +4,7 @@
 
 **Owner:** AI Enablement Lead / Architect
 **Status:** Draft v0.1 — living documents, built to be refined
-**Last updated:** 2026-09-02
+**Last updated:** 2026-09-11
 
 ---
 
@@ -81,6 +81,8 @@ The remaining review recommendations were applied **inside** existing documents 
 
 **Platform design:**
 - [Interactive AI Training Design](interactiveAITrainingDesign.md) — the multimedia training platform (VSIX client ↔ training server ↔ Blazor UI) that delivers the enablement curriculum in [07](07-enablement-and-interactive-training.md). Staged behind explicit build gates (§14.1).
+- [POC Interactive Training](../poc-interactive-training/README.md) — the runnable build: 39 scenes (an overview plus 38 demonstrations), an unattended auto-run, and the list of deterministic controls that produce their numbers without a model. Its scene 1 lists the capabilities this framework calls for that the lab does not yet cover.
+- [Enhancing the Current Interactive Training](enhancingCurrentInteractiveTraining.md) and [Training Sample Overview](trainingSampleOverview.md) are dated design snapshots (20 and 15 scenes respectively); the README above is authoritative for what exists.
 
 **Meta / review:**
 - [Architect Review & Recommendations](architect-review-and-recommendations.md) — self-critique of this framework, prioritized recommendations, an explicit "do not build" list, and a minimum critical path. Read this before expanding the framework.

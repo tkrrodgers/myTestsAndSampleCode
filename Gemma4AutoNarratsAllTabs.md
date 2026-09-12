@@ -1,17 +1,18 @@
 # Gemma 4 Auto-Narrates All Tabs — Design
 
-*An unattended demonstration mode in which Gemma 4 walks all 34 scenes, operates every control, and explains what is happening — with Claude Opus 4.8 as the narration failover.*
+*An unattended demonstration mode in which Gemma 4 walks all 39 scenes, operates every control, and explains what is happening — with Claude Opus 4.8 as the narration failover.*
 
 **Owner:** Director of AI (AI Enablement)
-**Status:** Design draft v0.1 — not built
+**Status:** Design draft v0.1 — Deterministic and Full profiles are **built**; Rehearsed profile and narration pre-flight caching are not
 **Target:** `poc-interactive-training` Blazor server + VSIX bridge
+**Source of truth for counts:** `server/Services/AutopilotManifest.cs` — 146 steps over 39 scenes, 27 of them bridge steps, 3 hard-blocked in-process steps. The scene-by-scene tables in §11 were written against the 34-scene build and have not been extended for scenes 35–39; the manifest has.
 **Related:** [pocInteractiveTraainingProgram](pocInteractiveTraainingProgram.md) · [07 Enablement & Training](ai-across-ces/07-enablement-and-interactive-training.md) · [01 Context & Transparency](ai-across-ces/01-context-engineering-and-transparency.md) · [interactiveAITrainingDesign](ai-across-ces/interactiveAITrainingDesign.md)
 
 ---
 
 ## 1. Executive summary
 
-**What is being proposed.** A single button — *Auto-run the whole programme* — that drives the existing training application end to end without a human touching it. It changes scene, clicks the real buttons, fills the real inputs, waits for the real results, and narrates each step aloud in plain language. It runs all **34 scenes** and operates all **41 interactive controls** across them.
+**What is being proposed.** A single button — *Auto-run the whole programme* — that drives the existing training application end to end without a human touching it. It changes scene, clicks the real buttons, fills the real inputs, waits for the real results, and narrates each step aloud in plain language. It runs all **39 scenes** and operates every `data-auto` control across them (146 manifest steps at the time of writing).
 
 **Why it is worth building.** The programme currently requires a knowledgeable presenter who knows which button to press, how long each stage takes, and what the numbers mean. That is a key-person dependency and it makes the work impossible to circulate. An auto-run turns a 90-minute guided walkthrough into something a stakeholder can start and watch, and it forces us to state — in writing, per step — what every control actually does and what result would count as correct.
 
@@ -211,8 +212,8 @@ A full run's duration is dominated by model latency, which we do not control and
 | Profile | Scope | Model calls | Suitable for |
 | --- | --- | --- | --- |
 | **Deterministic** | Only scenes needing no bridge model | 0 (narration cached) | Air-gapped rooms, quick smoke test, CI |
-| **Rehearsed** | All 34 scenes, narration pre-cached, results from the current session | Result narration only | A leadership demo that has been rehearsed |
-| **Full** | All 34 scenes, every model stage executed live | **~55 bridge round-trips** (§11) | Proving the whole pipeline actually works |
+| **Rehearsed** | All 39 scenes, narration pre-cached, results from the current session | Result narration only | A leadership demo that has been rehearsed |
+| **Full** | All 39 scenes, every model stage executed live | **27 bridge steps, several fanning out to multiple models** (§11) | Proving the whole pipeline actually works |
 | **Single scene** | One scene, all its steps | Scene-dependent | Development and debugging |
 
 ### 8.1 Why there is no duration figure in this document
@@ -254,6 +255,7 @@ These are non-negotiable and precede any narration.
 | Risk | Control |
 | --- | --- |
 | **Mutation testing executes code in-process** (scene 26) | Auto-run refuses to execute this step unless the host is marked `AllowInProcessExecution`. On a shared host it narrates the explanation and skips. **This is a hard block, not a warning.** |
+| **Speculative decoding launches `llama-server` on the host** (scene 38) and **notes-to-domains embeds and trains against a repository on disk** (scene 39) | Same `AllowInProcessExecution` hard block as mutation testing. |
 | **Ephemeral ticket contains realistic secrets** (scene 27) | The deterministic data-tier gate runs first, exactly as in manual use. The autopilot has no path that bypasses it. |
 | **Narration could leak fixture content** | Fact packs are authored from scene metadata and deterministic results only. Raw ticket payloads and source files are never placed in a narration prompt. |
 | **Unattended run left on a screen** | Idle timeout ends the run and returns to scene 1. |
@@ -264,7 +266,7 @@ These are non-negotiable and precede any narration.
 
 ## 11. Scene-by-scene step design
 
-The complete walkthrough. **34 scenes, 41 interactive controls, ~55 bridge round-trips.** Every control listed below was extracted from the current markup, not assumed.
+The complete walkthrough as designed against the **34-scene build**. Scenes 35–39 (Classify Context, Tell LLM to Focus/Ignore, Right LLM for the job, Speculative decoding locally, Notes to domains) are specified only in `AutopilotManifest.cs`; their fact packs and `must_not_claim` lists follow the same conventions as the tables below. Every control listed below was extracted from the markup current at the time, not assumed.
 
 Legend — **D** = deterministic, no model · **B** = bridge model call · *n×* = number of model round-trips.
 

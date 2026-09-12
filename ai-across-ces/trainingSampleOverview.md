@@ -4,7 +4,7 @@
 
 **Status:** Recommendation for review
 **Source material:** [sampleApproaches.md](sampleApproaches.md)
-**Platform:** [poc-interactive-training](../poc-interactive-training/README.md) — 15 scenes exist today; these would be scenes 16+.
+**Platform:** [poc-interactive-training](../poc-interactive-training/README.md) — 15 scenes existed when this was written; the four tabs proposed here were built as scenes 17, 19, 20 and 21 (the COBOL domain-segmentation scene took slot 18). The platform now has 39 scenes.
 
 ---
 

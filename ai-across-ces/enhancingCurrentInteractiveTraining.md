@@ -4,7 +4,7 @@
 
 **Status:** Design proposal for the Director of AI — written to be argued with, not accepted.
 **Source:** [MyNewDirectorRole.md](MyNewDirectorRole.md)
-**Platform:** [poc-interactive-training](../poc-interactive-training/README.md) — 20 scenes exist today (0–19).
+**Platform:** [poc-interactive-training](../poc-interactive-training/README.md) — 20 scenes existed when this was written (0–19). The platform now has 39; most of the gaps marked 🔴 below have since been built as scenes 22–34 (production sampling and fine-tuning remain open — see the gap table on scene 1). Count-based statements in this document are a historical snapshot.
 **Related:** [07 Enablement](07-enablement-and-interactive-training.md) · [05 Agent QA](05-agent-qa-and-regression-framework.md) · [10 Registry](10-agent-inventory-and-registry.md) · [11 Measurement](11-measurement-baselines-and-roi.md) · [Interactive Design](interactiveAITrainingDesign.md)
 
 ---

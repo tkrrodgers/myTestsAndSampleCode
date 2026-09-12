@@ -19,6 +19,9 @@ public sealed record AutopilotContractResult(
 /// </summary>
 public sealed partial class AutopilotContract(IWebHostEnvironment environment)
 {
+    // Must match Scenes.Length in Home.razor; a new scene without manifest steps fails the contract.
+    public const int SceneCount = 39;
+
     [GeneratedRegex(@"data-auto=""([^""]+)""")]
     private static partial Regex DataAuto();
 
@@ -100,7 +103,7 @@ public sealed partial class AutopilotContract(IWebHostEnvironment environment)
         }
 
         var covered = AutopilotManifest.Steps.Select(step => step.SceneNumber).Distinct().ToList();
-        for (var scene = 1; scene <= 35; scene++)
+        for (var scene = 1; scene <= SceneCount; scene++)
         {
             if (!covered.Contains(scene))
             {

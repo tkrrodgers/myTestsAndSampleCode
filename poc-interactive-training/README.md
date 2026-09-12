@@ -1,6 +1,6 @@
 # POC Interactive Training
 
-A runnable, 35-scene AI-governance training platform: an ASP.NET Core Blazor server, a VS Code model bridge, and a set of deterministic controls that run with no model at all.
+A runnable, 39-scene AI-governance training platform: an ASP.NET Core Blazor server, a VS Code model bridge, and a set of deterministic controls that run with no model at all. Scene 1 is the programme overview; the other 38 are working demonstrations.
 
 The organising principle throughout: **prerequisite and assurance controls are deterministic; models supply judgement and narrative only.** A gate that depends on a model is not a gate. Every deterministic service has a startup self-check that prints its result to the console, so a broken control is visible before anyone demonstrates it.
 
@@ -53,7 +53,7 @@ These produce their numbers from executed code, not from an opinion. They work w
 | Plan-first check | Six structural checks on a plan, including "no code yet" |
 | CLARA compiler | Lex → parse → bind/type-check → expression tree → CIL → JIT. Conformance suite plus a measured benchmark against hand-written C# |
 | COBOL migration oracle | GnuCOBOL compiles and executes the legacy program to produce ground truth; candidate migrations are executed against it |
-| Autopilot manifest contract | Diffs the 146-step walkthrough manifest against the markup at startup; a missing selector disables auto-run rather than failing at the click |
+| Autopilot manifest contract | Diffs the 146-step walkthrough manifest against the markup at startup and checks that every one of the 39 scenes has at least one step; a missing selector disables auto-run rather than failing at the click |
 | COBOL domain segmentation | Parses real IBM Enterprise COBOL with the ANTLR `Cobol85.g4` grammar, resolves copybooks in SYSLIB order, builds the call graph, CRUD matrix and DDG, builds a PDG on demand, then partitions with Leiden over a resolution sweep. Publishes parse, grammar, copybook, SQL and program-reference coverage with every run |
 | Context classifier | Separates a mixed two-domain design document section by section: embeddinggemma vectors through an ML.NET model trained on the two real trading repositories, fused with a lexical arm of repository vocabulary. Uncertain sections are kept, referenced sections are kept regardless of label, and the result is scored against sealed labels and planted cross-domain traps |
 | LLM shootout oracle | GnuCOBOL compiles and runs a harness lifted verbatim from the IBM Global Auto Mart sample (DCLGEN copybook + the row-formatting MOVE chain). Its output — record lengths, 21 field offsets, five screen rows and four hex dumps — is the answer key every model is scored against; a synthetic perfect answer must score 32/32 at startup |
@@ -68,12 +68,12 @@ The rule that makes it safe: **no model ever infers what the application does.**
 
 | Profile | Scope |
 | --- | --- |
-| Deterministic | The 118 steps that need no bridge model. Narration is the fact list, read verbatim. Works offline |
-| Full | All 146 steps including every model stage, with Gemma 4 authoring narration |
+| Deterministic | The 119 steps that need no bridge model (116 with the default in-process execution block, see below). Narration is the fact list, read verbatim. Works offline |
+| Full | All 146 steps across 39 scenes, including the 27 bridge steps that run every model stage, with Gemma 4 authoring narration |
 
 Narration falls back **Gemma 4 → Claude Opus 4.8 → the fact list**. Claude is used only on a mechanical failure of Gemma — unavailable, timeout, empty, or unparseable — never because someone judged Gemma's prose to be worse, and every substitution is disclosed on screen. Failures are narrated rather than hidden. **Escape** aborts at any point.
 
-Mutation testing (scene 26) compiles and executes mutated code in-process, and the local speculative-decoding scene (38) launches `llama-server` on the host, so the autopilot **hard-blocks** those steps unless `Autopilot:AllowInProcessExecution` is set. It defaults to `false`.
+Three steps execute on the host rather than over the bridge: mutation testing (scene 26) compiles and executes mutated code in-process, the local speculative-decoding scene (38) launches `llama-server`, and the notes-to-domains scene (39) embeds and trains against a repository on disk. The autopilot **hard-blocks** those three steps unless `Autopilot:AllowInProcessExecution` is set. It defaults to `false`.
 
 Not yet built: narration pre-flight caching, and the Rehearsed profile that depends on it. A Full run currently generates static narration inline. See [Gemma4AutoNarratsAllTabs.md](../Gemma4AutoNarratsAllTabs.md) for the design and its open decisions.
 
@@ -162,6 +162,6 @@ dotnet run --project .\server\... -- --score-facts <file>    # score saved model
 - Static autopilot narration describes what a step is **designed** to do, not what was just observed. Only result narration reflects the actual outcome.
 - The crypto SME grounding pack is a dated snapshot of vendor documentation. A stale pack grounds the model in confident, wrong detail — worse than no pack.
 - Keyword recall scoring measures vocabulary, not correctness. Treat it as a floor.
-- The autopilot itself makes roughly 55 unattended model calls on a Full run, which makes it an agent under this programme's own definition. It has no registry entry yet.
+- The autopilot itself fires 27 bridge steps on a Full run, several of which fan out to multiple models (four contestants plus a judge in the shootout, three builds plus a review in each of the classify and focus scenes) — well over 60 unattended model calls. That makes it an agent under this programme's own definition. It has no registry entry yet.
 - Benchmarks printed from a Debug build are marked as such; re-run in Release before quoting a number.
 - The fixture under `training-fixture/` is the canonical synthetic context for the FUL-1842 lesson; duplicated prose in application code is not authoritative.

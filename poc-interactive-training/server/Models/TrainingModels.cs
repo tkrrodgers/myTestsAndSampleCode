@@ -40,6 +40,7 @@ public sealed record TrainingSession(
     FocusState Focus,
     ShootoutState Shootout,
     SpeculativeState Speculative,
+    NotesClassificationState NotesClassification,
     NarrationState Narration);
 
 public sealed record NarrationState(

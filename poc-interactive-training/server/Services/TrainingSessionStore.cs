@@ -29,6 +29,7 @@ public sealed class TrainingSessionStore
     private readonly ContextClassifierService _classifier;
     private readonly LlmShootoutService _shootout;
     private readonly LocalInferenceService _localInference;
+    private readonly NotesClassificationService _notesClassification;
 
     // Measured once: what each representation of the same logic actually costs in context.
     private static int CSharpSourceTokens;
@@ -60,7 +61,7 @@ public sealed class TrainingSessionStore
         "The fee is rounded to whole dollars, but rule 6 requires 2 decimal places."
     ];
 
-    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox, DataTierClassifier dataTier, TradingCorpus tradingCorpus, DocumentationFetcher documentation, ContextClassifierService classifier, LlmShootoutService shootout, LocalInferenceService localInference)
+    public TrainingSessionStore(TrainingFixtureProvider fixture, CSharpAuditAnalyzer auditAnalyzer, ContextAuditService contextAudit, EmbeddingGemmaEncoder encoder, CobolToolchain cobol, MigrationSandbox sandbox, DataTierClassifier dataTier, TradingCorpus tradingCorpus, DocumentationFetcher documentation, ContextClassifierService classifier, LlmShootoutService shootout, LocalInferenceService localInference, NotesClassificationService notesClassification)
     {
         _fixture = fixture;
         _auditAnalyzer = auditAnalyzer;
@@ -71,6 +72,7 @@ public sealed class TrainingSessionStore
         _classifier = classifier;
         _shootout = shootout;
         _localInference = localInference;
+        _notesClassification = notesClassification;
         _dataTier = dataTier;
         _tradingCorpus = tradingCorpus;
         _documentation = documentation;
@@ -98,12 +100,12 @@ public sealed class TrainingSessionStore
                 .Replace('/', '_')
                 .TrimEnd('='));
         _sessions[state.SessionId] = state;
-        return state.Snapshot(_shootout.Oracle, _localInference.Environment());
+        return state.Snapshot(_shootout.Oracle, _localInference.Environment(), _notesClassification.Available, _notesClassification.EnvironmentStatus, _notesClassification.BankRoot);
     }
 
     public TrainingSession GetSession(string sessionId) =>
         _sessions.TryGetValue(sessionId, out var state)
-            ? state.Snapshot(_shootout.Oracle, _localInference.Environment())
+            ? state.Snapshot(_shootout.Oracle, _localInference.Environment(), _notesClassification.Available, _notesClassification.EnvironmentStatus, _notesClassification.BankRoot)
             : throw new InvalidOperationException("Training session was not found.");
 
     public bool IsValidToken(string token) =>
@@ -2342,6 +2344,51 @@ public sealed class TrainingSessionStore
     private sealed record ShootoutJudgeSlotDto(string? Slot, string? Verdict, List<string>? Strengths, List<string>? Weaknesses, int? DesignScore);
 
     private sealed record ShootoutJudgeDto(string? Summary, List<ShootoutJudgeSlotDto>? Slots, List<string>? Ranking, string? Recommendation);
+
+    // --- BankDemo notes -> domain classification: embeddinggemma + ML.NET + call-graph, all deterministic ---
+    public void StartNotesClassification(string sessionId)
+    {
+        var session = RequireSession(sessionId);
+        lock (_gate)
+        {
+            if (session.NotesStatus == "running")
+            {
+                return;
+            }
+
+            if (!_notesClassification.Available)
+            {
+                session.NotesStatus = "failed";
+                session.NotesError = _notesClassification.EnvironmentStatus;
+                return;
+            }
+
+            session.NotesStatus = "running";
+            session.NotesError = null;
+        }
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var result = _notesClassification.Result;
+                lock (_gate)
+                {
+                    session.NotesResult = result;
+                    session.NotesStatus = result.Available ? "completed" : "failed";
+                    session.NotesError = result.Available ? null : result.Status;
+                }
+            }
+            catch (Exception ex)
+            {
+                lock (_gate)
+                {
+                    session.NotesStatus = "failed";
+                    session.NotesError = ex.Message;
+                }
+            }
+        });
+    }
 
     // --- Speculative decoding on this laptop: llama.cpp runs locally, no bridge, every number is a counter ---
     public void StartSpeculativeRun(string sessionId, string promptKind)
@@ -4610,8 +4657,11 @@ public sealed class TrainingSessionStore
         public string? ShootoutError { get; set; }
         public Dictionary<string, SpecPromptRun> SpeculativeRuns { get; } = [];
         public string? SpeculativeError { get; set; }
+        public string NotesStatus { get; set; } = "not-started";
+        public NotesClassificationResult? NotesResult { get; set; }
+        public string? NotesError { get; set; }
 
-        public TrainingSession Snapshot(ShootoutOracle shootoutOracle, SpecEnvironment specEnvironment) => new(
+        public TrainingSession Snapshot(ShootoutOracle shootoutOracle, SpecEnvironment specEnvironment, bool notesAvailable, string notesEnvironment, string notesBankRoot) => new(
             SessionId,
             BridgeToken,
             CreatedAt,
@@ -4925,6 +4975,13 @@ public sealed class TrainingSessionStore
                 specEnvironment,
                 LocalInferenceService.Prompts.Select(p => SpeculativeRuns.GetValueOrDefault(p.Kind)).Where(run => run is not null).ToList()!,
                 SpeculativeError),
+            new NotesClassificationState(
+                NotesStatus,
+                notesAvailable,
+                notesEnvironment,
+                notesBankRoot,
+                NotesResult,
+                NotesError),
             new NarrationState(NarrationStatus, NarrationText, NarrationModel, NarrationFallbackUsed));
     }
 

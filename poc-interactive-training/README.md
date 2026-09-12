@@ -53,11 +53,12 @@ These produce their numbers from executed code, not from an opinion. They work w
 | Plan-first check | Six structural checks on a plan, including "no code yet" |
 | CLARA compiler | Lex → parse → bind/type-check → expression tree → CIL → JIT. Conformance suite plus a measured benchmark against hand-written C# |
 | COBOL migration oracle | GnuCOBOL compiles and executes the legacy program to produce ground truth; candidate migrations are executed against it |
-| Autopilot manifest contract | Diffs the 141-step walkthrough manifest against the markup at startup; a missing selector disables auto-run rather than failing at the click |
+| Autopilot manifest contract | Diffs the 146-step walkthrough manifest against the markup at startup; a missing selector disables auto-run rather than failing at the click |
 | COBOL domain segmentation | Parses real IBM Enterprise COBOL with the ANTLR `Cobol85.g4` grammar, resolves copybooks in SYSLIB order, builds the call graph, CRUD matrix and DDG, builds a PDG on demand, then partitions with Leiden over a resolution sweep. Publishes parse, grammar, copybook, SQL and program-reference coverage with every run |
 | Context classifier | Separates a mixed two-domain design document section by section: embeddinggemma vectors through an ML.NET model trained on the two real trading repositories, fused with a lexical arm of repository vocabulary. Uncertain sections are kept, referenced sections are kept regardless of label, and the result is scored against sealed labels and planted cross-domain traps |
 | LLM shootout oracle | GnuCOBOL compiles and runs a harness lifted verbatim from the IBM Global Auto Mart sample (DCLGEN copybook + the row-formatting MOVE chain). Its output — record lengths, 21 field offsets, five screen rows and four hex dumps — is the answer key every model is scored against; a synthetic perfect answer must score 32/32 at startup |
 | Local speculative decoding | Drives a local llama.cpp `llama-server` (CPU build) to run Gemma 3 4B alone, with a Gemma 3 270m draft, and with an n-gram draft on the same greedy prompt. Reports llama.cpp's own decode tokens/s, drafted/accepted counts, process memory and a SHA-256 text-identity check against the baseline. Weights and the runtime are fetched, never committed |
+| Notes-to-domains classifier | Reads the in-code notes of the open BankDemo COBOL app and scores five methods (retrieval, Help-excluded retrieval, nearest-centroid, supervised ML.NET, call-graph structure-aware) against the hand-written `docs/domains` catalog. Uses each domain's *Business purpose* prose only, never the section that quotes the notes. embeddinggemma vectors, cosine, SdcaMaximumEntropy and LINK/CALL/COPY call-graph clustering; every number is a cosine or a held-out prediction |
 
 ## Auto-run: the whole programme, unattended
 
@@ -67,8 +68,8 @@ The rule that makes it safe: **no model ever infers what the application does.**
 
 | Profile | Scope |
 | --- | --- |
-| Deterministic | The 113 steps that need no bridge model. Narration is the fact list, read verbatim. Works offline |
-| Full | All 141 steps including every model stage, with Gemma 4 authoring narration |
+| Deterministic | The 118 steps that need no bridge model. Narration is the fact list, read verbatim. Works offline |
+| Full | All 146 steps including every model stage, with Gemma 4 authoring narration |
 
 Narration falls back **Gemma 4 → Claude Opus 4.8 → the fact list**. Claude is used only on a mechanical failure of Gemma — unavailable, timeout, empty, or unparseable — never because someone judged Gemma's prose to be worse, and every substitution is disclosed on screen. Failures are narrated rather than hidden. **Escape** aborts at any point.
 
@@ -97,6 +98,7 @@ The server reads and fetches things outside its own directory. All are optional;
 - **embeddinggemma-300m ONNX** under `models/embeddinggemma-300m-onnx/` (~320 MB, gitignored). Absent → structural fallbacks, stated in the UI.
 - **GnuCOBOL** on `PATH` for the migration oracle. Absent → that scene reports the toolchain is unavailable.
 - **llama.cpp CPU build + two GGUF files** for the local speculative-decoding scene: `tools/llama-cpp/cpu/llama-server.exe` (release b10909 `llama-*-bin-win-cpu-x64.zip`, or set `LLAMA_CPP_HOME`), `gemma3/gemma-3-4b-it-Q4_K_M.gguf` (2.4 GB) and `gemma3/gemma-3-270m-it-Q8_0.gguf` (278 MB) from `unsloth/*-GGUF` on Hugging Face. All gitignored. Absent → the scene lists what is missing and disables the run buttons. Needs ~3 GB of free RAM while running.
+- **BankDemo repository** for the notes-to-domains scene, at `C:\Users\tkrro\Source\BankDemo` or set `BankDemoRoot`. Uses its COBOL sources and `docs/domains` ground truth. Absent → the scene reports the path is missing and disables the run button.
 - **Three trading repositories** (`EquityTradingPipeline`, `FixedIncomeOptionsEngine`, `CryptoFxSpotDesk`) discovered beside the workspace, or set `TradingCorpusRoot`. Absent → the common-code audit reports an unavailable corpus.
 - **Outbound HTTPS to Google Cloud documentation**, used only to ground the comparison judge. Restricted to an allowlist of documentation hosts. Unreachable → the comparison fails loudly rather than judging from memory.
 

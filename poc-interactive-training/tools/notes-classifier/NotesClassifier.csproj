@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>NotesClassifier</AssemblyName>
+    <RootNamespace>NotesClassifier</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML" Version="4.0.2" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" Version="1.0.2" />
+  </ItemGroup>
+
+  <!-- Reuse the exact encoder the platform ships; no ASP.NET dependency is pulled in. -->
+  <ItemGroup>
+    <Compile Include="..\..\server\Services\EmbeddingGemmaEncoder.cs" Link="EmbeddingGemmaEncoder.cs" />
+  </ItemGroup>
+
+</Project>

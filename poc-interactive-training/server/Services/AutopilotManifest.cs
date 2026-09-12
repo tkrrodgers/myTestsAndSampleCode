@@ -50,7 +50,7 @@ public static class AutopilotManifest
     [
         // ---- 1 introduction -------------------------------------------------
         S("s01.01", "introduction", 1, AutoKind.Observe,
-            ["Six Director of AI priorities are mapped onto thirty-seven working demonstrations.",
+            ["Six Director of AI priorities are mapped onto thirty-eight working demonstrations.",
              "Every scene ends in a number, and each scene states whether a tool or a model produced it."]),
         S("s01.02", "introduction", 1, AutoKind.Scroll, selector: "[data-auto='s01.gaps']",
             facts: ["Eight capabilities the role calls for are not yet covered by the lab.",
@@ -601,7 +601,27 @@ public static class AutopilotManifest
             mustNot: ["that the outputs are identical", "that the result transfers to a machine with a discrete GPU"]),
         S("sp.05", "speculative-decoding", 38, AutoKind.Scroll, selector: "[data-auto='sp.takeaways']",
             facts: ["Speculative decoding is a serving-side optimisation: real for on-device and self-hosted inference, unavailable as a lever on any vendor API.",
-                    "This is one run on one machine with one model pair; re-run on the target hardware before deciding."])
+                    "This is one run on one machine with one model pair; re-run on the target hardware before deciding."]),
+
+        // ---- 39 notes-to-domains ----------------------------------------------------------
+        S("nc.01", "notes-to-domains", 39, AutoKind.Scroll, selector: "[data-auto='nc.setup']",
+            facts: ["On the open BankDemo application, the question is whether EmbeddingGemma and ML.NET can read the in-code notes and reproduce a hand-written domain catalog.",
+                    "Scoring uses each domain's Business purpose prose only, never the section that quotes the notes, so the test is not circular."],
+            mustNot: ["that a model grades any of the numbers"]),
+        S("nc.02", "notes-to-domains", 39, AutoKind.Click, selector: "[data-auto='nc.run']",
+            wait: AutoWait.State, waitKey: "Notes", timeout: 120, needsExec: true,
+            facts: ["Five methods run against the catalog: plain retrieval, retrieval with the cross-cutting Help domain removed, nearest-centroid, supervised ML.NET, and a structure-aware method that pools notes along the call graph.",
+                    "Everything is deterministic: embeddinggemma vectors, cosine similarity, SdcaMaximumEntropy and call-graph clustering."]),
+        S("nc.03", "notes-to-domains", 39, AutoKind.Scroll, selector: "[data-auto='nc.scores']", result: true,
+            facts: ["Plain retrieval scores modestly on top-1 but the correct domain is almost always in the top three, so the notes carry the domain.",
+                    "Stripping boilerplate barely moves the score because the governed Function header line does most of the work."]),
+        S("nc.04", "notes-to-domains", 39, AutoKind.Scroll, selector: "[data-auto='nc.magnet']",
+            facts: ["One domain, Online Help, is implemented inside every business program, so its description is close to everything and acts as a magnet.",
+                    "A concern that lives everywhere is placed by who calls it, not by its words; the call graph finds cross-cutting programs by fan-in."]),
+        S("nc.05", "notes-to-domains", 39, AutoKind.Scroll, selector: "[data-auto='nc.structure']", result: true,
+            facts: ["Pooling each screen/business/data feature's notes along the LINK edges lets the thin data-program notes ride the strong business header, lifting the genuine business domains.",
+                    "Notes give the neurons, the call graph gives the binding; at estate scale the supervised classifier has far more per domain to learn from than BankDemo's two to four."],
+            mustNot: ["that one clean application proves the estate"])
     ];
 
     public static IEnumerable<AutoStep> ForProfile(AutoProfile profile, bool allowInProcessExecution) =>

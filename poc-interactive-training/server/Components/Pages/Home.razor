@@ -15,6 +15,7 @@
 @inject ContextClassifierService Classifier
 @inject LlmShootoutService Shootout
 @inject LocalInferenceService LocalInference
+@inject NotesClassificationService NotesClassifier
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 
@@ -120,7 +121,7 @@
 							<p class="kicker">DIRECTOR OF AI &middot; PROGRAMME OVERVIEW</p>
 							<h2 id="scene-title">Help teams adopt AI<br /><em>without asking them to take it on trust.</em></h2>
 							<p class="lede">
-								Six priorities, thirty-seven working demonstrations. Every scene ends in a number, and every scene
+								Six priorities, thirty-eight working demonstrations. Every scene ends in a number, and every scene
 								says whether that number came from running something or from asking a model. Where the honest answer
 								is &ldquo;we have not built this yet&rdquo;, it is listed at the bottom of this page rather than left out.
 							</p>
@@ -265,7 +266,7 @@
 						<section class="rt-box" data-auto="s01.gaps">
 							<header class="rt-head"><span class="rt-step">!</span><div><strong>What the role calls for and this lab does not yet do</strong><small>stated here so nobody has to discover it in a demo</small></div></header>
 							<div class="audit-body">
-								<p class="rt-reco">Thirty-seven scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
+								<p class="rt-reco">Thirty-eight scenes cover the six priorities unevenly. These are the gaps I would fund first.</p>
 								<table class="audit-table">
 									<thead><tr><th>Missing capability</th><th>Nearest scene</th><th>Why the scene is not sufficient</th></tr></thead>
 									<tbody>
@@ -5589,6 +5590,183 @@ cobol85  -&gt; 000000</pre>
 						</section>
 					</section>
 					break;
+				case 38:
+					<section>
+						<p class="kicker">NOTES → DOMAINS → EDGES</p>
+						<h2 id="scene-title">Can the notes rebuild the map?</h2>
+						<p class="rt-intro">
+							A real modernisation estate is thousands of COBOL programs and tens of millions of lines, and roughly a third
+							of those lines are comments. Often the notes are the <em>only</em> description of what a program does. This scene
+							tests, on the open <strong>BankDemo</strong> application, whether EmbeddingGemma + ML.NET can read those notes and
+							reproduce a documentation set built by hand &mdash; the classification a knowledge graph would need. It uses your
+							cortex / neuron / hippocampus framing directly: the catalog is the <em>cortex</em> (the central index), each business
+							domain is a <em>neuron</em>, and the call graph between programs is the <em>hippocampus</em> that binds them.
+						</p>
+						<p class="rt-intro">
+							<strong>The ground truth is not ours.</strong> BankDemo ships a hand-written <code>docs/domains</code> set that maps
+							every program to a domain and even anticipates this experiment. We score against its <em>Business purpose</em> prose
+							only &mdash; never its &ldquo;Classification cues&rdquo; section, which quotes the very notes we are testing, because that
+							would be circular. Every number below is a cosine or a held-out prediction; no model grades anything.
+						</p>
+
+						@{
+							var nc = _session?.NotesClassification;
+							var ncr = nc?.Result;
+						}
+
+						<section class="rt-box" data-auto="nc.setup">
+							<header class="rt-head"><span class="rt-step">1</span><div><strong>The experiment</strong><small>@(nc?.EnvironmentStatus ?? "probing…")</small></div></header>
+							<div class="audit-body">
+								<p>
+									Each program is represented by its <code>* Function:</code> header line plus its distinctive inline notes, with the
+									catalog's shared boilerplate removed. We then run five methods of increasing structure and compare each to the
+									catalog. The first four use notes alone; the fifth adds the call graph.
+								</p>
+								<div class="rt-actions">
+									<small>Deterministic: embeddinggemma vectors, cosine retrieval, ML.NET SdcaMaximumEntropy and call-graph clustering. About 15&ndash;30 s on this machine; the result is cached.</small>
+									<button class="primary-command compact" type="button" data-auto="nc.run" disabled="@(_session is null || nc?.Available != true || NotesBusy)" @onclick="RunNotesClassification">@(ncr is { Available: true } ? "Run again" : "Run the experiment")</button>
+								</div>
+								@if (nc?.Available != true)
+								{
+									<div class="compare-status failed" role="alert">@nc?.EnvironmentStatus Set <code>BankDemoRoot</code> to the repository path and ensure embeddinggemma is loaded.</div>
+								}
+								@if (NotesBusy)
+								{
+									<div class="rt-pending cc-progress" role="status" aria-live="polite" data-auto="nc.progress">
+										<span></span>
+										<div><strong>Embedding the notes and the domain descriptions, then running five classifiers…</strong><small>@NotesElapsed elapsed · deterministic, no bridge</small></div>
+									</div>
+								}
+							</div>
+						</section>
+
+						@if (ncr is { Available: true })
+						{
+							<section class="rt-box" data-auto="nc.scores">
+								<header class="rt-head"><span class="rt-step">2</span><div><strong>Five methods, one ground truth</strong><small>@ncr.ProgramCount business programs · @ncr.EdgeCount call edges · @ncr.BoilerplatePhrases boilerplate phrases filtered</small></div></header>
+								<div class="audit-body">
+									<table class="audit-table" data-auto="nc.scores-table">
+										<thead><tr><th>Method</th><th>What it uses</th><th>Top-1</th><th>Top-3</th></tr></thead>
+										<tbody>
+											@foreach (var (score, isStructural) in new[] { (ncr.Retrieval, false), (ncr.RetrievalNoHelp, false), (ncr.Centroid, false), (ncr.Supervised, false), (ncr.Structural, true) })
+											{
+												<tr class="@(isStructural ? "p0-opt" : null)">
+													<td><strong>@score.Name</strong></td>
+													<td><small>@score.Method</small></td>
+													<td>@score.Top1/@score.Total = <strong>@Pct(score.Top1, score.Total)</strong></td>
+													<td>@(score.Top3 == score.Top1 && score.Name.Contains("centroid", StringComparison.OrdinalIgnoreCase) || score.Top3 == score.Top1 ? "—" : $"{score.Top3}/{score.Total} = {Pct(score.Top3, score.Total)}")</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="rt-note">
+										<strong>Read it top to bottom.</strong> Plain retrieval scores modestly on top-1 but the right domain is almost
+										always in the <em>top 3</em> &mdash; the signal is there. The second row shows the ceiling once the one cross-cutting
+										&ldquo;Help&rdquo; domain (next section) is removed as a target. The centroid and supervised rows show what a few
+										labelled examples per domain buy. The last row is the honest end-to-end number: same @ncr.ProgramCount programs as
+										plain retrieval, but the call graph lifts top-1 by discovering the cross-cutting concern and pooling each feature's
+										notes &mdash; no domain is removed by hand.
+									</p>
+								</div>
+							</section>
+
+							<section class="rt-box" data-auto="nc.magnet">
+								<header class="rt-head"><span class="rt-step">3</span><div><strong>The cross-cutting magnet (why edges matter)</strong><small>@ncr.CrossCutting.Count program(s) called across many domains</small></div></header>
+								<div class="audit-body">
+									<p>
+										One domain, <em>Online Help</em>, describes itself as &ldquo;implemented inside <strong>every</strong> business
+										program&rdquo;. Its description is close to everything, so note-similarity alone routes many programs to it. You cannot
+										place a concern that lives everywhere by its words &mdash; you place it by <strong>who calls it</strong>. The call graph
+										finds these automatically: a program pulled in by many others, across many domains, is cross-cutting by structure.
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>Program</th><th>Called by (fan-in)</th><th>Caller domains</th><th>Handled by</th></tr></thead>
+										<tbody>
+											@foreach (var xcut in ncr.CrossCutting)
+											{
+												<tr><td><code>@xcut.Program</code></td><td>@xcut.FanIn</td><td>@string.Join(", ", xcut.CallerDomains)</td><td><small>@xcut.Role</small></td></tr>
+											}
+										</tbody>
+									</table>
+								</div>
+							</section>
+
+							<section class="rt-box" data-auto="nc.structure">
+								<header class="rt-head"><span class="rt-step">4</span><div><strong>Edges recover the accuracy</strong><small>S/B/D features pooled along LINK edges, classified once</small></div></header>
+								<div class="audit-body">
+									<p>
+										BankDemo's pattern is a triplet: a screen program LINKs a business program, which LINKs a data program. Their
+										notes vary in richness &mdash; a data program's &ldquo;Obtain X&rdquo; is thin, the business program's header is strong.
+										The call graph groups each triplet into one <em>feature</em>, pools their notes, and classifies the feature once, so
+										the thin members ride the strong header. Cross-cutting and shared-data programs are set aside and assigned by their
+										callers. Per-domain, notes-only retrieval versus the structure-aware method:
+									</p>
+									<table class="audit-table">
+										<thead><tr><th>#</th><th>Domain</th><th>Programs</th><th>Retrieval correct</th><th>Structure-aware correct</th></tr></thead>
+										<tbody>
+											@foreach (var d in ncr.DomainScores)
+											{
+												<tr class="@(d.CorrectStructural > d.CorrectRetrieval ? "p0-opt" : d.CorrectStructural < d.CorrectRetrieval ? "p0-req" : null)">
+													<td>@d.Number</td><td>@d.Title</td><td>@d.Programs</td>
+													<td>@d.CorrectRetrieval / @d.Programs</td><td><strong>@d.CorrectStructural / @d.Programs</strong></td>
+												</tr>
+											}
+										</tbody>
+									</table>
+									<p class="rt-note">
+										The greens are where pooling along the call graph corrected a note-only miss; several domains go to a perfect
+										score once the thin data-program notes ride the strong business header. The one place structure loses is
+										&ldquo;More Information&rdquo;, which genuinely <em>is</em> Help: because Help has to be excluded as a target to stop it
+										swallowing everything, those two programs land elsewhere &mdash; a fair trade of two edge cases against the roughly
+										thirty the magnet would otherwise capture.
+									</p>
+									<details class="cc-arm">
+										<summary><strong>Per-program detail</strong> &mdash; truth, retrieval prediction (rank of the true domain) and the structure-aware prediction</summary>
+										<table class="audit-table">
+											<thead><tr><th></th><th>Program</th><th>Layer</th><th>Truth</th><th>Retrieval</th><th>true rank</th><th>Structure</th><th>notes</th><th>Function</th></tr></thead>
+											<tbody>
+												@foreach (var row in ncr.Rows)
+												{
+													<tr class="@(row.StructuralPred == row.TruthDomain ? null : "p0-req")">
+														<td>@(row.CrossCutting ? "×-cut" : "")</td>
+														<td><code>@row.Name</code></td><td>@row.Layer</td>
+														<td>@row.TruthDomain</td>
+														<td>@(row.RetrievalPred == row.TruthDomain ? row.RetrievalPred : $"{row.RetrievalPred} ✗")</td>
+														<td>@(row.RetrievalTruthRank < 0 ? "?" : row.RetrievalTruthRank.ToString())</td>
+														<td>@(row.StructuralPred == row.TruthDomain ? row.StructuralPred : $"{row.StructuralPred} ✗")</td>
+														<td>@row.DistinctiveCount/@row.NoteCount</td>
+														<td><small>@Trunc(row.Function, 30)</small></td>
+													</tr>
+												}
+											</tbody>
+										</table>
+									</details>
+								</div>
+							</section>
+
+							<section class="rt-qa" data-auto="nc.takeaways">
+								<header class="rt-head"><span class="rt-step">&#10003;</span><div><strong>What this means for the migration</strong><small>and the honest limits</small></div></header>
+								<h4>For the leadership conversation</h4>
+								<ul class="rt-list">
+									<li><strong>The notes carry the domain.</strong> The correct domain sits in the top three for the large majority of programs; the embedding space separates the business functions from the comments alone.</li>
+									<li><strong>The <code>Function:</code> header line is the workhorse.</strong> Stripping body boilerplate barely moved the score because that one governed header line does most of the work. On a real estate, auditing that those headers exist and are honest is the highest-value first step.</li>
+									<li><strong>Neurons need the hippocampus.</strong> Cross-cutting concerns cannot be placed by words; the call graph places them, and pooling notes along the call edges lifts the genuine business domains toward the high band. Notes give the neurons; edges give the binding.</li>
+									<li><strong>This is a floor, not a ceiling.</strong> BankDemo gives only 2&ndash;4 programs per domain. At estate scale &mdash; thousands of programs, dozens per domain &mdash; the supervised classifier has far more to learn from, and top-3 already shows the space is separable.</li>
+								</ul>
+								<h4>What this does and does not prove</h4>
+								<ul class="rt-list warn">
+									<li><strong>One clean, well-documented app.</strong> Your estate will have missing, copied and misleading headers; accuracy must keep being measured against a held-out sealed sample as you scale, the same discipline as the compiler oracle in the other scenes.</li>
+									<li><strong>The ground truth is human and imperfect too.</strong> The catalog notes its own copy-paste errors and undecided layers; some &ldquo;misses&rdquo; are arguable rather than wrong.</li>
+									<li><strong>Edges here are LINK/CALL/COPY only.</strong> A production graph would add data-flow and dynamic routing; more edges, better binding.</li>
+								</ul>
+							</section>
+						}
+						@if (nc?.Error is { } ncError)
+						{
+							<div class="compare-status failed" role="alert">@ncError</div>
+						}
+					</section>
+					break;
 			}
 		</article>
 
@@ -5622,7 +5800,7 @@ cobol85  -&gt; 000000</pre>
 </div>
 
 @code {
-	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME"), ("classify-context", "Classify Context"), ("focus-ignore", "Tell LLM to Focus/Ignore"), ("llm-shootout", "Right LLM for the job"), ("speculative-decoding", "Speculative decoding, locally")];
+	private static readonly (string Id, string Title)[] Scenes = [("introduction", "Programme overview"), ("welcome", "The investigation"), ("why-okf", "Why OKF"), ("artifact-tree", "Artifact structure"), ("jira-trace", "JIRA to code"), ("animation-demo", "Animation demo"), ("image-demo", "Image demo"), ("prompt-challenge", "Prompt challenge"), ("model-comparison", "Model comparison"), ("llm-support", "Model Uses LLM Support"), ("round-trip", "Round-trip grounding"), ("modernize", "Modernize legacy"), ("audit-code", "Audit Repo (code)"), ("audit-context", "Audit Repo (context)"), ("llm-language", "LLM Language POC"), ("language-test", "POC Language test"), ("cobol-migration", "COBOL migration"), ("cobol-domains", "Identify COBOL domains"), ("ticket-gate", "Ticket quality gate"), ("trap-hunt", "Cloud trap hunt"), ("drift-scorecard", "Drift scorecard"), ("phase-zero", "Phase 0 prerequisites"), ("context-curve", "Context sufficiency curve"), ("action-authority", "Action authority"), ("framing-lab", "Neutral framing lab"), ("regression-adequacy", "Regression adequacy"), ("ephemeral-test", "Ephemeral test ticket"), ("portfolio-tiers", "Portfolio context tiers"), ("common-code", "Common code audit"), ("token-economics", "Token economics"), ("pattern-library", "Pattern library"), ("plan-first", "Plan first"), ("leadership-map", "Leadership walkthrough"), ("crypto-sme", "Making Gemma 4 an SME"), ("classify-context", "Classify Context"), ("focus-ignore", "Tell LLM to Focus/Ignore"), ("llm-shootout", "Right LLM for the job"), ("speculative-decoding", "Speculative decoding, locally"), ("notes-to-domains", "Notes to domains (BankDemo)")];
 	private static readonly (string Title, string Path, string Finding, string Result)[] TraceSteps =
 	[
 		("Open the index", "okf/index.md", "The delivery-estimate concept is the governed entry point.", "Do not search the whole repository yet."),
@@ -5634,7 +5812,7 @@ cobol85  -&gt; 000000</pre>
 	];
 	private static readonly string[] BuiltInNarration =
 	[
-		"Six priorities, thirty-seven working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
+		"Six priorities, thirty-eight working demonstrations, and an honest list of what is still missing. Every scene ends in a number that came from running something, and where a number came from a model rather than a tool, the scene says so. Start here, then follow the links in the order that matches the question you are being asked.",
 		"A JIRA story names the desired outcome, but not always the system boundary or implementation path. This lesson follows governed evidence before code.",
 		"Search can find matching words. OKF adds concepts, ownership, decisions, and links that make those matches meaningful and reviewable.",
 		"The index is the entry point. Small linked artifacts disclose only the context needed for this task, while retaining provenance and freshness.",
@@ -5671,7 +5849,8 @@ cobol85  -&gt; 000000</pre>
 		"People change subject in a long session, and every later question pays for every earlier paragraph. A design document that mixes two unrelated services is separated back out by a classifier that runs on this machine, section by section, keeping whole sections verbatim and dropping the rest. Then Gemma builds the service from everything, from what the classifier kept, and from what Claude kept, and each build is compiled and run against a reference answer. If the filtered builds pass and cost less, the saving is real; if one fails a case the full build passed, the page names the section the filter should not have dropped.",
 		"Remove the noise, or name it? This scene keeps the whole mixed document and prepends an instruction, written by code from the classifier's decisions, that tells the model exactly which sections to ignore. Claude Opus 5 builds the bond settlement service from the mixed document alone, from the mixed document with that instruction, and from the filtered document as the reference. Every build is compiled and executed, and prompt and output tokens are counted, because an instruction that stops the model hedging saves on the way out rather than the way in. The future enhancement, applying the same idea to a live VS Code chat, is documented on the page and not yet built.",
 		"Which model for which job? Four models receive the same COBOL-to-Java design brief and return the same fixed-shape answer. GnuCOBOL has already compiled and run the legacy logic, so every byte offset, output row and hex dump is marked right or wrong by code, a sealed SME checklist counts the insights an experienced migration lead expects, and only then does a blinded judge rank the design quality of anonymised slots. Cost, speed and honesty about uncertainty sit beside the score, because the right model for a job is rarely the one that is best at everything.",
-		"Speculative decoding lets a small model guess several tokens ahead and a large model check them all in one pass. This scene runs it on the laptop itself: Gemma 3 4B alone, then with a 270 million parameter draft, then with an n-gram draft that needs no second model, on a code prompt and a prose prompt. Every number is llama.cpp's own counter or stopwatch. The gain is real on formulaic code and can vanish on prose, the cheapest draft is sometimes no model at all, and the outputs are the same distribution rather than the same text. None of this can be applied across vendors; it lives inside a serving process."
+		"Speculative decoding lets a small model guess several tokens ahead and a large model check them all in one pass. This scene runs it on the laptop itself: Gemma 3 4B alone, then with a 270 million parameter draft, then with an n-gram draft that needs no second model, on a code prompt and a prose prompt. Every number is llama.cpp's own counter or stopwatch. The gain is real on formulaic code and can vanish on prose, the cheapest draft is sometimes no model at all, and the outputs are the same distribution rather than the same text. None of this can be applied across vendors; it lives inside a serving process.",
+		"Can the notes rebuild the map? On thousands of legacy COBOL programs the comments are often the only description of what each one does. This scene tests, on the open BankDemo application, whether EmbeddingGemma and ML.NET can read those notes and reproduce a hand-written domain catalog. Five methods run against that ground truth: plain retrieval, retrieval with the one cross-cutting Help domain removed, nearest-centroid, a supervised ML.NET classifier, and a structure-aware method that pools notes along the call graph. The finding is that the notes carry the domain, the governed Function header does most of the work, and cross-cutting concerns must be placed by who calls them rather than by their words — the neurons need the hippocampus."
 	];
 
 	private TrainingSession? _session;
@@ -6205,6 +6384,18 @@ Finish with the verification path: the tests you would add or change, and how I 
 
 	private void RunSpeculative(string promptKind) { if (_session is null) return; _specStartedAt = DateTimeOffset.UtcNow; Store.StartSpeculativeRun(_session.SessionId, promptKind); _session = Store.GetSession(_session.SessionId); }
 
+	private bool NotesBusy => _session?.NotesClassification.Status == "running";
+
+	private DateTimeOffset? _notesStartedAt;
+
+	private string NotesElapsed => _notesStartedAt is { } started ? $"{(int)(DateTimeOffset.UtcNow - started).TotalSeconds}s" : "0s";
+
+	private void RunNotesClassification() { if (_session is null) return; _notesStartedAt = DateTimeOffset.UtcNow; Store.StartNotesClassification(_session.SessionId); _session = Store.GetSession(_session.SessionId); }
+
+	private static string Pct(int n, int d) => d == 0 ? "n/a" : $"{100.0 * n / d:0}%";
+
+	private static string Trunc(string text, int max) => string.IsNullOrEmpty(text) ? "" : text.Length <= max ? text : text[..max] + "…";
+
 	private static string LsCaseWhy(int index) => index switch
 	{
 		0 => "Ordinary row: price fits, year fits. The baseline every model should get.",
@@ -6626,6 +6817,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 		"Focus" => _session.Focus.Status,
 		"Shootout" => _session.Shootout.Status,
 		"Speculative" => _session.Speculative.Status,
+		"Notes" => _session.NotesClassification.Status,
 		_ => null
 	};
 
@@ -6643,6 +6835,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 			+ (_session.ClassifyContext.Arms.Count > 0 ? " Builds: " + string.Join("; ", _session.ClassifyContext.Arms.Where(a => a.Status == "completed").Select(a => $"arm {a.Arm} {a.PromptTokens} tokens, compiled {a.Compiled}, {a.Passed}/{ClassifyContextSamples.TestVectors.Length} cases")) : ""),
 		37 when _session?.Shootout is { Entries.Count: > 0 } ls => "Scorecard: " + string.Join("; ", ls.Entries.Where(e => e.Status == "completed").Select(e => $"{e.RequestedModel} {e.CheckablePassed}/{e.CheckableTotal} compiler checks, {e.InsightsFound}/{e.Insights.Count} insights, {e.OutputTokens} output tokens, {e.DurationMs / 1000} s, Java {(e.JavaProvided ? "provided" : "declined")}")),
 		38 when _session?.Speculative is { Runs.Count: > 0 } sp => string.Join(" ", sp.Runs.Where(r => r.Status == "completed").Select(r => $"{r.PromptTitle}: " + string.Join("; ", r.Arms.Where(a => a.Status == "completed").Select(a => $"{a.Label} {a.DecodeTokPerSec:0.0} tok/s" + (a.AcceptRatePercent is { } rate ? $", {rate}% accepted" : "") + (a.IdenticalToBaseline == false ? ", text differs" : ""))))),
+		39 when _session?.NotesClassification.Result is { Available: true } ncr => $"BankDemo notes to domains: retrieval top-1 {Pct(ncr.Retrieval.Top1, ncr.Retrieval.Total)} (top-3 {Pct(ncr.Retrieval.Top3, ncr.Retrieval.Total)}), Help excluded {Pct(ncr.RetrievalNoHelp.Top1, ncr.RetrievalNoHelp.Total)}, supervised {Pct(ncr.Supervised.Top1, ncr.Supervised.Total)}, structure-aware {Pct(ncr.Structural.Top1, ncr.Structural.Total)} over {ncr.ProgramCount} programs and {ncr.EdgeCount} call edges.",
 		_ => null
 	};
 

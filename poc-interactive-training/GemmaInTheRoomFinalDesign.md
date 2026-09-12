@@ -77,7 +77,7 @@ flowchart LR
 | **Warm-up at start** | `StartAsync` issues a 4-token request after health so the grounding is in the KV cache before anyone speaks | First real question does not pay the 14 s |
 | **Q4, not Q8** | `gemma-4-E2B-it-Q4_K_M.gguf` | ~20 tok/s vs an expected ~12 for Q8 |
 | **Thinking off** | `enable_thinking: false`, `reasoning_format: none` | The budget is spent on words the room hears |
-| **Stream and speak by sentence** | SSE deltas → `Changed` event → Blazor re-render; `LastSentenceEnd` finds `. ? !` followed by whitespace (≥ 20 chars in) and enqueues each sentence once | The room hears sentence one while sentences two and three are still generating |
+| **Stream and speak by sentence** | SSE deltas → `Changed` event → Blazor re-render coalesced to ~8/s; `LastSentenceEnd` finds `. ? !` followed by whitespace (≥ 20 chars in) and enqueues each sentence once. **Only the tab that asked speaks**: `speechSynthesis` is one queue per browser, so with two tabs open every tab speaking meant every sentence twice | The room hears sentence one while sentences two and three are still generating |
 | **n-gram draft** | `--spec-type ngram-mod` | No second model, no memory; +12 % on prose in scene 38, more when the answer quotes the notes |
 | **CPU, 8 threads** | `-t 8` (physical cores), `-ngl 0` | iGPU measured slower |
 | **Transcribe fast** | whisper base.en, `-sns` (suppress non-speech), 0.4 s minimum clip | ~1 s per 10 s of speech |

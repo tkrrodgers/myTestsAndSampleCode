@@ -6631,6 +6631,8 @@ Finish with the verification path: the tests you would add or change, and how I 
 	private DateTimeOffset? _roomRecordingStartedAt;
 	private int _roomSpokenTurnId;
 	private int _roomSpokenChars;
+	private int _roomOwnedAnswerId;
+	private bool _roomRenderPending;
 
 	private sealed record RoomMicResult(string Text, int SttMs, double Seconds, string? Error);
 
@@ -6651,6 +6653,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 		await JS.InvokeVoidAsync("roomSpeech.stop");
 		_roomSpokenTurnId = 0;
 		_roomSpokenChars = 0;
+		_roomOwnedAnswerId = 0;
 		Room.ClearConversation();
 	}
 
@@ -6691,7 +6694,7 @@ Finish with the verification path: the tests you would add or change, and how I 
 			}
 			else
 			{
-				Room.Ask(_roomSpeaker, result.Text, result.SttMs);
+				_roomOwnedAnswerId = Room.Ask(_roomSpeaker, result.Text, result.SttMs);
 			}
 		}
 		catch (JSException ex)
@@ -6710,18 +6713,25 @@ Finish with the verification path: the tests you would add or change, and how I 
 		if (text.Length == 0) return;
 		_roomTyped = string.Empty;
 		await JS.InvokeVoidAsync("roomSpeech.stop");
-		Room.Ask(_roomSpeaker, text, 0);
+		_roomOwnedAnswerId = Room.Ask(_roomSpeaker, text, 0);
 	}
 
 	// Streams the model's text to the screen and hands each finished sentence to the speaker queue once.
+	// Renders are coalesced (tokens arrive ~20/s) and only the tab that asked the question speaks the
+	// answer: speechSynthesis is one queue per browser, so every open tab speaking means every sentence twice.
 	private void OnRoomChanged()
 	{
+		if (_roomRenderPending) return;
+		_roomRenderPending = true;
 		_ = InvokeAsync(async () =>
 		{
+			await Task.Delay(120);
+			_roomRenderPending = false;
+			if (_scene != SceneIndex("llm-in-the-room")) return;
 			StateHasChanged();
 			try { await JS.InvokeVoidAsync("trainingSpeech.stickToBottom", "room-transcript"); } catch (JSException) { }
-			if (!_roomSpeakAloud) return;
-			var turn = Room.Snapshot().Turns.LastOrDefault(t => t.Role == "assistant");
+			if (!_roomSpeakAloud || _roomOwnedAnswerId == 0) return;
+			var turn = Room.Snapshot().Turns.FirstOrDefault(t => t.Id == _roomOwnedAnswerId);
 			if (turn is null || turn.Status == "failed") return;
 			if (turn.Id != _roomSpokenTurnId) { _roomSpokenTurnId = turn.Id; _roomSpokenChars = 0; }
 

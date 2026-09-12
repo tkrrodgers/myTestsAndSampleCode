@@ -107,10 +107,13 @@ window.roomMic = {
 // Sentence-at-a-time speech so the room hears the first sentence while the rest is still generating.
 // Unlike trainingSpeech.speak this must not cancel the utterance already playing.
 window.roomSpeech = {
-    _queue: [], _busy: false,
+    _queue: [], _busy: false, _last: '',
 
     enqueue: function (text) {
         if (!('speechSynthesis' in window) || !text) { return; }
+        // The same sentence arriving twice in a row is a duplicate event, not a repeated answer.
+        if (text === this._last) { return; }
+        this._last = text;
         this._queue.push(text);
         this._next();
     },
@@ -118,6 +121,7 @@ window.roomSpeech = {
     stop: function () {
         this._queue = [];
         this._busy = false;
+        this._last = '';
         if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); }
     },
 

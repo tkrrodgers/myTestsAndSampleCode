@@ -215,12 +215,13 @@ public sealed class RoomChatService : IDisposable
     }
 
     // Records the question immediately and streams the answer; the caller sees tokens as they land.
-    public void Ask(string speaker, string text, int sttMs)
+    // Returns the answer turn id so the tab that asked can be the only one that speaks it.
+    public int Ask(string speaker, string text, int sttMs)
     {
         text = text.Trim();
         if (text.Length == 0 || !IsReady)
         {
-            return;
+            return 0;
         }
 
         _notesCts?.Cancel();
@@ -237,6 +238,7 @@ public sealed class RoomChatService : IDisposable
 
         Raise();
         _ = Task.Run(() => AnswerAsync(answerId));
+        return answerId;
     }
 
     private async Task AnswerAsync(int answerId)

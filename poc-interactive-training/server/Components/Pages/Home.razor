@@ -518,7 +518,12 @@
 						<ol class="animation-transcript">
 							<li>Read the story intent.</li><li>Enter through the OKF index.</li><li>Apply concept, boundary, and ADR evidence.</li><li>Inspect the mapped code and tests.</li>
 						</ol>
-						<button class="secondary-command replay-command" type="button" data-auto="s06.replay" @onclick="ReplayAnimation">? Replay animation</button>
+						<button class="secondary-command replay-command" type="button" data-auto="s06.replay" @onclick="ReplayAnimation">&#8635; Replay animation</button>
+						<aside class="image-provenance" data-auto="s06.tooling">
+							<p class="eyebrow">HOW THIS WAS MADE</p>
+							<dl><dt>Tool</dt><dd><strong>Motion Studio</strong> &mdash; VS Code extension (publisher: Motion), visual and AI animation editing</dd><dt>Output</dt><dd>CSS keyframes and the four-node track, authored by the AI in the editor and pasted into this page; no runtime library</dd><dt>Review</dt><dd>Human-checked for sequence, timing and the reduced-motion fallback</dd></dl>
+							<p>Named here so nobody has to guess what produced it. The motion is illustration; the transcript above is the authoritative content.</p>
+						</aside>
 					</section>
 					break;
 				case 6:
@@ -528,12 +533,12 @@
 						<div class="image-demo-layout">
 							<figure class="image-demo">
 								<img src="okf-artifact-structure.png" alt="Context navigation from JIRA story FUL-1842 through the OKF index and contextual decisions to DeliveryEstimateService code." />
-								<figcaption>Bitmap demonstration: intent ? governed index ? decision context ? owned code.</figcaption>
+								<figcaption>Bitmap demonstration: intent &rarr; governed index &rarr; decision context &rarr; owned code.</figcaption>
 							</figure>
-							<aside class="image-provenance">
+							<aside class="image-provenance" data-auto="s07.record">
 								<p class="eyebrow">ASSET RECORD</p>
-								<dl><dt>Source</dt><dd>Rendered POC context map</dd><dt>Format</dt><dd>PNG · 1080×608</dd><dt>Data</dt><dd>Synthetic Public fixture</dd><dt>Review</dt><dd>Human-inspected for crop and readability</dd></dl>
-								<p>The image supports the lesson, but structured HTML remains the accessible and localizable source of truth.</p>
+								<dl><dt>Made with</dt><dd><strong>ImageGen</strong> &mdash; VS Code extension (publisher: marquaye), AI image generation from a prompt in the editor</dd><dt>Source</dt><dd>Rendered POC context map; prompt authored by the AI from the OKF fixture</dd><dt>Format</dt><dd>PNG · 1080×608</dd><dt>Data</dt><dd>Synthetic Public fixture</dd><dt>Review</dt><dd>Human-inspected for crop and readability</dd></dl>
+								<p>The image supports the lesson, but structured HTML remains the accessible and localizable source of truth. A generated image is an asset with provenance, like any other artifact here: the tool that made it is part of the record.</p>
 							</aside>
 						</div>
 					</section>

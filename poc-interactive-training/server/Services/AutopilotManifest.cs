@@ -127,14 +127,16 @@ public static class AutopilotManifest
         // ---- 6 animation-demo -----------------------------------------------
         S("s06.01", "animation-demo", 6, AutoKind.Click, selector: "[data-auto='s06.replay']", timeout: 10,
             facts: ["The motion shows the investigation narrowing from a broad story to one code path."]),
-        S("s06.02", "animation-demo", 6, AutoKind.Observe,
-            ["This is labelled an illustration of an example flow.",
-             "Under reduced-motion settings every step appears immediately with no travelling marker."],
+        S("s06.02", "animation-demo", 6, AutoKind.Scroll, selector: "[data-auto='s06.tooling']",
+            facts: ["This is labelled an illustration of an example flow.",
+                    "The animation was made with the Motion Studio VS Code extension; the tool is named on the page so nobody has to guess what produced it.",
+                    "Under reduced-motion settings every step appears immediately with no travelling marker."],
             mustNot: ["that this shows the model reasoning", "that this is live model thinking"]),
 
         // ---- 7 image-demo ---------------------------------------------------
-        S("s07.01", "image-demo", 7, AutoKind.Observe,
-            ["The bitmap carries an asset record: rendered source, format, data classification, and review status."]),
+        S("s07.01", "image-demo", 7, AutoKind.Scroll, selector: "[data-auto='s07.record']",
+            facts: ["The bitmap carries an asset record: the tool that made it, rendered source, format, data classification, and review status.",
+                    "It was generated with the ImageGen VS Code extension from a prompt authored from the OKF fixture, then human-inspected."]),
         S("s07.02", "image-demo", 7, AutoKind.Observe,
             ["Structured HTML remains the authoritative content.",
              "Images alone are not searchable, localisable, or sufficient for accessibility."]),

@@ -754,6 +754,11 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     min-width: 155px;
 }
 
+.replay-command + .image-provenance {
+    margin-top: 28px;
+    max-width: 720px;
+}
+
 .image-demo-layout {
     display: grid;
     grid-template-columns: minmax(0, 1.6fr) minmax(230px, .7fr);

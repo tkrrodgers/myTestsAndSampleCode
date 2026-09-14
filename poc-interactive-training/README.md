@@ -101,7 +101,7 @@ The server reads and fetches things outside its own directory. All are optional;
 - **llama.cpp CPU build + two GGUF files** for the local speculative-decoding scene: `tools/llama-cpp/cpu/llama-server.exe` (release b10909 `llama-*-bin-win-cpu-x64.zip`, or set `LLAMA_CPP_HOME`), `gemma3/gemma-3-4b-it-Q4_K_M.gguf` (2.4 GB) and `gemma3/gemma-3-270m-it-Q8_0.gguf` (278 MB) from `unsloth/*-GGUF` on Hugging Face. All gitignored. Absent → the scene lists what is missing and disables the run buttons. Needs ~3 GB of free RAM while running.
 - **Gemma 4 E2B GGUF + whisper.cpp** for LLM in the Room: `Gemma4/gemma-4-E2B-it-Q4_K_M.gguf` (3.0 GB, from `cstr/gemma4-e2b-it-GGUF`), `tools/whisper-cpp/Release/whisper-server.exe` (whisper.cpp b5130 `whisper-bin-x64.zip`) and `tools/whisper-cpp/models/ggml-base.en.bin` (141 MB, from `ggerganov/whisper.cpp`). All gitignored; the same `llama-server.exe` as above. Absent → the scene names what is missing and disables Start. Needs ~3.5 GB of free RAM while the room is running, and a browser with a microphone (Edge or Chrome, not VS Code's embedded browser).
 - **BankDemo repository** for the notes-to-domains scene, at `C:\Users\tkrro\Source\BankDemo` or set `BankDemoRoot`. Uses its COBOL sources and `docs/domains` ground truth. Absent → the scene reports the path is missing and disables the run button.
-- **Three trading repositories** (`EquityTradingPipeline`, `FixedIncomeOptionsEngine`, `CryptoFxSpotDesk`) discovered beside the workspace, or set `TradingCorpusRoot`. Absent → the common-code audit reports an unavailable corpus.
+- **Three trading repositories** (`EquityTradingPipeline`, `FixedIncomeOptionsEngine`, `CryptoFxSpotDesk`) are **checked in** under `test-data/trading/` as the corpus of record for the common-code audit, the context-sufficiency tiers, the portfolio tiers and the context classifier's training set. A sibling checkout beside the workspace or `TradingCorpusRoot` overrides it. Build output is excluded; the `.csproj` files are kept so the repos remain compilable on their own.
 - **Outbound HTTPS to Google Cloud documentation**, used only to ground the comparison judge. Restricted to an allowlist of documentation hosts. Unreachable → the comparison fails loudly rather than judging from memory.
 
 ## Build
@@ -147,7 +147,7 @@ dotnet run --project .\server\... -- --score-facts <file>    # score saved model
 
 ## Boundaries
 
-- The FUL-1842 JIRA, OKF bundle and `src/` fixture are synthetic. The three trading repositories are real code but were authored for this exercise.
+- The FUL-1842 JIRA, OKF bundle and `src/` fixture are synthetic. The three trading repositories under `test-data/trading/` are real compilable code but were authored for this exercise.
 - In-memory state is discarded when the server stops.
 - Claude and Gemma output is coaching commentary or a model's opinion — never a validated grade.
 - Keyword coverage on the comparison tab counts vocabulary, not correctness.

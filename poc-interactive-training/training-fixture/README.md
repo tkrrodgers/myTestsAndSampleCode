@@ -70,7 +70,7 @@ elsewhere, and conflating them will produce wrong conclusions:
 
 | Scene | Context source | Nature |
 | --- | --- | --- |
-| Common code audit | Three trading repositories on disk beside the workspace | Real compilable code, authored for this exercise |
+| Common code audit | Three trading repositories checked in under `test-data/trading/` | Real compilable code, authored for this exercise |
 | Context sufficiency | The same fixed-income repository at three documentation tiers | Identical source, three levels of surrounding knowledge |
 | Model comparison | Google Cloud documentation fetched over HTTPS at judging time | Genuinely authoritative, retrieved live, and shown with its retrieval status |
 | Making Gemma 4 an SME | A three-layer vendor documentation pack for crypto execution | Transcribed from public vendor documentation on a stated date; a dated snapshot, not a live feed |
@@ -83,7 +83,7 @@ elsewhere, and conflating them will produce wrong conclusions:
 | Auto-run narration | The step fact packs in `AutopilotManifest` | Authored by a human, contract-tested against the markup, and the only thing narration may assert |
 | Everything deterministic | Fixtures compiled into the server | Synthetic, versioned with the code |
 
-Only the GAM sample, the regression fixture, the fact packs and the compiled fixtures are versioned inside this repository. The others can change or become unavailable
+Only the trading corpus, the GAM sample, the regression fixture, the fact packs and the compiled fixtures are versioned inside this repository. The others can change or become unavailable
 underneath a demonstration, which is why each reports its own availability rather than failing quietly.
 
 > **A golden baseline is an artifact with the same failure mode as a stale bundle.** It certifies against

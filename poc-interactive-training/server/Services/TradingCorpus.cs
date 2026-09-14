@@ -34,7 +34,7 @@ public sealed class TradingCorpus
         if (Root is null)
         {
             Files = [];
-            StatusMessage = "Trading corpus not found; expected EquityTradingPipeline, FixedIncomeOptionsEngine and CryptoFxSpotDesk beside the workspace.";
+            StatusMessage = "Trading corpus not found; expected EquityTradingPipeline, FixedIncomeOptionsEngine and CryptoFxSpotDesk under test-data/trading or beside the workspace.";
             return;
         }
 
@@ -144,6 +144,17 @@ public sealed class TradingCorpus
         if (!string.IsNullOrWhiteSpace(configuredRoot))
         {
             candidates.Add(configuredRoot);
+        }
+
+        // The checked-in copy is the test data of record; a sibling checkout beside the workspace is a fallback.
+        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+        {
+            var directory = new DirectoryInfo(start);
+            for (var level = 0; level < 8 && directory is not null; level++, directory = directory.Parent)
+            {
+                candidates.Add(Path.Combine(directory.FullName, "test-data", "trading"));
+                candidates.Add(Path.Combine(directory.FullName, "poc-interactive-training", "test-data", "trading"));
+            }
         }
 
         foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
